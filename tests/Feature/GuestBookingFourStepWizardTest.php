@@ -134,7 +134,9 @@ class GuestBookingFourStepWizardTest extends TestCase
                     Mockery::on(fn($venue) => str_contains($venue, 'Seda Hotel')),
                     Mockery::on(fn($scale) => str_contains($scale, 'Tables: 15') && str_contains($scale, '150')),
                     Mockery::on(fn($date) => $date === '2026-12-15'),
-                    Mockery::on(fn($end) => $end === '22:00')
+                    Mockery::on(fn($end) => $end === '22:00'),
+                    Mockery::on(fn($brief) => $brief === ['photo_usage' => 'style', 'decor_areas' => ['centerpieces'], 'budget_range' => '30k_60k']),
+                    Mockery::on(fn($setting) => $setting === 'outdoor')
                 )
                 ->andReturn([
                     'model_used' => 'gemini-2.5-flash',
@@ -182,6 +184,10 @@ class GuestBookingFourStepWizardTest extends TestCase
             'guest_count' => 150,
             'table_count' => 15,
             'special_requests' => 'Pastel roses theme',
+            'venue_setting' => 'outdoor',
+            'photo_usage' => 'style',
+            'decor_areas' => ['centerpieces'],
+            'budget_range' => '30k_60k',
         ]);
 
         $response->assertStatus(200);

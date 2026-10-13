@@ -20,13 +20,20 @@
             </div>
             <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
                 <p class="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 sm:text-[11px]"><span class="mr-1 hidden sm:inline" aria-hidden="true"><i class="fa-regular fa-clock"></i></span>Event time</p>
-                <p class="mt-1.5 text-sm font-semibold text-slate-900 sm:mt-2 sm:text-base">{{ $booking->event_time ?? 'Not specified' }}</p>
+                <p class="mt-1.5 text-sm font-semibold text-slate-900 sm:mt-2 sm:text-base">{{ $booking->event_time ?? 'Not specified' }}@if($booking->event_time && $booking->end_time) – {{ $booking->end_time }}@endif</p>
             </div>
             <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
                 <p class="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 sm:text-[11px]"><span class="mr-1 hidden sm:inline" aria-hidden="true"><i class="fa-solid fa-location-dot"></i></span>Venue</p>
                 <p class="mt-1.5 break-words text-sm font-semibold text-slate-900 sm:mt-2 sm:text-base">{{ $booking->venue ?? 'Not specified' }}</p>
             </div>
         </section>
+
+        @if($booking->venue || $booking->hasVenueCoordinates())
+            <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="venue-location-heading">
+                <h3 id="venue-location-heading" class="mb-3 font-bold text-slate-900"><i class="fa-solid fa-map-location-dot mr-1.5 text-purple-600" aria-hidden="true"></i>Venue location</h3>
+                <x-venue-map :booking="$booking" height="h-64" />
+            </section>
+        @endif
 
         {{-- README end-to-end booking workflow; Staff see operational details for the Staff Workflow only --}}
         <x-booking-workflow
@@ -60,6 +67,9 @@
                     <dd class="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700">{{ $booking->special_requests ?: 'No special requests provided.' }}</dd>
                 </div>
             </dl>
+
+            <x-design-brief-summary :booking="$booking" class="mt-5" />
+            <x-decor-area-breakdown :materials="$aiMaterials ?? []" :booking="$booking" view="staff" class="mt-4" />
         </section>
 
         <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

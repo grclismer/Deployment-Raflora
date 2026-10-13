@@ -8,7 +8,7 @@
                     $activeQuotation  = $activeQuotation ?? $booking->activeQuotation;
                     $previewImage     = $booking->inspiration_image ? route('secure.inspiration.show', $booking->id) : null;
                     $imagePath        = $booking->inspiration_image ? storage_path('app/private/' . ltrim($booking->inspiration_image, '/')) : null;
-                    $imageDimensions  = $imagePath && is_file($imagePath) ? @getimagesize($imagePath) : null;
+                    $imageDimensions  = $imagePath ? \App\Support\ImageOrientation::displaySize($imagePath) : null;
                     $imageAspectRatio = is_array($imageDimensions) && !empty($imageDimensions[0]) && !empty($imageDimensions[1])
                                         ? $imageDimensions[0] . ' / ' . $imageDimensions[1]
                                         : null;
@@ -685,9 +685,10 @@
                                 @if($previewImage)
                                 <section aria-labelledby="concept-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                                     <h2 id="concept-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Inspiration Image &amp; AI Recommendation</h2>
-                                    <div class="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style="max-height: 320px;">
+                                    <div class="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                                         @include('components.annotated-image', [
                                             'previewImage'    => $previewImage,
+                                            'maxHeight'       => 320,
                                             'imageAspectRatio'=> $imageAspectRatio,
                                             'imageWidth'      => $imageDimensions[0] ?? null,
                                             'imageHeight'     => $imageDimensions[1] ?? null,
@@ -748,7 +749,11 @@
                             <section aria-labelledby="ai-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                                 <h2 id="ai-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Visual Analysis (Decision Support)</h2>
                                 <p class="text-sm text-slate-500 mb-4">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
-                                
+
+                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-5" />
+
+                                {{-- With picked areas the panel above already groups every material; this list groups by where the AI saw them. --}}
+                                @if(\App\Support\DecorAreaBreakdown::requestedAreas($booking->design_brief) === [])
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     @foreach($analysisGroups as $group)
                                         <div>
@@ -759,7 +764,7 @@
                                                         $categoryLabel = strtoupper($item['category']);
                                                         $displayQty = $item['quantity'] > 0 ? number_format((float) $item['quantity'], 0) : '~' . number_format((float) max(1, $item['quantity']), 0);
                                                     @endphp
-                                                    <div class="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50 p-3" data-line-id="{{ $item['line_id'] }}">
                                                         <div class="flex items-start justify-between gap-2">
                                                             <div class="min-w-0">
                                                                 <p class="text-sm font-semibold text-slate-800 leading-snug">{{ $item['name'] }}</p>
@@ -773,6 +778,7 @@
                                         </div>
                                     @endforeach
                                 </div>
+                                @endif
                             </section>
                             @endif
 

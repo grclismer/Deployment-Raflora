@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Log;
 use App\Services\GeminiVisionService;
+use App\Support\DecorAreaBreakdown;
+use App\Support\EventDesignBrief;
 use App\Models\InventoryItem;
 use App\Models\Presentation;
 use App\Models\AuditLog;
@@ -172,6 +174,9 @@ class BookingController extends Controller
         $scaleContext = trim($scaleContext) ?: "Single order/bouquet delivery - no scale multiplier applied";
 
         $specialRequests = $validated['special_requests'] ?? '';
+        // The design brief only steers Smart AI analysis; a curated package has its own fixed design.
+        $designBrief = $isPresetBooking ? null : EventDesignBrief::fromInput($validated);
+        $venueSetting = EventDesignBrief::venueSettingFromInput($validated);
         if ($selectedPackage) {
             $booking = Booking::create([
                 'client_id' => $client?->id,
@@ -179,10 +184,14 @@ class BookingController extends Controller
                 'event_type' => $eventType,
                 'event_date' => $validated['event_date'],
                 'event_time' => $validated['event_time'] ?? null,
+                'end_time' => $validated['end_time'] ?? null,
                 'event_size' => $guestCount,
                 'table_count' => $tableCount,
                 'package_id' => $selectedPackage->id,
                 'venue' => $validated['venue'],
+                'venue_latitude' => $validated['venue_latitude'] ?? null,
+                'venue_longitude' => $validated['venue_longitude'] ?? null,
+                'venue_setting' => $venueSetting,
                 'special_requests' => $specialRequests,
                 'inspiration_image' => $inspirationImagePath ?? ($selectedPackage->image_path ?? null),
                 'status' => 'pending',
@@ -344,16 +353,21 @@ class BookingController extends Controller
             $materials = [];
             $result = null;
 
-            DB::transaction(function () use ($client, $validated, $eventType, $tableCount, $inspirationImagePath, $priceValidUntil, $suggestedProcurement, $specialRequests, $analysisUsed, $storedAnalysis, $scaleContext, $guestCount, &$booking, &$materials, &$result) {
+            DB::transaction(function () use ($client, $validated, $eventType, $tableCount, $inspirationImagePath, $priceValidUntil, $suggestedProcurement, $specialRequests, $analysisUsed, $storedAnalysis, $scaleContext, $guestCount, $designBrief, $venueSetting, &$booking, &$materials, &$result) {
                 $bookingData = [
                     'client_id' => $client?->id,
                     'handled_by' => null,
                     'event_type' => $eventType,
                     'event_date' => $validated['event_date'],
                     'event_time' => $validated['event_time'] ?? null,
+                    'end_time' => $validated['end_time'] ?? null,
                     'event_size' => $guestCount,
                     'table_count' => $tableCount,
                     'venue' => $validated['venue'],
+                    'venue_latitude' => $validated['venue_latitude'] ?? null,
+                    'venue_longitude' => $validated['venue_longitude'] ?? null,
+                    'venue_setting' => $venueSetting,
+                    'design_brief' => $designBrief,
                     'special_requests' => $specialRequests,
                     'inspiration_image' => $inspirationImagePath,
                     'status' => 'pending',
@@ -398,20 +412,26 @@ class BookingController extends Controller
                         $validated['event_time'] ?? null,
                         $validated['venue'] ?? null,
                         $scaleContext,
-                        $validated['event_date'] ?? null
+                        $validated['event_date'] ?? null,
+                        $validated['end_time'] ?? null,
+                        designBrief: $designBrief,
+                        venueSetting: $venueSetting
                     );
                 }
 
                 Log::info('Gemini Raw Analysis Output: ', $result);
 
                 if (!$analysisUsed) {
-                    $result['analysis'] = $vision->normalizeAiAnalysis($result['analysis'] ?? []);
+                    $result['analysis'] = $vision->normalizeAiAnalysis($result['analysis'] ?? [], $designBrief);
                     $result['analysis']['analysis_meta'] = GeminiVisionService::buildAnalysisMeta($result, 'gemini', [
                         'event_type' => $eventType,
                         'event_date' => $validated['event_date'] ?? null,
                         'event_time' => $validated['event_time'] ?? null,
+                        'end_time' => $validated['end_time'] ?? null,
                         'venue' => $validated['venue'] ?? null,
+                        'venue_setting' => $venueSetting,
                         'scale' => $scaleContext,
+                        'design_brief' => $designBrief,
                     ]);
                 }
                 $vision->validateAnalysisPayload($result['analysis'] ?? []);
@@ -650,7 +670,11 @@ class BookingController extends Controller
                 $materialEntry['inventory_item_id'] = $inventoryItem->id;
 
                 $bookingItem = $booking->bookingItems()->where('inventory_item_id', $inventoryItem->id)->first();
-                if (!$bookingItem) {
+                if ($bookingItem) {
+                    // The same material in another area (one AI row per area): add its quantity.
+                    $bookingItem->quantity = (float) $bookingItem->quantity + $quantity;
+                    $bookingItem->save();
+                } else {
                     $bookingItem = BookingItem::create([
                         'booking_id' => $booking->id,
                         'inventory_item_id' => $inventoryItem->id,
@@ -691,6 +715,8 @@ class BookingController extends Controller
 
             }
 
+            // The booking line this AI row became, so per-area prices can be read from it.
+            $materialEntry['booking_item_id'] = $bookingItem->id;
             $persistedMaterials[] = $materialEntry;
         }
 
@@ -1555,9 +1581,11 @@ class BookingController extends Controller
             'table_count' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'guest_count' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'special_requests' => ['nullable', 'string', 'max:2000'],
-        ]);
+        ] + EventDesignBrief::rules(), EventDesignBrief::messages());
 
         $venue = $request->input('venue', $request->input('venue_address'));
+        $designBrief = EventDesignBrief::fromInput($request->all());
+        $venueSetting = EventDesignBrief::venueSettingFromInput($request->all());
 
         $scaleContext = '';
         if ($request->filled('table_count')) {
@@ -1606,8 +1634,10 @@ class BookingController extends Controller
                 'event_time' => $request->input('event_time'),
                 'end_time' => $request->input('end_time'),
                 'venue' => $venue,
+                'venue_setting' => $venueSetting,
                 'scale' => $scaleContext,
                 'special_requests' => $request->input('special_requests'),
+                'design_brief' => $designBrief,
             ];
             $contextHash = GeminiVisionService::analysisContextHash($analysisContext);
             $anaCacheKey = $uploadedHash ? "gemini_ana_{$uploadedHash}_{$originalFilename}_{$contextHash}" : null;
@@ -1628,7 +1658,9 @@ class BookingController extends Controller
                     $venue,
                     $scaleContext,
                     $request->input('event_date'),
-                    $request->input('end_time')
+                    $request->input('end_time'),
+                    designBrief: $designBrief,
+                    venueSetting: $venueSetting
                 );
                 $analysisSource = 'gemini';
                 if ($anaCacheKey && !empty($analysisResult['analysis']['suggested_materials'])) {
@@ -1659,9 +1691,11 @@ class BookingController extends Controller
                     'event_time' => $request->input('event_time'),
                     'end_time' => $request->input('end_time'),
                     'venue' => $venue,
+                    'venue_setting' => $venueSetting,
                     'guest_count' => $request->input('guest_count'),
                     'table_count' => $request->input('table_count'),
                     'special_requests' => $request->input('special_requests'),
+                    'design_brief' => $designBrief,
                 ],
                 $uploadedHash,
                 $fullPath,
@@ -1670,7 +1704,7 @@ class BookingController extends Controller
                 $analysisResult['generation_config'] ?? ['temperature' => 0.2, 'responseMimeType' => 'application/json']
             );
 
-            $analysisResult['analysis'] = $vision->normalizeAiAnalysis($analysisResult['analysis'] ?? []);
+            $analysisResult['analysis'] = $vision->normalizeAiAnalysis($analysisResult['analysis'] ?? [], $designBrief);
             $vision->validateAnalysisPayload($analysisResult['analysis'] ?? []);
             $suggestedMaterials = $analysisResult['analysis']['suggested_materials'];
             if (!is_array($suggestedMaterials) || count($suggestedMaterials) === 0) {
@@ -1686,6 +1720,11 @@ class BookingController extends Controller
             $markupMultiplier = (float) $pricingSummary['markup_multiplier'];
             $estimatedGrandTotal = (float) $pricingSummary['estimated_grand_total_php'];
             $analysisResult['analysis']['pricing_summary'] = $pricingSummary;
+            // What each area the client picked needs, as quantities only: area prices come from
+            // Raflora's own prices once the booking exists (only when areas were picked).
+            if ($areaBreakdown = DecorAreaBreakdown::build($suggestedMaterials, $designBrief)) {
+                $analysisResult['analysis']['area_breakdown'] = $areaBreakdown;
+            }
             $analysisResult['analysis']['analysis_meta'] = GeminiVisionService::buildAnalysisMeta($analysisResult, $analysisSource, $analysisContext);
 
             $analysisDataJson = json_encode($analysisResult['analysis']);

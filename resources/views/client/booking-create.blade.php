@@ -5,14 +5,16 @@
                 <!-- Header -->
                 <span class="rf-badge rf-badge--success mb-3">Authenticated client portal</span>
                 <h1 class="page-title mt-1">Create Event Booking</h1>
-                <p class="section-subtitle mt-2 mb-8 max-w-2xl">Choose a custom AI design or a curated package, then provide the event details needed for your request.</p>
+                <p class="section-subtitle mt-2 mb-8 max-w-2xl">Tell us about your event first, then choose a custom AI design or a curated package. Your event details help the AI suggest the right quantities.</p>
 
                 @php
                     $clientDisplayErrors = collect($errors->keys())
                         ->reject(fn($key) => in_array($key, ['inspiration_image', 'analysis_token']))
                         ->flatMap(fn($key) => $errors->get($key));
-                    $hasStep1Errors = $errors->hasAny(['inspiration_image', 'analysis_token', 'package_id', 'booking_type']);
-                    $hasStep2Errors = $errors->hasAny(['event_type', 'other_event_type', 'event_date', 'event_time', 'venue', 'guest_count', 'table_count', 'special_requests']);
+                    // Step 1 = event details, Step 2 = booking method, photo and design brief (same order as the guest form,
+                    // so the photo is analyzed with the event details already filled in).
+                    $hasStep1Errors = $errors->hasAny(['event_type', 'other_event_type', 'event_date', 'event_time', 'end_time', 'venue', 'venue_latitude', 'venue_longitude', 'venue_setting', 'guest_count', 'table_count', 'special_requests']);
+                    $hasStep2Errors = $errors->hasAny(array_merge(['inspiration_image', 'analysis_token', 'package_id', 'booking_type'], \App\Support\EventDesignBrief::FIELDS, ['decor_areas.*', 'color_palette.*']));
                     $initialStep = ($hasStep2Errors && !$hasStep1Errors) ? 2 : 1;
                     $selectedBookingType = old('booking_type', request('package_id') ? 'preset' : 'custom_ai');
                 @endphp
@@ -20,11 +22,11 @@
                 <nav class="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Booking form progress">
                     <div id="progress-step-1" class="rounded-xl border {{ $initialStep === 1 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-4 py-3" {{ $initialStep === 1 ? 'aria-current="step"' : '' }}>
                         <p class="text-[11px] font-bold uppercase tracking-wide {{ $initialStep === 1 ? 'text-emerald-700' : 'text-slate-500' }}">Step 1</p>
-                        <p class="text-sm font-semibold {{ $initialStep === 1 ? 'text-slate-900' : 'text-slate-500' }}">Choose Booking Method</p>
+                        <p class="text-sm font-semibold {{ $initialStep === 1 ? 'text-slate-900' : 'text-slate-500' }}">Event Details</p>
                     </div>
                     <div id="progress-step-2" class="rounded-xl border {{ $initialStep === 2 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-4 py-3" {{ $initialStep === 2 ? 'aria-current="step"' : '' }}>
                         <p class="text-[11px] font-bold uppercase tracking-wide {{ $initialStep === 2 ? 'text-emerald-700' : 'text-slate-500' }}">Step 2</p>
-                        <p class="text-sm font-semibold {{ $initialStep === 2 ? 'text-slate-900' : 'text-slate-500' }}">Event Schedule & Location</p>
+                        <p class="text-sm font-semibold {{ $initialStep === 2 ? 'text-slate-900' : 'text-slate-500' }}">Booking Method & Design</p>
                     </div>
                 </nav>
 
@@ -41,7 +43,118 @@
                 <form id="client-booking-form" method="POST" action="{{ route('bookings.store') }}" enctype="multipart/form-data" class="space-y-8">
                     @csrf
 
+                    <!-- STEP 1: EVENT DETAILS -->
                     <div id="booking-step-1" class="{{ $initialStep === 2 ? 'hidden space-y-8' : 'space-y-8' }}">
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-bold text-slate-900">Event Details</h3>
+                            <span class="text-xs text-slate-500 font-medium">Fields marked with <span class="text-rose-600 font-bold" aria-hidden="true">*</span> are required</span>
+                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            <div>
+                                <label for="event_type" class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Event Type <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
+                                </label>
+                                <select name="event_type" id="event_type" required aria-invalid="{{ $errors->has('event_type') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_type') ? 'event_type-error' : '' }}" class="rf-select @error('event_type') is-invalid @enderror">
+                                    <option value="">Select Type</option>
+                                    <option value="wedding" {{ old('event_type') === 'wedding' ? 'selected' : '' }}>Wedding</option>
+                                    <option value="birthday" {{ old('event_type') === 'birthday' ? 'selected' : '' }}>Birthday</option>
+                                    <option value="corporate" {{ old('event_type') === 'corporate' ? 'selected' : '' }}>Corporate</option>
+                                    <option value="other" {{ old('event_type') === 'other' ? 'selected' : '' }}>Other Event</option>
+                                </select>
+                                @error('event_type')
+                                    <p id="event_type-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                @enderror
+                                <div id="otherEventTypeContainer" class="mt-3 {{ old('event_type') === 'other' ? '' : 'hidden' }}">
+                                    <label for="other_event_type" class="block text-xs font-semibold text-slate-700 mb-1">
+                                        Please specify other event type <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
+                                    </label>
+                                    <input type="text" name="other_event_type" id="other_event_type" value="{{ old('other_event_type') }}" placeholder="e.g. Delivery, Engagement, Product Launch" aria-invalid="{{ $errors->has('other_event_type') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('other_event_type') ? 'other_event_type-error' : '' }}" class="rf-input @error('other_event_type') is-invalid @enderror" {{ old('event_type') === 'other' ? 'required' : '' }}>
+                                    @error('other_event_type')
+                                        <p id="other_event_type-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                    @enderror
+                                </div>
+                            </div>
+                            <div>
+                                <label for="event_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Event Date <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
+                                </label>
+                                <input type="date" name="event_date" id="event_date" min="{{ date('Y-m-d') }}" value="{{ old('event_date') }}" required aria-invalid="{{ $errors->has('event_date') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_date') ? 'event_date-error' : '' }}" class="rf-input @error('event_date') is-invalid @enderror">
+                                @error('event_date')
+                                    <p id="event_date-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                @enderror
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label for="event_time" class="block text-xs font-semibold text-slate-700 mb-1">Start Time</label>
+                                    <input type="time" name="event_time" id="event_time" value="{{ old('event_time') }}" aria-invalid="{{ $errors->has('event_time') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_time') ? 'event_time-error' : '' }}" class="rf-input @error('event_time') is-invalid @enderror">
+                                    @error('event_time')
+                                        <p id="event_time-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                    @enderror
+                                </div>
+                                <div>
+                                    <label for="end_time" class="block text-xs font-semibold text-slate-700 mb-1">End Time</label>
+                                    <input type="time" name="end_time" id="end_time" value="{{ old('end_time') }}" aria-invalid="{{ $errors->has('end_time') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('end_time') ? 'end_time-error' : '' }}" class="rf-input @error('end_time') is-invalid @enderror">
+                                    @error('end_time')
+                                        <p id="end_time-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="venue" class="block text-xs font-semibold text-slate-700 mb-1">
+                                Venue Address <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
+                            </label>
+                            <input type="text" name="venue" id="venue" value="{{ old('venue') }}" placeholder="e.g. Delivery Address, Grand Ballroom, Shangri-La The Fort, BGC" maxlength="500" required aria-invalid="{{ $errors->has('venue') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('venue') ? 'venue-error' : '' }}" class="rf-input @error('venue') is-invalid @enderror">
+                            @error('venue')
+                                <p id="venue-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                            @enderror
+                            @if($errors->hasAny(['venue_latitude', 'venue_longitude']))
+                                <p role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $errors->first('venue_latitude') ?: $errors->first('venue_longitude') }}</p>
+                            @endif
+                            <x-location-finder id="venue-finder" class="mt-2"
+                                :latitude="old('venue_latitude')" :longitude="old('venue_longitude')" />
+                        </div>
+
+                        <x-venue-setting-field :value="old('venue_setting')" />
+
+                        {{-- Shown for every event type: the counts anchor the AI's quantities --}}
+                        <div id="scale-fields-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                            <div>
+                                <label for="guest_count" class="block text-xs font-semibold text-slate-700 mb-1">Estimated Guests / Pax <span id="large-event-warning" class="hidden text-amber-600 ml-2 font-bold">(Large Event)</span></label>
+                                <input type="text" inputmode="numeric" pattern="[0-9]*" name="guest_count" id="guest_count" value="{{ old('guest_count') }}" placeholder="e.g. 150" aria-invalid="{{ $errors->has('guest_count') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('guest_count') ? 'guest_count-error' : '' }}" class="rf-input @error('guest_count') is-invalid @enderror">
+                                @error('guest_count')
+                                    <p id="guest_count-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                @enderror
+                            </div>
+                            <div>
+                                <label for="table_count" class="block text-xs font-semibold text-slate-700 mb-1">Number of Tables</label>
+                                <input type="text" inputmode="numeric" pattern="[0-9]*" name="table_count" id="table_count" value="{{ old('table_count') }}" placeholder="e.g. 15" aria-invalid="{{ $errors->has('table_count') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('table_count') ? 'table_count-error' : '' }}" class="rf-input @error('table_count') is-invalid @enderror">
+                                @error('table_count')
+                                    <p id="table_count-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="special_requests" class="block text-xs font-semibold text-slate-700 mb-1">Additional Requests / Notes</label>
+                            <textarea name="special_requests" id="special_requests" rows="3" placeholder="Specify color motifs, preferred flower types, or special venue guidelines..." maxlength="2000" aria-invalid="{{ $errors->has('special_requests') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('special_requests') ? 'special_requests-error' : '' }}" class="rf-textarea @error('special_requests') is-invalid @enderror">{{ old('special_requests') }}</textarea>
+                            @error('special_requests')
+                                <p id="special_requests-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end border-t border-slate-100 pt-6">
+                        <button type="button" id="next-step-btn" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700">
+                            Next <span aria-hidden="true">→</span>
+                        </button>
+                    </div>
+                    </div>
+
+                    <!-- STEP 2: BOOKING METHOD, PHOTO & DESIGN BRIEF -->
+                    <div id="booking-step-2" class="{{ $initialStep === 2 ? 'space-y-8' : 'hidden space-y-8' }}">
 
                     <!-- 1. SELECT BOOKING TYPE -->
                     <div>
@@ -78,6 +191,9 @@
 
                     <!-- DYNAMIC AI SECTION -->
                     <section id="section-ai" class="{{ $selectedBookingType === 'preset' ? 'hidden' : '' }} rounded-xl border border-dashed border-emerald-300 bg-slate-50/60 p-5 sm:p-6" aria-labelledby="inspiration-heading">
+                        {{-- Read by the AI when the photo is analyzed, so it comes before the upload --}}
+                        <x-design-brief-fields id="design-brief" class="mb-5" />
+
                         <h3 id="inspiration-heading" class="mb-2 text-sm font-bold text-slate-800">Inspiration image <span class="text-rose-600 font-bold" aria-hidden="true">*</span></h3>
                         <p class="mb-4 text-xs leading-5 text-slate-500">Upload a floral or event reference photo so Gemini can prepare an initial design analysis. AI output serves as decision support for staff quotation review, not final pricing.</p>
                         <div id="dropzone_container" role="button" tabindex="0" aria-controls="inspiration_image_input" aria-describedby="inspiration-help" class="cursor-pointer select-none rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/20 p-6 text-center transition hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-100 sm:p-8">
@@ -100,6 +216,8 @@
                         <input type="hidden" name="analysis_data" id="client_analysis_data" value="{{ old('analysis_data') }}">
                         <input type="hidden" name="analysis_nonce" id="client_analysis_nonce" value="{{ old('analysis_nonce') }}">
                         <div id="clientImageStatus" class="mt-3 text-sm" role="status" aria-live="polite"></div>
+                        {{-- Materials and estimate per area the client picked in the design brief --}}
+                        <x-decor-area-breakdown-live id="client-area-breakdown" class="mt-3" />
                     </section>
 
                     <!-- DYNAMIC PRESET PACKAGE CARDS GRID -->
@@ -169,99 +287,6 @@
                                     No curated packages currently available.
                                 </div>
                             @endforelse
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end border-t border-slate-100 pt-6">
-                        <button type="button" id="next-step-btn" class="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700">
-                            Next <span aria-hidden="true">→</span>
-                        </button>
-                    </div>
-                    </div>
-
-                    <!-- 2. EVENT DETAILS -->
-                    <div id="booking-step-2" class="{{ $initialStep === 2 ? 'space-y-8' : 'hidden space-y-8' }}">
-                    <div class="space-y-4 pt-4 border-t border-slate-100">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-lg font-bold text-slate-900">Event Details</h3>
-                            <span class="text-xs text-slate-500 font-medium">Fields marked with <span class="text-rose-600 font-bold" aria-hidden="true">*</span> are required</span>
-                        </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                            <div>
-                                <label for="event_type" class="block text-xs font-semibold text-slate-700 mb-1">
-                                    Event Type <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
-                                </label>
-                                <select name="event_type" id="event_type" required aria-invalid="{{ $errors->has('event_type') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_type') ? 'event_type-error' : '' }}" class="rf-select @error('event_type') is-invalid @enderror">
-                                    <option value="">Select Type</option>
-                                    <option value="wedding" {{ old('event_type') === 'wedding' ? 'selected' : '' }}>Wedding</option>
-                                    <option value="birthday" {{ old('event_type') === 'birthday' ? 'selected' : '' }}>Birthday</option>
-                                    <option value="corporate" {{ old('event_type') === 'corporate' ? 'selected' : '' }}>Corporate</option>
-                                    <option value="other" {{ old('event_type') === 'other' ? 'selected' : '' }}>Other Event</option>
-                                </select>
-                                @error('event_type')
-                                    <p id="event_type-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                @enderror
-                                <div id="otherEventTypeContainer" class="mt-3 {{ old('event_type') === 'other' ? '' : 'hidden' }}">
-                                    <label for="other_event_type" class="block text-xs font-semibold text-slate-700 mb-1">
-                                        Please specify other event type <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
-                                    </label>
-                                    <input type="text" name="other_event_type" id="other_event_type" value="{{ old('other_event_type') }}" placeholder="e.g. Delivery, Engagement, Product Launch" aria-invalid="{{ $errors->has('other_event_type') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('other_event_type') ? 'other_event_type-error' : '' }}" class="rf-input @error('other_event_type') is-invalid @enderror" {{ old('event_type') === 'other' ? 'required' : '' }}>
-                                    @error('other_event_type')
-                                        <p id="other_event_type-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                    @enderror
-                                </div>
-                            </div>
-                            <div>
-                                <label for="event_date" class="block text-xs font-semibold text-slate-700 mb-1">
-                                    Event Date <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
-                                </label>
-                                <input type="date" name="event_date" id="event_date" min="{{ date('Y-m-d') }}" value="{{ old('event_date') }}" required aria-invalid="{{ $errors->has('event_date') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_date') ? 'event_date-error' : '' }}" class="rf-input @error('event_date') is-invalid @enderror">
-                                @error('event_date')
-                                    <p id="event_date-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                @enderror
-                            </div>
-                            <div>
-                                <label for="event_time" class="block text-xs font-semibold text-slate-700 mb-1">Event Time</label>
-                                <input type="time" name="event_time" id="event_time" value="{{ old('event_time') }}" aria-invalid="{{ $errors->has('event_time') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('event_time') ? 'event_time-error' : '' }}" class="rf-input @error('event_time') is-invalid @enderror">
-                                @error('event_time')
-                                    <p id="event_time-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <div>
-                            <label for="venue" class="block text-xs font-semibold text-slate-700 mb-1">
-                                Venue Address <span class="text-rose-600 font-bold" aria-hidden="true">*</span>
-                            </label>
-                            <input type="text" name="venue" id="venue" value="{{ old('venue') }}" placeholder="e.g. Delivery Address, Grand Ballroom, Shangri-La The Fort, BGC" maxlength="500" required aria-invalid="{{ $errors->has('venue') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('venue') ? 'venue-error' : '' }}" class="rf-input @error('venue') is-invalid @enderror">
-                            @error('venue')
-                                <p id="venue-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        <div id="scale-fields-container" style="display: none;" class="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                            <div>
-                                <label for="guest_count" class="block text-xs font-semibold text-slate-700 mb-1">Estimated Guests / Pax <span id="large-event-warning" class="hidden text-amber-600 ml-2 font-bold">(Large Event)</span></label>
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" name="guest_count" id="guest_count" value="{{ old('guest_count') }}" placeholder="e.g. 150" aria-invalid="{{ $errors->has('guest_count') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('guest_count') ? 'guest_count-error' : '' }}" class="rf-input @error('guest_count') is-invalid @enderror">
-                                @error('guest_count')
-                                    <p id="guest_count-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                @enderror
-                            </div>
-                            <div>
-                                <label for="table_count" class="block text-xs font-semibold text-slate-700 mb-1">Number of Tables</label>
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" name="table_count" id="table_count" value="{{ old('table_count') }}" placeholder="e.g. 15" aria-invalid="{{ $errors->has('table_count') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('table_count') ? 'table_count-error' : '' }}" class="rf-input @error('table_count') is-invalid @enderror">
-                                @error('table_count')
-                                    <p id="table_count-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <div>
-                            <label for="special_requests" class="block text-xs font-semibold text-slate-700 mb-1">Additional Requests / Notes</label>
-                            <textarea name="special_requests" id="special_requests" rows="3" placeholder="Specify color motifs, preferred flower types, or special venue guidelines..." maxlength="2000" aria-invalid="{{ $errors->has('special_requests') ? 'true' : 'false' }}" aria-describedby="{{ $errors->has('special_requests') ? 'special_requests-error' : '' }}" class="rf-textarea @error('special_requests') is-invalid @enderror">{{ old('special_requests') }}</textarea>
-                            @error('special_requests')
-                                <p id="special_requests-error" role="alert" class="text-xs text-rose-600 mt-1.5 font-semibold">{{ $message }}</p>
-                            @enderror
                         </div>
                     </div>
 
@@ -336,11 +361,15 @@
         const progressStepTwo = document.getElementById('progress-step-2');
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
         const analyzeUrl = '{{ route("bookings.analyze-temp-image") }}';
+        const designBrief = window.RafloraDesignBrief?.get('design-brief');
         let imageValid = Boolean(analysisTokenInput && analysisTokenInput.value);
         let analysisPending = false;
 
         if (imageValid) {
             setStatus('success', '✓ Inspiration image verified. Material suggestions prepared for staff quotation review.');
+            try {
+                window.RafloraAreaBreakdown?.render('client-area-breakdown', JSON.parse(analysisDataInput?.value || '{}').area_breakdown);
+            } catch (e) {}
         }
 
         document.addEventListener('client-booking-mode-changed', () => {
@@ -404,26 +433,24 @@
             });
         });
 
+        // Location finder: a chosen place becomes the venue address (still editable).
+        document.getElementById('venue-finder')?.addEventListener('location-finder:select', function (e) {
+            const venueInput = document.getElementById('venue');
+            const address = [e.detail.specific, e.detail.city].filter(Boolean).join(', ');
+            if (venueInput && address) {
+                venueInput.value = address.slice(0, 500);
+                venueInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+
+        // Step 1 (event details) must be complete before the photo is analyzed in Step 2.
         nextStepBtn?.addEventListener('click', () => {
-            const bookingType = form?.querySelector('input[name="booking_type"]:checked')?.value || 'custom_ai';
-            if (bookingType === 'custom_ai') {
-                const hasToken = Boolean(analysisTokenInput && analysisTokenInput.value);
-                if (!imageValid && !hasToken && !fileInput?.files?.length) {
-                    setStatus('error', 'Please upload an inspiration image and wait for AI analysis before proceeding to event details.');
-                    document.getElementById('dropzone_container')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return;
-                }
-                if (analysisPending) {
-                    setStatus('warning', 'Please wait for the image analysis to complete before proceeding.');
-                    return;
-                }
-            } else {
-                const selectedPackage = form?.querySelector('input[name="package_id"]:checked');
-                if (!selectedPackage) {
-                    setStatus('error', 'Please select a curated package before proceeding to Step 2.');
-                    document.getElementById('section-preset')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    return;
-                }
+            const firstInvalid = Array.from(stepOne?.querySelectorAll('input, select, textarea') || [])
+                .find(el => !el.disabled && !el.checkValidity());
+            if (firstInvalid) {
+                firstInvalid.reportValidity();
+                firstInvalid.focus();
+                return;
             }
             showBookingStep(2);
         });
@@ -445,6 +472,7 @@
             if (analysisTempPathInput) analysisTempPathInput.value = '';
             if (analysisDataInput) analysisDataInput.value = '';
             if (analysisNonceInput) analysisNonceInput.value = '';
+            window.RafloraAreaBreakdown?.render('client-area-breakdown', null);
         }
 
         function resetStatus() {
@@ -481,7 +509,7 @@
         function updateSubmitState() {
             const bookingType = form?.querySelector('input[name="booking_type"]:checked')?.value;
             const requiresAnalysis = bookingType !== 'preset';
-            const analysisReady = !requiresAnalysis || imageValid;
+            const analysisReady = requiresAnalysis ? imageValid : Boolean(form?.querySelector('input[name="package_id"]:checked'));
             const eventType = form?.querySelector('select[name="event_type"]')?.value;
             const requiresScale = eventType && eventType !== 'other';
             const guestCountInput = form?.querySelector('input[name="guest_count"]');
@@ -611,6 +639,8 @@
             if (analysisPending) return;
 
             currentClientFile = file;
+            designBrief?.resetAnalyzed();
+            window.RafloraAreaBreakdown?.render('client-area-breakdown', null);
             setStatus('warning', '<span class="inline-flex items-center gap-2"><svg class="inline w-4 h-4 mr-1 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>Analyzing design elements with AI...</span>');
             analysisPending = true;
             imageValid = false;
@@ -629,12 +659,13 @@
             formData.append('event_type', eventType);
             formData.append('event_date', document.querySelector('input[name="event_date"]')?.value || '');
             formData.append('event_time', document.querySelector('input[name="event_time"]')?.value || '');
+            formData.append('end_time', document.querySelector('input[name="end_time"]')?.value || '');
             formData.append('venue', document.querySelector('input[name="venue"]')?.value || '');
+            formData.append('venue_setting', document.querySelector('input[name="venue_setting"]:checked')?.value || '');
             formData.append('special_requests', specialRequests);
-            if (eventType !== 'other') {
-                if (guestCount) formData.append('guest_count', guestCount);
-                if (tableCount) formData.append('table_count', tableCount);
-            }
+            if (guestCount) formData.append('guest_count', guestCount);
+            if (tableCount) formData.append('table_count', tableCount);
+            designBrief?.appendTo(formData);
             formData.append('_token', csrfToken);
 
             fetch(analyzeUrl, {
@@ -661,6 +692,8 @@
                     if (analysisTempPathInput) analysisTempPathInput.value = data.analysis_temp_path || '';
                     if (analysisDataInput) analysisDataInput.value = data.analysis_data || '';
                     if (analysisNonceInput) analysisNonceInput.value = data.analysis_nonce || '';
+                    designBrief?.markAnalyzed();
+                    window.RafloraAreaBreakdown?.render('client-area-breakdown', data.analysis?.area_breakdown);
                     setStatus('success', '✓ Image analyzed successfully. Material suggestions prepared for staff quotation review.');
                 } else {
                     imageValid = false;
@@ -716,8 +749,27 @@
                     setStatus('error', '✗ Please select and wait for image analysis to complete.');
                     return false;
                 }
+                if (!isAiMode && !form.querySelector('input[name="package_id"]:checked')) {
+                    e.preventDefault();
+                    form.dataset.submitting = 'false';
+                    if (submitBtn) submitBtn.innerHTML = 'Submit Booking Request <span aria-hidden="true">→</span>';
+                    updateSubmitState();
+                    setStatus('error', 'Please select a curated package before submitting.');
+                    document.getElementById('section-preset')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return false;
+                }
             });
         }
+
+        // Design brief edited after the photo was analyzed: run the analysis again with the new brief.
+        document.getElementById('design-brief')?.addEventListener('design-brief:reanalyze', () => {
+            if (currentClientFile) {
+                window.retryClientAnalysis();
+            } else {
+                designBrief?.setStaleMessage('Please upload your inspiration photo again so the AI can use your updated brief.');
+            }
+        });
+        document.addEventListener('client-booking-mode-changed', () => designBrief?.resetAnalyzed());
 
         const urlParams = new URLSearchParams(window.location.search);
         const oldBookingType = @json(old('booking_type', request('package_id') ? 'preset' : null));
@@ -733,14 +785,14 @@
         const packageCards = document.querySelectorAll('.client-package-card');
         const packageViewButtons = document.querySelectorAll('.view-package-btn');
         const eventTypeSelect = document.querySelector('select[name="event_type"]');
-        const scaleFieldsContainer = document.getElementById('scale-fields-container');
-        const guestCountInput = document.getElementById('guest_count');
-        const tableCountInput = document.getElementById('table_count');
         const otherEventTypeContainer = document.getElementById('otherEventTypeContainer');
         const otherEventTypeInput = document.querySelector('input[name="other_event_type"]');
 
+        // Event details now come first, so a package only fills the event type when the client left
+        // it empty (and only with a type the select actually offers).
         function setPackageEventType(eventType) {
-            if (!eventTypeSelect || !eventType) return;
+            if (!eventTypeSelect || !eventType || eventTypeSelect.value) return;
+            if (!Array.from(eventTypeSelect.options).some(option => option.value === eventType)) return;
             eventTypeSelect.value = eventType;
             eventTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -761,17 +813,10 @@
             });
         }
 
+        // Guest and table counts stay visible for every event type: they anchor the AI's quantities.
         function handleEventTypeChange() {
             if (!eventTypeSelect) return;
             const val = eventTypeSelect.value.toLowerCase();
-            const isScaleEvent = ['wedding', 'birthday', 'corporate', 'debut', 'anniversary'].includes(val);
-            if (scaleFieldsContainer) {
-                scaleFieldsContainer.style.display = isScaleEvent ? 'grid' : 'none';
-                if (!isScaleEvent) {
-                    if (guestCountInput) guestCountInput.value = '';
-                    if (tableCountInput) tableCountInput.value = '';
-                }
-            }
 
             if (otherEventTypeContainer && otherEventTypeInput) {
                 if (val === 'other') {

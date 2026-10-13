@@ -11,6 +11,8 @@ use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Quotation;
 use App\Services\GeminiVisionService;
+use App\Support\DecorAreaBreakdown;
+use App\Support\EventDesignBrief;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -115,6 +117,8 @@ class GuestBookingController extends Controller
             'venue_city' => ['required', 'string', 'max:255'],
             'venue_specific' => ['required', 'string', 'max:500'],
             'venue' => ['required', 'string', 'max:500'],
+            'venue_latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:venue_longitude'],
+            'venue_longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:venue_latitude'],
             'table_count' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'guest_count' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'special_requests' => ['nullable', 'string', 'max:2000'],
@@ -124,7 +128,7 @@ class GuestBookingController extends Controller
             'analysis_temp_path' => ['nullable', 'string'],
             'analysis_data' => ['nullable'],
             'analysis_nonce' => ['nullable', 'string'],
-        ], [
+        ] + EventDesignBrief::rules(), [
             'guest_phone.required' => 'Mobile number is required.',
             'guest_phone.regex' => 'Mobile number must contain exactly 11 digits.',
             'event_date.after_or_equal' => 'The event date cannot be in the past.',
@@ -132,8 +136,14 @@ class GuestBookingController extends Controller
             'end_time.required' => 'End time is required.',
             'venue_city.required' => 'Venue city or municipality is required.',
             'venue_specific.required' => 'Specific venue or address is required.',
+            'venue_latitude' => 'The pinned venue location is invalid. Please pin the venue on the map again.',
+            'venue_longitude' => 'The pinned venue location is invalid. Please pin the venue on the map again.',
             'other_event_type.required_if' => 'Please specify the event type when "Other" is selected.',
-        ]);
+        ] + EventDesignBrief::messages());
+
+        // The design brief only steers Smart AI analysis; a curated package has its own fixed design.
+        $designBrief = $isPresetBooking ? null : EventDesignBrief::fromInput($validated);
+        $venueSetting = EventDesignBrief::venueSettingFromInput($validated);
 
         $recentDuplicateKey = 'guest_recent_token_' . md5($validated['guest_email'] . '|' . $validated['event_date'] . '|' . $validated['venue']);
         if (\Illuminate\Support\Facades\Cache::has($recentDuplicateKey)) {
@@ -191,8 +201,10 @@ class GuestBookingController extends Controller
                             }
 
                             $mats = $payload['analysis']['suggested_materials'] ?? [];
-                            foreach ($mats as $m) {
+                            foreach ($mats as $position => $m) {
                                 $m['image_id'] = $imgCounter;
+                                // Line IDs restart at m1 for every photo; the photo number keeps them unique per booking.
+                                $m['line_id'] = 'p' . $imgCounter . '-' . (is_string($m['line_id'] ?? null) ? $m['line_id'] : 'm' . ($position + 1));
                                 $combinedMaterials[] = $m;
                             }
 
@@ -236,9 +248,11 @@ class GuestBookingController extends Controller
                         $validated['venue'] ?? null,
                         $scaleContext,
                         $validated['event_date'] ?? null,
-                        $validated['end_time'] ?? null
+                        $validated['end_time'] ?? null,
+                        designBrief: $designBrief,
+                        venueSetting: $venueSetting
                     );
-                    $result['analysis'] = $vision->normalizeAiAnalysis($result['analysis'] ?? []);
+                    $result['analysis'] = $vision->normalizeAiAnalysis($result['analysis'] ?? [], $designBrief);
                     $vision->validateAnalysisPayload($result['analysis']);
                     $result['analysis']['analysis_meta'] = GeminiVisionService::buildAnalysisMeta($result, 'gemini', [
                         'event_type' => $eventType,
@@ -246,7 +260,9 @@ class GuestBookingController extends Controller
                         'event_time' => $validated['event_time'] ?? null,
                         'end_time' => $validated['end_time'] ?? null,
                         'venue' => $validated['venue'] ?? null,
+                        'venue_setting' => $venueSetting,
                         'scale' => $scaleContext,
+                        'design_brief' => $designBrief,
                     ]);
 
                     $mats = $result['analysis']['suggested_materials'] ?? [];
@@ -302,10 +318,15 @@ class GuestBookingController extends Controller
             'event_type' => $eventType,
             'event_date' => $validated['event_date'],
             'event_time' => $validated['event_time'] ?? null,
+            'end_time' => $validated['end_time'] ?? null,
             'venue' => $validated['venue'],
+            'venue_latitude' => $validated['venue_latitude'] ?? null,
+            'venue_longitude' => $validated['venue_longitude'] ?? null,
+            'venue_setting' => $venueSetting,
             'table_count' => $validated['table_count'] ?? null,
             'guest_count' => $validated['guest_count'] ?? null,
             'special_requests' => $validated['special_requests'] ?? null,
+            'design_brief' => $designBrief,
             'inspiration_image_path' => $inspirationImagePath,
             'analysis_data' => $analysisData,
             'expires_at' => Carbon::now()->addHours(24),
@@ -762,9 +783,11 @@ class GuestBookingController extends Controller
             'table_count'       => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'guest_count'       => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'special_requests'  => ['nullable', 'string', 'max:2000'],
-        ]);
+        ] + EventDesignBrief::rules(), EventDesignBrief::messages());
 
         $venue    = $request->input('venue', $request->input('venue_address'));
+        $designBrief = EventDesignBrief::fromInput($request->all());
+        $venueSetting = EventDesignBrief::venueSettingFromInput($request->all());
 
         $scaleContext = '';
         if ($request->filled('table_count')) {
@@ -815,8 +838,10 @@ class GuestBookingController extends Controller
                 'event_time' => $request->input('event_time'),
                 'end_time' => $request->input('end_time'),
                 'venue' => $venue,
+                'venue_setting' => $venueSetting,
                 'scale' => $scaleContext,
                 'special_requests' => $request->input('special_requests'),
+                'design_brief' => $designBrief,
             ];
             $contextHash = GeminiVisionService::analysisContextHash($analysisContext);
             $anaCacheKey = $uploadedHash ? "gemini_ana_{$uploadedHash}_{$originalFilename}_{$contextHash}" : null;
@@ -838,7 +863,9 @@ class GuestBookingController extends Controller
                     $venue,
                     $scaleContext,
                     $request->input('event_date'),
-                    $request->input('end_time')
+                    $request->input('end_time'),
+                    designBrief: $designBrief,
+                    venueSetting: $venueSetting
                 );
                 if ($anaCacheKey && !empty($analysisResult['analysis']['suggested_materials'])) {
                     Cache::put($anaCacheKey, $analysisResult, now()->addHours(2));
@@ -868,9 +895,11 @@ class GuestBookingController extends Controller
                     'event_time' => $request->input('event_time'),
                     'end_time' => $request->input('end_time'),
                     'venue' => $venue,
+                    'venue_setting' => $venueSetting,
                     'guest_count' => $request->input('guest_count'),
                     'table_count' => $request->input('table_count'),
                     'special_requests' => $request->input('special_requests'),
+                    'design_brief' => $designBrief,
                 ],
                 $uploadedHash,
                 $fullPath,
@@ -879,7 +908,7 @@ class GuestBookingController extends Controller
                 $analysisResult['generation_config'] ?? ['temperature' => 0.2, 'responseMimeType' => 'application/json']
             );
 
-            $analysisResult['analysis'] = $vision->normalizeAiAnalysis($analysisResult['analysis'] ?? []);
+            $analysisResult['analysis'] = $vision->normalizeAiAnalysis($analysisResult['analysis'] ?? [], $designBrief);
             $vision->validateAnalysisPayload($analysisResult['analysis'] ?? []);
             $suggestedMaterials = $analysisResult['analysis']['suggested_materials'];
             if (!is_array($suggestedMaterials) || count($suggestedMaterials) === 0) {
@@ -936,6 +965,11 @@ class GuestBookingController extends Controller
             $estimatedGrandTotal = (float) $pricingSummary['estimated_grand_total_php'];
 
             $analysisResult['analysis']['pricing_summary'] = $pricingSummary;
+            // What each area the client picked needs, as quantities only: area prices come from
+            // Raflora's own prices once the booking exists (only when areas were picked).
+            if ($areaBreakdown = DecorAreaBreakdown::build($suggestedMaterials, $designBrief)) {
+                $analysisResult['analysis']['area_breakdown'] = $areaBreakdown;
+            }
             $analysisResult['analysis']['analysis_meta'] = GeminiVisionService::buildAnalysisMeta($analysisResult, $analysisSource, $analysisContext);
 
             $analysisDataJson = json_encode($analysisResult['analysis']);

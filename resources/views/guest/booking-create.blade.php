@@ -1,71 +1,72 @@
 <x-app-layout title="Guest Booking">
     <x-navbar title="GUEST BOOKING" />
-    <div class="py-10 bg-slate-50 min-h-screen">
-        <div class="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8">
-            <div class="bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-slate-100">
+    <div class="py-4 sm:py-6 bg-slate-50 min-h-screen">
+        <div class="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8">
+            <div class="bg-white p-4 sm:p-6 lg:p-7 rounded-2xl shadow-lg border border-slate-100">
                 <!-- Header -->
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
-                    <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full w-max tracking-wide">GUEST BOOKING</span>
-                    <a href="{{ route('login') }}" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline">Have an account? Log in</a>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
+                    <div class="flex items-center gap-3">
+                        <span class="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full w-max tracking-wide">GUEST BOOKING</span>
+                        <h1 class="text-2xl sm:text-3xl font-extrabold text-[#0B1E43] tracking-tight font-serif">Create Event Booking</h1>
+                    </div>
+                    <a href="{{ route('login') }}" class="text-xs sm:text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline shrink-0">Have an account? Log in</a>
                 </div>
-
-                <h1 class="text-4xl font-extrabold text-[#0B1E43] tracking-tight mt-2 font-serif">Create Event Booking</h1>
-                <p class="text-sm text-slate-500 mt-2 mb-10" id="step-description">Provide basic information and schedule for your event.</p>
+                <p class="text-xs sm:text-sm text-slate-500 mb-4 sm:mb-5" id="step-description">Provide basic information and schedule for your event.</p>
 
                 <!-- Progress Indicator (4 Steps) -->
-                <div class="mb-12 flex items-center w-full" aria-label="Booking progress">
+                <div class="mb-5 sm:mb-6 flex items-center w-full" aria-label="Booking progress">
                     <!-- Step 1: Event Details -->
                     <div class="flex items-center cursor-pointer group shrink-0" id="nav-step-1" onclick="showGuestStep(1)">
-                        <div id="icon-step-1" class="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300 shadow-md">
+                        <div id="icon-step-1" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300 shadow-md">
                             1
                         </div>
-                        <div class="ml-3 hidden sm:block">
-                            <p id="title-step-1" class="text-xs sm:text-sm lg:text-base font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Event Details</p>
+                        <div class="ml-2 sm:ml-2.5 hidden sm:block">
+                            <p id="title-step-1" class="text-xs sm:text-sm font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Event Details</p>
                         </div>
                     </div>
                     
                     <!-- Line 1 -->
-                    <div class="flex-1 min-w-[12px] sm:min-w-[24px] mx-1.5 sm:mx-3 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
+                    <div class="flex-1 min-w-[12px] sm:min-w-[20px] mx-1 sm:mx-2.5 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
                         <div id="progress-line-1" class="absolute top-0 left-0 h-full w-0 bg-emerald-500 transition-all duration-700 ease-out"></div>
                     </div>
                     
                     <!-- Step 2: Booking Method -->
                     <div class="flex items-center cursor-pointer group shrink-0 opacity-60 hover:opacity-100 transition-all duration-300" id="nav-step-2" onclick="showGuestStep(2)">
-                        <div id="icon-step-2" class="w-10 h-10 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300">
+                        <div id="icon-step-2" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300">
                             2
                         </div>
-                        <div class="ml-3 hidden sm:block">
-                            <p id="title-step-2" class="text-xs sm:text-sm lg:text-base font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Booking Method</p>
+                        <div class="ml-2 sm:ml-2.5 hidden sm:block">
+                            <p id="title-step-2" class="text-xs sm:text-sm font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Booking Method</p>
                         </div>
                     </div>
 
                     <!-- Line 2 -->
-                    <div class="flex-1 min-w-[12px] sm:min-w-[24px] mx-1.5 sm:mx-3 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
+                    <div class="flex-1 min-w-[12px] sm:min-w-[20px] mx-1 sm:mx-2.5 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
                         <div id="progress-line-2" class="absolute top-0 left-0 h-full w-0 bg-emerald-500 transition-all duration-700 ease-out"></div>
                     </div>
 
                     <!-- Step 3: Contact Information -->
                     <div class="flex items-center cursor-pointer group shrink-0 opacity-60 hover:opacity-100 transition-all duration-300" id="nav-step-3" onclick="showGuestStep(3)">
-                        <div id="icon-step-3" class="w-10 h-10 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300">
+                        <div id="icon-step-3" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300">
                             3
                         </div>
-                        <div class="ml-3 hidden sm:block">
-                            <p id="title-step-3" class="text-xs sm:text-sm lg:text-base font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Contact Information</p>
+                        <div class="ml-2 sm:ml-2.5 hidden sm:block">
+                            <p id="title-step-3" class="text-xs sm:text-sm font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Contact Information</p>
                         </div>
                     </div>
 
                     <!-- Line 3 -->
-                    <div class="flex-1 min-w-[12px] sm:min-w-[24px] mx-1.5 sm:mx-3 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
+                    <div class="flex-1 min-w-[12px] sm:min-w-[20px] mx-1 sm:mx-2.5 h-1 bg-[#EBF0F9] relative overflow-hidden rounded-full shrink">
                         <div id="progress-line-3" class="absolute top-0 left-0 h-full w-0 bg-emerald-500 transition-all duration-700 ease-out"></div>
                     </div>
 
                     <!-- Step 4: Review & Submit -->
                     <div class="flex items-center cursor-pointer group shrink-0 opacity-60 hover:opacity-100 transition-all duration-300" id="nav-step-4" onclick="showGuestStep(4)">
-                        <div id="icon-step-4" class="w-10 h-10 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300">
+                        <div id="icon-step-4" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300">
                             4
                         </div>
-                        <div class="ml-3 hidden sm:block">
-                            <p id="title-step-4" class="text-xs sm:text-sm lg:text-base font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Review & Submit</p>
+                        <div class="ml-2 sm:ml-2.5 hidden sm:block">
+                            <p id="title-step-4" class="text-xs sm:text-sm font-bold text-[#0B1E43] whitespace-nowrap transition-colors">Review & Submit</p>
                         </div>
                     </div>
                 </div>
@@ -77,12 +78,12 @@
 
                     $hasStep1Errors = $errors->hasAny([
                         'event_type', 'other_event_type', 'event_date', 'event_time', 'end_time',
-                        'venue', 'venue_city', 'venue_specific', 'table_count', 'guest_count', 'special_requests'
+                        'venue', 'venue_city', 'venue_specific', 'venue_latitude', 'venue_longitude', 'venue_setting', 'table_count', 'guest_count', 'special_requests'
                     ]);
 
-                    $hasStep2Errors = $errors->hasAny([
+                    $hasStep2Errors = $errors->hasAny(array_merge([
                         'booking_type', 'package_id', 'inspiration_image', 'analysis_token', 'analysis_data'
-                    ]);
+                    ], \App\Support\EventDesignBrief::FIELDS, ['decor_areas.*', 'color_palette.*']));
 
                     $hasStep3Errors = $errors->hasAny([
                         'guest_name', 'guest_email', 'guest_phone', 'guest_address'
@@ -224,28 +225,32 @@
                     <!-- ========================================== -->
                     <!-- STEP 1: EVENT DETAILS                     -->
                     <!-- ========================================== -->
-                    <div id="guest-step-1" class="space-y-6 block animate-fade-in">
+                    <div id="guest-step-1" class="space-y-3 sm:space-y-4 block animate-fade-in">
                         <!-- Top Banner (Helpful Tip) -->
-                        <div class="bg-emerald-50/70 rounded-xl p-3 sm:py-2.5 sm:px-4 border border-emerald-100 flex items-center gap-2.5 text-xs text-slate-700">
+                        <div class="bg-emerald-50/70 rounded-xl py-2 px-3 sm:px-4 border border-emerald-100 flex items-center gap-2.5 text-xs text-slate-700">
                             <span class="text-base leading-none">💡</span>
                             <span class="leading-relaxed"><strong class="font-bold text-[#0B1E43]">Helpful tip:</strong> Providing your event date, schedule, and venue details first allows our AI and florist team to give you tailored recommendations.</span>
                         </div>
 
                         <!-- Event Info Card -->
-                        <div class="bg-white rounded-2xl border border-slate-200 p-6">
-                            <div class="flex items-center gap-2 mb-4">
-                                <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <div class="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+                            <div class="flex items-center justify-between pb-2.5 mb-3.5 border-b border-slate-100">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-sm sm:text-base font-bold text-[#0B1E43]">Event Details</h2>
+                                        <p class="text-xs text-slate-500 hidden sm:block">Enter the schedule and location for flower quantities, travel timing, and setup logistics.</p>
+                                    </div>
                                 </div>
-                                <h3 class="text-lg font-bold text-[#0B1E43]">Event Details</h3>
                             </div>
-                            <p class="text-sm text-slate-500 mb-6">Enter the schedule and location for your event. This context helps calculate flower quantities, travel timing, and setup logistics.</p>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 gap-y-5">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
                                 <!-- Event Type -->
                                 <div class="col-span-1">
                                     <label for="event_type" class="block text-xs font-semibold text-[#0B1E43] mb-1">Event Type <span class="text-rose-500">*</span></label>
-                                    <select name="event_type" id="event_type" required class="w-full p-2.5 bg-white border {{ $errors->has('event_type') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_type_error" aria-invalid="{{ $errors->has('event_type') ? 'true' : 'false' }}">
+                                    <select name="event_type" id="event_type" required class="w-full py-2 px-2.5 bg-white border {{ $errors->has('event_type') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_type_error" aria-invalid="{{ $errors->has('event_type') ? 'true' : 'false' }}">
                                         <option value="">Select Event Type</option>
                                         <option value="wedding" {{ old('event_type') === 'wedding' ? 'selected' : '' }}>Wedding</option>
                                         <option value="birthday" {{ old('event_type') === 'birthday' ? 'selected' : '' }}>Birthday</option>
@@ -258,7 +263,7 @@
                                     </p>
                                     <div id="otherEventTypeContainer" class="mt-2 {{ old('event_type') === 'other' ? '' : 'hidden' }}">
                                         <label for="other_event_type" class="block text-xs font-semibold text-slate-500 mb-1">Please specify <span class="text-rose-500">*</span></label>
-                                        <input type="text" name="other_event_type" id="other_event_type" value="{{ old('other_event_type') }}" placeholder="e.g. Delivery, Engagement" class="w-full p-2.5 bg-white border {{ $errors->has('other_event_type') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" {{ old('event_type') === 'other' ? 'required' : '' }} aria-describedby="other_event_type_error" aria-invalid="{{ $errors->has('other_event_type') ? 'true' : 'false' }}">
+                                        <input type="text" name="other_event_type" id="other_event_type" value="{{ old('other_event_type') }}" placeholder="e.g. Delivery, Engagement" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('other_event_type') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" {{ old('event_type') === 'other' ? 'required' : '' }} aria-describedby="other_event_type_error" aria-invalid="{{ $errors->has('other_event_type') ? 'true' : 'false' }}">
                                         <p id="other_event_type_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('other_event_type') ? '' : 'hidden' }}" role="alert">
                                             <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                             <span class="error-msg">{{ $errors->first('other_event_type') }}</span>
@@ -270,10 +275,10 @@
                                 <div class="col-span-1">
                                     <label for="event_date" class="block text-xs font-semibold text-[#0B1E43] mb-1">Event Date <span class="text-rose-500">*</span></label>
                                     <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                                             <svg class="h-4 w-4 text-[#0B1E43]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                         </div>
-                                        <input type="date" name="event_date" id="event_date" required min="{{ date('Y-m-d') }}" value="{{ old('event_date') }}" class="w-full pl-9 p-2.5 bg-white border {{ $errors->has('event_date') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_date_error" aria-invalid="{{ $errors->has('event_date') ? 'true' : 'false' }}">
+                                        <input type="date" name="event_date" id="event_date" required min="{{ date('Y-m-d') }}" value="{{ old('event_date') }}" class="w-full pl-8 py-2 pr-2.5 bg-white border {{ $errors->has('event_date') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_date_error" aria-invalid="{{ $errors->has('event_date') ? 'true' : 'false' }}">
                                     </div>
                                     <p id="event_date_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('event_date') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
@@ -285,10 +290,10 @@
                                 <div class="col-span-1">
                                     <label for="event_time" class="block text-xs font-semibold text-[#0B1E43] mb-1">Start Time <span class="text-rose-500">*</span></label>
                                     <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                                             <svg class="h-4 w-4 text-[#0B1E43]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                         </div>
-                                        <input type="time" name="event_time" id="event_time" required value="{{ old('event_time') }}" class="w-full pl-9 p-2.5 bg-white border {{ $errors->has('event_time') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_time_error" aria-invalid="{{ $errors->has('event_time') ? 'true' : 'false' }}">
+                                        <input type="time" name="event_time" id="event_time" required value="{{ old('event_time') }}" class="w-full pl-8 py-2 pr-2.5 bg-white border {{ $errors->has('event_time') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="event_time_error" aria-invalid="{{ $errors->has('event_time') ? 'true' : 'false' }}">
                                     </div>
                                     <p id="event_time_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('event_time') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
@@ -300,10 +305,10 @@
                                 <div class="col-span-1">
                                     <label for="end_time" class="block text-xs font-semibold text-[#0B1E43] mb-1">End Time <span class="text-rose-500">*</span></label>
                                     <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                                             <svg class="h-4 w-4 text-[#0B1E43]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                         </div>
-                                        <input type="time" name="end_time" id="end_time" required value="{{ old('end_time') }}" class="w-full pl-9 p-2.5 bg-white border {{ $errors->has('end_time') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="end_time_error" aria-invalid="{{ $errors->has('end_time') ? 'true' : 'false' }}">
+                                        <input type="time" name="end_time" id="end_time" required value="{{ old('end_time') }}" class="w-full pl-8 py-2 pr-2.5 bg-white border {{ $errors->has('end_time') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" aria-describedby="end_time_error" aria-invalid="{{ $errors->has('end_time') ? 'true' : 'false' }}">
                                     </div>
                                     <p id="end_time_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('end_time') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
@@ -311,23 +316,23 @@
                                     </p>
                                 </div>
 
-                                <!-- Dynamic Scale Fields (Row 2 when visible) -->
-                                <div class="col-span-1 sm:col-span-1 lg:col-span-2" id="scale-fields-container" style="{{ in_array(old('event_type'), ['wedding', 'corporate', 'birthday', 'anniversary']) ? 'display:block;' : 'display:none;' }}">
+                                <!-- Scale Fields (shown for every event type) -->
+                                <div class="col-span-1 sm:col-span-1 lg:col-span-2" id="scale-fields-container">
                                     <label for="guest_count" class="block text-xs font-semibold text-[#0B1E43] mb-1">Expected Guests</label>
                                     <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                                             <svg class="h-4 w-4 text-[#0B1E43]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                                         </div>
-                                        <input type="text" inputmode="numeric" name="guest_count" id="guest_count" value="{{ old('guest_count') }}" placeholder="e.g. 150" class="w-full pl-9 p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]">
+                                        <input type="text" inputmode="numeric" name="guest_count" id="guest_count" value="{{ old('guest_count') }}" placeholder="e.g. 150" class="w-full pl-8 py-2 pr-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]">
                                     </div>
                                     @error('guest_count')
                                         <p class="text-xs text-rose-600 mt-1 font-semibold">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="col-span-1 sm:col-span-1 lg:col-span-2" id="scale-tables-container" style="{{ in_array(old('event_type'), ['wedding', 'corporate', 'birthday', 'anniversary']) ? 'display:block;' : 'display:none;' }}">
+                                <div class="col-span-1 sm:col-span-1 lg:col-span-2" id="scale-tables-container">
                                     <label for="table_count" class="block text-xs font-semibold text-[#0B1E43] mb-1">Number of Tables</label>
                                     <div class="relative">
-                                        <input type="text" inputmode="numeric" pattern="[0-9]*" name="table_count" id="table_count" value="{{ old('table_count') }}" placeholder="e.g. 15" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]">
+                                        <input type="text" inputmode="numeric" pattern="[0-9]*" name="table_count" id="table_count" value="{{ old('table_count') }}" placeholder="e.g. 15" class="w-full py-2 px-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]">
                                     </div>
                                     @error('table_count')
                                         <p class="text-xs text-rose-600 mt-1 font-semibold">{{ $message }}</p>
@@ -339,10 +344,10 @@
                                 <div class="col-span-1 sm:col-span-1 lg:col-span-1">
                                     <label for="venue_city" class="block text-xs font-semibold text-[#0B1E43] mb-1">Venue City / Municipality <span class="text-rose-500">*</span></label>
                                     <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
                                             <svg class="h-4 w-4 text-[#0B1E43]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
                                         </div>
-                                        <input type="text" name="venue_city" id="venue_city" required placeholder="CALOOCAN" value="{{ old('venue_city') }}" class="w-full pl-9 p-2.5 bg-white border {{ $errors->has('venue_city') || $errors->has('venue') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43] uppercase" oninput="updateVenueField()" aria-describedby="venue_city_error" aria-invalid="{{ $errors->has('venue_city') || $errors->has('venue') ? 'true' : 'false' }}">
+                                        <input type="text" name="venue_city" id="venue_city" required placeholder="CALOOCAN" value="{{ old('venue_city') }}" class="w-full pl-8 py-2 pr-2.5 bg-white border {{ $errors->has('venue_city') || $errors->has('venue') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43] uppercase" oninput="updateVenueField()" aria-describedby="venue_city_error" aria-invalid="{{ $errors->has('venue_city') || $errors->has('venue') ? 'true' : 'false' }}">
                                     </div>
                                     <p id="venue_city_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('venue_city') || $errors->has('venue') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
@@ -353,7 +358,7 @@
                                 <!-- Specific Venue / Address -->
                                 <div class="col-span-1 sm:col-span-1 lg:col-span-3">
                                     <label for="venue_specific" class="block text-xs font-semibold text-[#0B1E43] mb-1">Specific Venue / Address <span class="text-rose-500">*</span></label>
-                                    <input type="text" name="venue_specific" id="venue_specific" required placeholder="e.g. Grand Ballroom, Shangri-La Fort, BGC" value="{{ old('venue_specific') }}" class="w-full p-2.5 bg-white border {{ $errors->has('venue_specific') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" oninput="updateVenueField()" aria-describedby="venue_specific_error" aria-invalid="{{ $errors->has('venue_specific') ? 'true' : 'false' }}">
+                                    <input type="text" name="venue_specific" id="venue_specific" required placeholder="e.g. Grand Ballroom, Shangri-La Fort, BGC" value="{{ old('venue_specific') }}" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('venue_specific') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43]" oninput="updateVenueField()" aria-describedby="venue_specific_error" aria-invalid="{{ $errors->has('venue_specific') ? 'true' : 'false' }}">
                                     <p id="venue_specific_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('venue_specific') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                         <span class="error-msg">{{ $errors->first('venue_specific') }}</span>
@@ -361,10 +366,17 @@
                                 </div>
                                 <input type="hidden" name="venue" id="venue" value="{{ old('venue') }}">
 
+                                <!-- Venue Location Finder (map search / pin; fills the venue fields above) -->
+                                <x-location-finder id="venue-finder" class="col-span-1 sm:col-span-2 lg:col-span-4"
+                                    :latitude="old('venue_latitude')" :longitude="old('venue_longitude')" />
+
+                                <!-- Indoor / Outdoor -->
+                                <x-venue-setting-field :value="old('venue_setting')" class="col-span-1 sm:col-span-2 lg:col-span-4" />
+
                                 <!-- Additional Notes -->
                                 <div class="col-span-1 sm:col-span-2 lg:col-span-4 relative">
                                     <label for="special_requests" class="block text-xs font-semibold text-slate-500 mb-1">Additional Notes (Optional)</label>
-                                    <textarea name="special_requests" id="special_requests" rows="3" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43] resize-none" oninput="document.getElementById('char-count').innerText = this.value.length + '/500'" placeholder="e.g. theme, color motif, specific floral preferences, etc.">{{ old('special_requests') }}</textarea>
+                                    <textarea name="special_requests" id="special_requests" rows="2" class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-[#0B1E43] resize-none" oninput="document.getElementById('char-count').innerText = this.value.length + '/500'" placeholder="e.g. theme, color motif, specific floral preferences, etc.">{{ old('special_requests') }}</textarea>
                                     <div class="absolute bottom-2 right-3 text-[10px] text-slate-400 font-medium" id="char-count">0/500</div>
                                     @error('special_requests')
                                         <p class="text-xs text-rose-600 mt-1 font-semibold">{{ $message }}</p>
@@ -378,48 +390,48 @@
                     <!-- STEP 2: CHOOSE BOOKING METHOD             -->
                     <!-- ========================================== -->
                     <div id="guest-step-2" class="space-y-4 hidden animate-fade-in">
-                        <h2 class="text-2xl font-bold text-[#0B1E43] font-serif mb-1" id="step-2-title">2. Choose Booking Method</h2>
+                        <h2 class="text-xl sm:text-2xl font-bold text-[#0B1E43] font-serif mb-1" id="step-2-title">2. Choose Booking Method</h2>
                         
                         <div id="method-selection-view">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
                                 <!-- AI Card -->
-                                <label id="guest-card-ai" onclick="switchGuestMode('ai')" class="relative flex flex-col p-4 sm:p-5 border-2 border-emerald-600 bg-emerald-50/20 rounded-2xl cursor-pointer transition-all hover:bg-emerald-50/30">
+                                <label id="guest-card-ai" onclick="switchGuestMode('ai')" class="relative flex flex-col p-3.5 sm:p-4 border-2 border-emerald-600 bg-emerald-50/20 rounded-xl cursor-pointer transition-all hover:bg-emerald-50/30">
                                     <input type="radio" name="booking_type" value="custom_ai" {{ old('booking_type', request('package_id') ? 'preset' : 'custom_ai') === 'custom_ai' ? 'checked' : '' }} class="sr-only">
-                                    <div class="absolute top-3.5 right-3.5" id="ai-check">
+                                    <div class="absolute top-3 right-3" id="ai-check">
                                         <div class="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center text-white">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                                         </div>
                                     </div>
-                                    <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                    <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                     </div>
-                                    <div class="font-bold text-[#0B1E43] text-base mb-1.5 flex items-center gap-2">
+                                    <div class="font-bold text-[#0B1E43] text-sm sm:text-base mb-1 flex items-center gap-2">
                                         Smart AI Custom Design
-                                        <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">POPULAR</span>
+                                        <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">POPULAR</span>
                                     </div>
-                                    <p class="text-xs text-slate-500 mb-2 leading-relaxed">Upload up to 5 inspiration images. Our Gemini AI analyzes each image independently to suggest floral materials, quantities, and initial cost estimates for your event.</p>
+                                    <p class="text-xs text-slate-500 mb-1.5 leading-relaxed">Upload up to 5 inspiration images. Gemini AI analyzes each image independently to suggest floral materials and estimates.</p>
                                 </label>
 
                                 <!-- Preset Card -->
-                                <label id="guest-card-preset" onclick="switchGuestMode('preset')" class="relative flex flex-col p-4 sm:p-5 border-2 border-slate-200 bg-white rounded-2xl cursor-pointer transition-all hover:border-slate-300">
+                                <label id="guest-card-preset" onclick="switchGuestMode('preset')" class="relative flex flex-col p-3.5 sm:p-4 border-2 border-slate-200 bg-white rounded-xl cursor-pointer transition-all hover:border-slate-300">
                                     <input type="radio" name="booking_type" value="preset" {{ old('booking_type', request('package_id') ? 'preset' : 'custom_ai') === 'preset' ? 'checked' : '' }} class="sr-only">
-                                    <div class="absolute top-3.5 right-3.5 hidden" id="preset-check">
+                                    <div class="absolute top-3 right-3 hidden" id="preset-check">
                                         <div class="w-5 h-5 rounded-full bg-emerald-600 flex items-center justify-center text-white">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                                         </div>
                                     </div>
-                                    <div id="preset-icon-box" class="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center mb-3 transition-colors">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                                    <div id="preset-icon-box" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center mb-2 transition-colors">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                                     </div>
-                                    <div class="font-bold text-[#0B1E43] text-base mb-1.5">Pre-Set Curated Package</div>
-                                    <p class="text-xs text-slate-500 mb-2 leading-relaxed">Choose from our ready-made curated floral packages with transparent catalog pricing crafted by our florists.</p>
+                                    <div class="font-bold text-[#0B1E43] text-sm sm:text-base mb-1">Pre-Set Curated Package</div>
+                                    <p class="text-xs text-slate-500 mb-1.5 leading-relaxed">Choose from our ready-made curated floral packages with transparent catalog pricing crafted by our florists.</p>
                                 </label>
                             </div>
                             
                             <!-- Helpful Tips Strip -->
-                            <div class="mt-4 bg-emerald-50/70 rounded-xl p-3 sm:py-2.5 sm:px-4 border border-emerald-100 flex items-center gap-3 text-xs text-slate-700">
-                                <div class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <div class="mt-3 bg-emerald-50/70 rounded-xl py-2 px-3 sm:px-4 border border-emerald-100 flex items-center gap-2.5 text-xs text-slate-700">
+                                <div class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 text-xs">
+                                    💡
                                 </div>
                                 <div class="flex-1 leading-relaxed">
                                     <strong class="font-bold text-[#0B1E43]">Helpful tip:</strong> Choose AI Custom Design to analyze your own floral inspirations, or Pre-Set Curated Package for florist-tested event packages.
@@ -428,10 +440,12 @@
                         </div>
 
                         <!-- AI Custom Design Sub-view -->
-                        <div id="guest-section-ai" class="hidden animate-fade-in mt-6 border-t border-slate-100 pt-6">
-                            
+                        <div id="guest-section-ai" class="hidden animate-fade-in mt-4 border-t border-slate-100 pt-4">
+                            <!-- Design brief: read by the AI when each photo is analyzed, so it comes before the upload -->
+                            <x-design-brief-fields id="design-brief" class="mb-4" />
+
                             <!-- Header with Upload Tips Button -->
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                                 <div>
                                     <h3 class="text-sm sm:text-base font-bold text-[#0B1E43]">Upload Inspiration Images <span class="text-rose-600">*</span></h3>
                                     <p class="text-xs text-slate-500 mt-0.5">Upload up to 5 inspiration images. Each image is analyzed separately so you can review its materials individually.</p>
@@ -443,20 +457,20 @@
                             </div>
 
                             <!-- Upload Dropzone (Multi-Image Capable) -->
-                            <div id="dropzone_container" class="border-[2px] border-dashed border-emerald-400 rounded-2xl p-6 sm:p-8 text-center cursor-pointer select-none bg-emerald-50/10 hover:bg-emerald-50/30 transition-all flex flex-col items-center justify-center gap-3">
+                            <div id="dropzone_container" class="border-[2px] border-dashed border-emerald-400 rounded-xl p-4 sm:p-5 text-center cursor-pointer select-none bg-emerald-50/10 hover:bg-emerald-50/30 transition-all flex flex-col items-center justify-center gap-2">
                                 <div id="dropzone_preview_target" class="flex flex-col items-center text-center max-w-md w-full">
-                                    <div class="w-12 h-12 rounded-2xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center mb-2">
-                                        <svg class="h-6 w-6 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
+                                    <div class="w-9 h-9 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center mb-1">
+                                        <svg class="h-5 w-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
                                         </svg>
                                     </div>
-                                    <h4 class="text-[#0B1E43] font-bold text-sm sm:text-base mb-1">Add Inspiration Photos</h4>
-                                    <p class="text-xs text-slate-500 mb-3">Upload clear photos of your floral inspiration, event setup, or design ideas. You can add up to 5 images.</p>
-                                    <button type="button" class="pointer-events-none px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-xs hover:bg-emerald-700 transition flex items-center gap-1.5">
+                                    <h4 class="text-[#0B1E43] font-bold text-sm sm:text-base mb-0.5">Add Inspiration Photos</h4>
+                                    <p class="text-xs text-slate-500 mb-2">Upload clear photos of your floral inspiration, event setup, or design ideas (up to 5 images).</p>
+                                    <button type="button" class="pointer-events-none px-3.5 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-xs shadow-xs hover:bg-emerald-700 transition flex items-center gap-1.5">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
                                         Add Images
                                     </button>
-                                    <span class="text-[11px] text-slate-400 mt-2">Supports JPG, PNG, WEBP (max 10MB each)</span>
+                                    <span class="text-[10px] text-slate-400 mt-1.5">Supports JPG, PNG, WEBP (max 10MB each)</span>
                                 </div>
 
                                 <input type="file" id="inspiration_image_input" name="inspiration_images[]" accept="image/png,image/jpeg,image/webp" multiple class="hidden">
@@ -578,16 +592,17 @@
                                             </button>
                                         </div>
 
-                                        <!-- Image Stage with Numbered Overlays -->
+                                        <!-- Image Stage with AI boxes drawn over the whole photo -->
                                         <div class="relative w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 shadow-xs">
                                             <div class="w-full aspect-[4/3] relative flex items-center justify-center overflow-hidden">
-                                                <img id="viewer-main-img" src="" alt="Selected Inspiration" class="w-full h-full object-cover">
-                                                <div id="viewer-markers-container" class="absolute inset-0 pointer-events-auto hidden"></div>
+                                                {{-- object-contain keeps the whole photo visible, so boxes drawn from the AI's coordinates stay on their items --}}
+                                                <img id="viewer-main-img" src="" alt="Selected Inspiration" class="w-full h-full object-contain">
+                                                <div id="viewer-markers-container" class="absolute left-0 top-0 h-full w-full pointer-events-auto hidden"></div>
                                             </div>
                                         </div>
                                         <p id="viewer-markers-hint" class="text-[11px] text-slate-500 flex items-center gap-1.5 hidden">
                                             <span class="text-emerald-600 font-bold">ⓘ</span>
-                                            <span>Numbered markers identify materials detected in this image. Click markers to inspect material details.</span>
+                                            <span id="viewer-markers-hint-text">Numbered boxes show where the AI found each material, colored by area. Click a box to inspect that material.</span>
                                         </p>
                                     </div>
 
@@ -709,6 +724,9 @@
                                     </div>
                                 </div>
 
+                                {{-- Materials and estimate per area the guest picked in the design brief --}}
+                                <x-decor-area-breakdown-live id="guest-area-breakdown" class="mt-4" />
+
                                 <!-- ======================================================== -->
                                 <!-- BELOW SUMMARY: AI-Assisted Initial Estimate (Full Width) -->
                                 <!-- ======================================================== -->
@@ -825,26 +843,30 @@
                     <!-- ========================================== -->
                     <div id="guest-step-3" class="space-y-6 hidden animate-fade-in">
                         <!-- Top Banner (Helpful Tip) -->
-                        <div class="bg-emerald-50/70 rounded-xl p-3 sm:py-2.5 sm:px-4 border border-emerald-100 flex items-center gap-2.5 text-xs text-slate-700">
+                        <div class="bg-emerald-50/70 rounded-xl py-2 px-3 sm:px-4 border border-emerald-100 flex items-center gap-2.5 text-xs text-slate-700">
                             <span class="text-base leading-none">💡</span>
                             <span class="leading-relaxed"><strong class="font-bold text-[#0B1E43]">Helpful tip:</strong> Since you are booking as a guest, please double check your contact details so we can reach you with your booking tracking link and official quotation.</span>
                         </div>
 
                         <!-- Guest Contact Info Card -->
-                        <div class="bg-white rounded-2xl border border-slate-200 p-6">
-                            <div class="flex items-center gap-2 mb-4">
-                                <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        <div class="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+                            <div class="flex items-center justify-between pb-2.5 mb-3.5 border-b border-slate-100">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-sm sm:text-base font-bold text-[#0B1E43]">Contact Information</h2>
+                                        <p class="text-xs text-slate-500 hidden sm:block">Please provide your valid contact details for your booking tracking link and quotation.</p>
+                                    </div>
                                 </div>
-                                <h3 class="text-lg font-bold text-[#0B1E43]">Contact Information</h3>
                             </div>
-                            <p class="text-sm text-slate-500 mb-6">Please provide your valid contact details. A secure tracking link will be sent to your email upon request submission.</p>
                             
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                                 <!-- Full Name -->
                                 <div>
                                     <label for="guest_name" class="block text-xs font-semibold text-slate-500 mb-1">Full Name <span class="text-rose-500">*</span></label>
-                                    <input type="text" name="guest_name" id="guest_name" value="{{ old('guest_name') }}" placeholder="Juan Dela Cruz" class="w-full p-3 bg-white border {{ $errors->has('guest_name') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_name_error" aria-invalid="{{ $errors->has('guest_name') ? 'true' : 'false' }}">
+                                    <input type="text" name="guest_name" id="guest_name" value="{{ old('guest_name') }}" placeholder="Juan Dela Cruz" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('guest_name') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_name_error" aria-invalid="{{ $errors->has('guest_name') ? 'true' : 'false' }}">
                                     <p id="guest_name_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('guest_name') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                         <span class="error-msg">{{ $errors->first('guest_name') }}</span>
@@ -854,7 +876,7 @@
                                 <!-- Email Address -->
                                 <div>
                                     <label for="guest_email" class="block text-xs font-semibold text-slate-500 mb-1">Email Address <span class="text-rose-500">*</span></label>
-                                    <input type="email" name="guest_email" id="guest_email" value="{{ old('guest_email') }}" placeholder="juan@example.com" class="w-full p-3 bg-white border {{ $errors->has('guest_email') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_email_error" aria-invalid="{{ $errors->has('guest_email') ? 'true' : 'false' }}">
+                                    <input type="email" name="guest_email" id="guest_email" value="{{ old('guest_email') }}" placeholder="juan@example.com" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('guest_email') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_email_error" aria-invalid="{{ $errors->has('guest_email') ? 'true' : 'false' }}">
                                     <p id="guest_email_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('guest_email') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                         <span class="error-msg">{{ $errors->first('guest_email') }}</span>
@@ -864,7 +886,7 @@
                                 <!-- Mobile Phone -->
                                 <div>
                                     <label for="guest_phone" class="block text-xs font-semibold text-slate-500 mb-1">Mobile Phone Number <span class="text-rose-500">*</span></label>
-                                    <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone') }}" placeholder="09XXXXXXXXX" maxlength="11" class="w-full p-3 bg-white border {{ $errors->has('guest_phone') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_phone_error" aria-invalid="{{ $errors->has('guest_phone') ? 'true' : 'false' }}">
+                                    <input type="tel" name="guest_phone" id="guest_phone" value="{{ old('guest_phone') }}" placeholder="09XXXXXXXXX" maxlength="11" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('guest_phone') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_phone_error" aria-invalid="{{ $errors->has('guest_phone') ? 'true' : 'false' }}">
                                     <p id="guest_phone_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('guest_phone') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                         <span class="error-msg">{{ $errors->first('guest_phone') }}</span>
@@ -874,7 +896,7 @@
                                 <!-- Physical Address -->
                                 <div>
                                     <label for="guest_address" class="block text-xs font-semibold text-slate-500 mb-1">Physical Address <span class="text-rose-500">*</span></label>
-                                    <input type="text" name="guest_address" id="guest_address" value="{{ old('guest_address') }}" placeholder="City / Barangay / Street" class="w-full p-3 bg-white border {{ $errors->has('guest_address') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_address_error" aria-invalid="{{ $errors->has('guest_address') ? 'true' : 'false' }}">
+                                    <input type="text" name="guest_address" id="guest_address" value="{{ old('guest_address') }}" placeholder="City / Barangay / Street" class="w-full py-2 px-2.5 bg-white border {{ $errors->has('guest_address') ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200' }} rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-800 transition-colors" required aria-describedby="guest_address_error" aria-invalid="{{ $errors->has('guest_address') ? 'true' : 'false' }}">
                                     <p id="guest_address_error" class="text-xs text-rose-600 mt-1 font-semibold flex items-center gap-1 {{ $errors->has('guest_address') ? '' : 'hidden' }}" role="alert">
                                         <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
                                         <span class="error-msg">{{ $errors->first('guest_address') }}</span>
@@ -942,6 +964,11 @@
                                             <div class="sm:col-span-2 md:col-span-3">
                                                 <div class="text-[10px] text-slate-500 uppercase font-semibold">Specific Venue / Address</div>
                                                 <div class="text-sm font-bold text-[#0B1E43]" id="review-venue-specific">-</div>
+                                                <div class="mt-0.5 hidden text-[11px] font-semibold text-emerald-700" id="review-venue-pin"><i class="fa-solid fa-location-dot mr-1" aria-hidden="true"></i>Pinned on map</div>
+                                            </div>
+                                            <div class="sm:col-span-2 md:col-span-3">
+                                                <div class="text-[10px] text-slate-500 uppercase font-semibold">Indoor / Outdoor</div>
+                                                <div class="text-sm font-bold text-[#0B1E43]" id="review-venue-setting">-</div>
                                             </div>
                                             <div class="sm:col-span-2 md:col-span-3">
                                                 <div class="text-[10px] text-slate-500 uppercase font-semibold">Additional Notes</div>
@@ -1013,6 +1040,12 @@
                                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Inspiration Photos</span>
                                                 <div id="review-multi-thumbnails" class="flex flex-wrap gap-2"></div>
                                             </div>
+
+                                            <!-- Design brief (custom AI, only when something was filled in) -->
+                                            <div id="review-design-brief-row" class="hidden pt-3 border-t border-slate-100">
+                                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Design Brief</span>
+                                                <dl id="review-design-brief" class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs"></dl>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1047,6 +1080,8 @@
                                             <span class="font-extrabold text-[#0B1E43] font-mono" id="review-estimate-val">₱0</span>
                                         </div>
                                     </div>
+
+                                    <x-decor-area-breakdown-live id="review-area-breakdown" class="mb-3" />
 
                                     <div id="review-materials-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
 
@@ -1138,9 +1173,9 @@
                     </div>
                     
                     <!-- Navigation Buttons -->
-                    <div class="mt-8 pt-6 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-4">
+                    <div class="mt-5 pt-4 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-3">
                         <div class="flex items-center gap-3 w-full sm:w-auto">
-                            <button type="button" id="btn-back" onclick="navigateGuest(-1)" class="hidden py-3 px-6 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+                            <button type="button" id="btn-back" onclick="navigateGuest(-1)" class="hidden py-2.5 px-5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 text-sm shadow-2xs">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                                 Back
                             </button>
@@ -1149,11 +1184,11 @@
                             <div id="package-pagination" class="flex gap-2 hidden"></div>
                         </div>
                         <div class="flex-1"></div>
-                        <button type="button" id="btn-next" onclick="navigateGuest(1)" class="py-3 px-8 rounded-xl bg-emerald-600 text-white font-bold shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+                        <button type="button" id="btn-next" onclick="navigateGuest(1)" class="py-2.5 px-6 rounded-xl bg-emerald-600 text-white font-bold shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 text-sm">
                             Next
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                         </button>
-                        <button type="submit" id="btn-submit" class="hidden py-3 px-8 rounded-xl bg-emerald-600 text-white font-bold shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" id="btn-submit" class="hidden py-2.5 px-6 rounded-xl bg-emerald-600 text-white font-bold shadow-sm hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm">
                             Submit Booking Request
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                         </button>
@@ -1249,7 +1284,11 @@
                     venue_city: document.getElementById('venue_city')?.value || '',
                     venue_specific: document.getElementById('venue_specific')?.value || '',
                     venue: document.getElementById('venue')?.value || '',
+                    venue_latitude: document.querySelector('#venue-finder [data-finder-lat]')?.value || '',
+                    venue_longitude: document.querySelector('#venue-finder [data-finder-lng]')?.value || '',
+                    venue_setting: document.querySelector('input[name="venue_setting"]:checked')?.value || '',
                     special_requests: document.getElementById('special_requests')?.value || '',
+                    design_brief: window.RafloraDesignBrief?.get('design-brief')?.getState() || null,
                     // Step 2: Booking Method & Inspiration Images
                     booking_type: methodInput ? methodInput.value : 'custom_ai',
                     package_id: selectedPkgInput ? selectedPkgInput.value : '',
@@ -1356,6 +1395,15 @@
                     if (el && draft.venue) el.value = draft.venue;
                 }
                 updateVenueField();
+                if (draft.venue_latitude && draft.venue_longitude) {
+                    window.RafloraLocationFinder?.get('venue-finder')?.setCoordinates(draft.venue_latitude, draft.venue_longitude);
+                }
+                if (draft.venue_setting !== undefined) {
+                    document.querySelectorAll('input[name="venue_setting"]').forEach(el => { el.checked = el.value === draft.venue_setting; });
+                }
+                if (draft.design_brief) {
+                    window.RafloraDesignBrief?.get('design-brief')?.setState(draft.design_brief);
+                }
 
                 if (draft.special_requests !== undefined) {
                     const el = document.getElementById('special_requests');
@@ -1545,10 +1593,27 @@
             }
         });
 
+        // One "Materials per area" breakdown for several analyzed photos: each area lists every
+        // photo's materials, and an area counts as missing only when no photo has materials for it.
+        function combinedAreaBreakdown(images) {
+            const breakdowns = images.map((img) => img.analysis?.area_breakdown).filter((b) => b && Array.isArray(b.areas));
+            if (breakdowns.length <= 1) return breakdowns[0] || null;
+            const byKey = new Map();
+            breakdowns.forEach((breakdown, photoIndex) => breakdown.areas.forEach((area) => {
+                const entry = byKey.get(area.key) || { ...area, items: [], missing: true };
+                entry.items = entry.items.concat((area.items || []).map((item) => ({ ...item, line_id: 'p' + (photoIndex + 1) + '-' + item.line_id })));
+                entry.item_count = entry.items.length;
+                entry.missing = entry.missing && Boolean(area.missing);
+                byKey.set(area.key, entry);
+            }));
+            return { areas: [...byKey.values()] };
+        }
+
         function populateReview() {
             // Get selected method
             const methodInput = document.querySelector('input[name="booking_type"]:checked');
             const method = methodInput ? methodInput.value : 'custom_ai';
+            window.RafloraAreaBreakdown?.render('review-area-breakdown', null);
             
             const inclusionsWrapper = document.getElementById('review-package-inclusions-wrapper');
             const inclusionsList = document.getElementById('review-package-inclusions');
@@ -1559,6 +1624,26 @@
             const reviewMaterialsList = document.getElementById('review-materials-list');
             const multiRow = document.getElementById('review-multi-images-row');
             const multiThumbnails = document.getElementById('review-multi-thumbnails');
+
+            // Design brief rows (built with textContent: the values are the guest's own text)
+            const briefRow = document.getElementById('review-design-brief-row');
+            const briefList = document.getElementById('review-design-brief');
+            const briefRows = method === 'custom_ai' ? (window.RafloraDesignBrief?.get('design-brief')?.summaryRows() || []) : [];
+            if (briefList) {
+                briefList.innerHTML = '';
+                briefRows.forEach(([label, value]) => {
+                    const item = document.createElement('div');
+                    const dt = document.createElement('dt');
+                    dt.className = 'text-slate-400 font-semibold';
+                    dt.textContent = label;
+                    const dd = document.createElement('dd');
+                    dd.className = 'font-bold text-slate-800 break-words';
+                    dd.textContent = value;
+                    item.append(dt, dd);
+                    briefList.appendChild(item);
+                });
+            }
+            briefRow?.classList.toggle('hidden', briefRows.length === 0);
 
             if (method === 'custom_ai') {
                 document.getElementById('review-method-title').textContent = 'Smart AI Custom Design';
@@ -1638,6 +1723,9 @@
                 if (imgCountText) imgCountText.textContent = `${imgCount > 0 ? imgCount : 1} image${imgCount > 1 ? 's' : ''}`;
                 const matsCountText = document.getElementById('review-materials-count-text');
                 if (matsCountText) matsCountText.textContent = `${totalMaterialsCount > 0 ? totalMaterialsCount : currentAnalysisMaterials.length} items`;
+
+                // Materials per area: the same grouping as the analysis step, all analyzed photos together.
+                window.RafloraAreaBreakdown?.render('review-area-breakdown', combinedAreaBreakdown(completedImages));
 
                 // Render AI materials in Review step
                 if (reviewAiSection && reviewMaterialsList) {
@@ -1756,6 +1844,12 @@
             document.getElementById('review-event-time').textContent = timeSpan;
             document.getElementById('review-venue-city').textContent = city || '-';
             document.getElementById('review-venue-specific').textContent = specific || '-';
+            const venuePinned = !!document.querySelector('#venue-finder [data-finder-lat]')?.value;
+            document.getElementById('review-venue-pin')?.classList.toggle('hidden', !venuePinned);
+            const venueSettingInput = document.querySelector('input[name="venue_setting"]:checked');
+            document.getElementById('review-venue-setting').textContent = venueSettingInput?.value
+                ? venueSettingInput.closest('label').textContent.trim()
+                : 'Not specified';
             document.getElementById('review-notes').textContent = notes || 'No additional notes provided.';
             
             // Contact Information (from Step 3)
@@ -2060,23 +2154,23 @@
                         // Completed step
                         nav.classList.remove('opacity-60');
                         nav.setAttribute('aria-current', 'false');
-                        icon.className = 'w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300 shadow-md';
-                        icon.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>';
-                        if (title) title.className = 'text-xs sm:text-sm lg:text-base font-bold whitespace-nowrap text-emerald-800 transition-colors';
+                        icon.className = 'w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300 shadow-md';
+                        icon.innerHTML = '<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>';
+                        if (title) title.className = 'text-xs sm:text-sm font-bold whitespace-nowrap text-emerald-800 transition-colors';
                     } else if (s === step) {
                         // Current step
                         nav.classList.remove('opacity-60');
                         nav.setAttribute('aria-current', 'step');
-                        icon.className = 'w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300 shadow-md ring-4 ring-emerald-100';
+                        icon.className = 'w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300 shadow-md ring-4 ring-emerald-100';
                         icon.innerHTML = s;
-                        if (title) title.className = 'text-xs sm:text-sm lg:text-base font-bold whitespace-nowrap text-[#0B1E43] transition-colors';
+                        if (title) title.className = 'text-xs sm:text-sm font-bold whitespace-nowrap text-[#0B1E43] transition-colors';
                     } else {
                         // Future step
                         nav.classList.add('opacity-60');
                         nav.removeAttribute('aria-current');
-                        icon.className = 'w-10 h-10 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-lg shrink-0 transition-all duration-300';
+                        icon.className = 'w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#EBF0F9] text-[#4A6084] flex items-center justify-center font-bold text-sm sm:text-base shrink-0 transition-all duration-300';
                         icon.innerHTML = s;
-                        if (title) title.className = 'text-xs sm:text-sm lg:text-base font-bold whitespace-nowrap text-slate-500 transition-colors';
+                        if (title) title.className = 'text-xs sm:text-sm font-bold whitespace-nowrap text-slate-500 transition-colors';
                     }
                 }
             });
@@ -2293,47 +2387,132 @@
             }
         };
 
+        // Area colors shared with the booking pages (App\Support\DecorAreaBreakdown).
+        const annotationColors = @json(\App\Support\DecorAreaBreakdown::colors());
+
+        // Where the AI found a material in the photo, as shares of the photo (x/y top-left plus
+        // width/height): one box per cluster, already cleaned by the server. Only detected rows
+        // qualify, so suggested items never get a box. Analyses saved before boxes were requested
+        // may only have a point.
+        function annotationBoxes(mat) {
+            if (!mat || !mat.is_detected || mat.is_recommendation) return [];
+            const boxes = (Array.isArray(mat.boxes) ? mat.boxes : []).map((entry) => {
+                const box = Array.isArray(entry?.box_2d) ? entry.box_2d.map(Number) : null;
+                if (!box || box.length !== 4 || box.some((value) => !Number.isFinite(value))) return null;
+                const [ymin, xmin, ymax, xmax] = box;
+                if (ymin < 0 || xmin < 0 || ymax > 1000 || xmax > 1000 || ymax <= ymin || xmax <= xmin) return null;
+                return { x: xmin / 1000, y: ymin / 1000, width: (xmax - xmin) / 1000, height: (ymax - ymin) / 1000, possible: Boolean(entry.possible) };
+            }).filter(Boolean);
+            if (boxes.length > 0 || (Array.isArray(mat.boxes) && mat.boxes.length > 0)) return boxes;
+
+            const loc = mat.visual_location;
+            const x = Number(loc?.x);
+            const y = Number(loc?.y);
+            if (!loc || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return [];
+            const width = Number(loc.width) > 0 ? Math.min(Number(loc.width), 1 - x) : 0;
+            const height = Number(loc.height) > 0 ? Math.min(Number(loc.height), 1 - y) : 0;
+            return [{ x, y, width, height, possible: false, point: !(width > 0 && height > 0) }];
+        }
+
+        function annotationColor(mat) {
+            return annotationColors[mat?.decor_area] || annotationColors[mat?.area] || annotationColors.default;
+        }
+
+        // Lays the box layer exactly over the photo as drawn (object-contain leaves bars at the sides
+        // or top), so a box at 50% sits on the middle of the photo rather than of the frame.
+        function fitViewerMarkers() {
+            const img = document.getElementById('viewer-main-img');
+            const container = document.getElementById('viewer-markers-container');
+            if (!img || !container || !img.naturalWidth || !img.naturalHeight || !img.clientWidth) return;
+            const scale = Math.min(img.clientWidth / img.naturalWidth, img.clientHeight / img.naturalHeight);
+            const width = img.naturalWidth * scale;
+            const height = img.naturalHeight * scale;
+            container.style.left = `${img.offsetLeft + (img.clientWidth - width) / 2}px`;
+            container.style.top = `${img.offsetTop + (img.clientHeight - height) / 2}px`;
+            container.style.width = `${width}px`;
+            container.style.height = `${height}px`;
+        }
+
+        (function watchViewerImage() {
+            const img = document.getElementById('viewer-main-img');
+            if (!img) return;
+            img.addEventListener('load', fitViewerMarkers);
+            if (typeof ResizeObserver !== 'undefined') {
+                new ResizeObserver(fitViewerMarkers).observe(img);
+            } else {
+                window.addEventListener('resize', fitViewerMarkers);
+            }
+        })();
+
+        // Draws every located material's boxes in its area color, numbered like the material list
+        // ("Material N of M"). Clicking a box opens that material; the selected material's boxes stay
+        // bright and the others are dimmed. Dashed boxes are possible matches for Raflora to confirm.
         function renderAnnotationMarkers(imgItem) {
             const container = document.getElementById('viewer-markers-container');
             if (!container) return;
             container.innerHTML = '';
 
             const materials = imgItem.suggestedMaterials || [];
-            if (materials.length === 0) return;
-
-            // Deterministic, evenly spaced coordinates over floral arrangement stage
-            const sampleCoords = [
-                { top: '35%', left: '30%' },
-                { top: '25%', left: '50%' },
-                { top: '38%', left: '68%' },
-                { top: '55%', left: '25%' },
-                { top: '48%', left: '50%' },
-                { top: '58%', left: '72%' },
-                { top: '70%', left: '40%' },
-                { top: '72%', left: '60%' }
-            ];
+            const hintText = document.getElementById('viewer-markers-hint-text');
+            let locatedCount = 0;
+            let possibleCount = 0;
 
             materials.forEach((mat, idx) => {
-                const pos = (mat.visual_marker && mat.visual_marker.top && mat.visual_marker.left) 
-                    ? mat.visual_marker 
-                    : sampleCoords[idx % sampleCoords.length];
+                const boxes = annotationBoxes(mat);
+                if (boxes.length === 0) return;
+                locatedCount++;
+                const color = annotationColor(mat);
+                const selected = idx === currentMaterialIndex;
 
-                const marker = document.createElement('button');
-                marker.type = 'button';
-                marker.className = `absolute transform -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs text-white shadow-md transition-transform duration-200 hover:scale-125 focus:outline-none ${idx === currentMaterialIndex ? 'bg-emerald-600 ring-4 ring-emerald-300 ring-opacity-70 scale-110 z-20' : 'bg-emerald-500 hover:bg-emerald-600 z-10'}`;
-                marker.style.top = pos.top;
-                marker.style.left = pos.left;
-                marker.setAttribute('aria-label', `Select material ${idx + 1}: ${mat.item_name || 'Material'}`);
-                marker.innerHTML = `<span>${idx + 1}</span>`;
-                marker.onclick = (e) => {
-                    e.stopPropagation();
-                    currentMaterialIndex = idx;
-                    renderCurrentMaterialCard(imgItem);
-                    renderMaterialQuickList(imgItem);
-                    renderAnnotationMarkers(imgItem);
-                };
-                container.appendChild(marker);
+                boxes.forEach((region) => {
+                    if (region.possible) possibleCount++;
+                    const box = document.createElement('button');
+                    box.type = 'button';
+                    box.dataset.annotationBox = '';
+                    box.dataset.lineId = mat.line_id || '';
+                    const label = `${idx + 1} · ${mat.item_name || 'Material'}${region.possible ? ' · possible match' : ''}`;
+                    box.title = label;
+                    box.setAttribute('aria-label', `Select material ${label}`);
+                    if (region.point) {
+                        box.className = 'absolute -translate-x-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white shadow focus:outline-none';
+                        box.style.left = `${region.x * 100}%`;
+                        box.style.top = `${region.y * 100}%`;
+                        box.style.backgroundColor = color;
+                        box.textContent = String(idx + 1);
+                    } else {
+                        box.className = 'absolute rounded-[3px] border-2 bg-transparent p-0 transition-opacity focus:outline-none';
+                        box.style.left = `${region.x * 100}%`;
+                        box.style.top = `${region.y * 100}%`;
+                        box.style.width = `${region.width * 100}%`;
+                        box.style.height = `${region.height * 100}%`;
+                        box.style.borderColor = color;
+                        box.style.borderStyle = region.possible ? 'dashed' : 'solid';
+                        const tag = document.createElement('span');
+                        tag.className = 'pointer-events-none absolute left-0 top-0 rounded-br-[3px] px-1 text-[10px] font-bold leading-4 text-white';
+                        tag.style.backgroundColor = color;
+                        tag.textContent = `${idx + 1}${region.possible ? '?' : ''}`;
+                        box.appendChild(tag);
+                    }
+                    box.style.zIndex = selected ? '20' : '10';
+                    box.style.opacity = selected || currentMaterialIndex < 0 ? '1' : '0.45';
+                    if (selected) box.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.9)';
+                    box.onclick = (e) => {
+                        e.stopPropagation();
+                        currentMaterialIndex = idx;
+                        renderCurrentMaterialCard(imgItem);
+                        renderMaterialQuickList(imgItem);
+                        renderAnnotationMarkers(imgItem);
+                    };
+                    container.appendChild(box);
+                });
             });
+
+            if (hintText) {
+                hintText.textContent = locatedCount === 0
+                    ? 'The AI could not pinpoint any material in this photo, so no boxes are shown. The material list still applies.'
+                    : `Boxes show where the AI found ${locatedCount} of ${materials.length} materials in this photo, colored by area.${possibleCount > 0 ? ' Dashed boxes are possible matches for Raflora to confirm.' : ''} Items without a box are suggestions or could not be pinpointed. Quantities come from your event details, not from the number of boxes.`;
+            }
+            fitViewerMarkers();
         }
 
         function renderCurrentMaterialCard(imgItem) {
@@ -2531,6 +2710,7 @@
 
             // Column 2: Material card
             renderCurrentMaterialCard(currentImg);
+            window.RafloraAreaBreakdown?.render('guest-area-breakdown', currentImg.analysis?.area_breakdown);
 
             // Column 3: Grand total & Quick list
             const estTotal = currentImg.pricingSummary?.estimated_grand_total_php || currentImg.pricingSummary?.raw_materials_total_php || 0;
@@ -2598,27 +2778,15 @@
         const eventSelect = document.getElementById('event_type');
         const otherContainer = document.getElementById('otherEventTypeContainer');
         const otherInput = document.getElementById('other_event_type');
-        const scaleContainer = document.getElementById('scale-fields-container');
-        const scaleTablesContainer = document.getElementById('scale-tables-container');
+        // Guest and table counts stay visible for every event type: they anchor the AI's quantities.
         if(eventSelect) {
             eventSelect.addEventListener('change', function() {
                 if(this.value === 'other') {
                     if (otherContainer) otherContainer.classList.remove('hidden');
                     if (otherInput) otherInput.setAttribute('required', 'required');
-                    if(scaleContainer) scaleContainer.style.display = 'none';
-                    if(scaleTablesContainer) scaleTablesContainer.style.display = 'none';
                 } else {
                     if (otherContainer) otherContainer.classList.add('hidden');
                     if (otherInput) otherInput.removeAttribute('required');
-                    
-                    // Show scale fields for standard events
-                    if(['wedding', 'corporate', 'birthday', 'anniversary'].includes(this.value)) {
-                        if(scaleContainer) scaleContainer.style.display = 'block';
-                        if(scaleTablesContainer) scaleTablesContainer.style.display = 'block';
-                    } else {
-                        if(scaleContainer) scaleContainer.style.display = 'none';
-                        if(scaleTablesContainer) scaleTablesContainer.style.display = 'none';
-                    }
                 }
             });
         }
@@ -2801,6 +2969,27 @@
             processUploadQueue();
         };
 
+        // Design brief edited after analysis: re-run every analyzed photo that is still in memory.
+        // Photos restored from a saved draft have no file left to send, so those must be re-uploaded.
+        document.getElementById('design-brief')?.addEventListener('design-brief:reanalyze', function () {
+            const brief = window.RafloraDesignBrief?.get('design-brief');
+            const rerunnable = uploadedImages.filter(img => img.file && ['completed', 'failed'].includes(img.status));
+            if (!rerunnable.length) {
+                brief?.setStaleMessage('These photos were restored from your saved draft. Remove and re-upload them so the AI can use your updated brief.');
+                return;
+            }
+            rerunnable.forEach(img => {
+                img.status = 'pending';
+                img.errorMessage = null;
+                img.isQuotaError = false;
+            });
+            brief?.resetAnalyzed();
+            syncAnalysisHiddenInputs();
+            renderUploadedGrid();
+            saveGuestDraft();
+            processUploadQueue();
+        });
+
         function setTruthfulProgressStep(stepNum, label) {
             [1, 2, 3, 4].forEach(s => {
                 const stepEl = document.getElementById(`progress-step-${s}`);
@@ -2878,6 +3067,8 @@
             formData.append('guest_count', document.getElementById('guest_count')?.value || '');
             formData.append('table_count', document.getElementById('table_count')?.value || '');
             formData.append('special_requests', document.getElementById('special_requests')?.value || '');
+            formData.append('venue_setting', document.querySelector('input[name="venue_setting"]:checked')?.value || '');
+            window.RafloraDesignBrief?.get('design-brief')?.appendTo(formData);
 
             fetch('{{ route("guest.bookings.analyze-temp-image") }}', {
                 method: 'POST',
@@ -2896,6 +3087,7 @@
                     imageItem.suggestedMaterials = data.analysis?.suggested_materials || [];
                     imageItem.pricingSummary = data.analysis?.pricing_summary || {};
                     imageItem.visualAnalysis = data.analysis?.visual_analysis || {};
+                    window.RafloraDesignBrief?.get('design-brief')?.markAnalyzed();
 
                     // Default viewing image to first completed
                     if (!uploadedImages[viewingImageIndex] || uploadedImages[viewingImageIndex].status !== 'completed') {
@@ -3154,6 +3346,32 @@
                     });
                 }
             });
+
+            // Location finder: a chosen place fills the venue fields (the 'input' events above
+            // then clear their errors, rebuild the combined venue, and save the draft).
+            const venueFinder = document.getElementById('venue-finder');
+            if (venueFinder) {
+                venueFinder.addEventListener('location-finder:select', function (e) {
+                    const fills = { venue_city: e.detail.city, venue_specific: e.detail.specific };
+                    Object.keys(fills).forEach(function (id) {
+                        const el = document.getElementById(id);
+                        if (el && fills[id]) {
+                            el.value = fills[id];
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    });
+                    saveGuestDraft();
+                });
+                venueFinder.addEventListener('location-finder:clear', saveGuestDraft);
+            }
+
+            // Venue setting and design brief are saved with the draft as they change.
+            document.querySelectorAll('input[name="venue_setting"]').forEach(el => el.addEventListener('change', saveGuestDraft));
+            const designBriefEl = document.getElementById('design-brief');
+            if (designBriefEl) {
+                designBriefEl.addEventListener('input', saveGuestDraft);
+                designBriefEl.addEventListener('change', saveGuestDraft);
+            }
 
             const eventTypeEl = document.getElementById('event_type');
             if (eventTypeEl) {

@@ -56,6 +56,7 @@
                     : route('secure.inspiration.show', ['bookingId' => $booking->id, 'guest_token' => $booking->guest_access_token, 'image_index' => $idx]);
                 $multiImages[] = [
                     'index' => $idx,
+                    'id' => (int) ($imgEntry['id'] ?? $idx + 1),
                     'url' => $imageUrl,
                     'filename' => $imgEntry['original_filename'] ?? ('Image ' . ($idx + 1)),
                     'materials' => $imgEntry['suggested_materials'] ?? [],
@@ -64,7 +65,7 @@
             }
         }
         $imagePath = $booking->inspiration_image ? storage_path('app/private/' . ltrim($booking->inspiration_image, '/')) : null;
-        $imageDimensions = $imagePath && is_file($imagePath) ? @getimagesize($imagePath) : null;
+        $imageDimensions = $imagePath ? \App\Support\ImageOrientation::displaySize($imagePath) : null;
         $imageAspectRatio = is_array($imageDimensions) && !empty($imageDimensions[0]) && !empty($imageDimensions[1])
             ? $imageDimensions[0] . ' / ' . $imageDimensions[1]
             : null;
@@ -660,6 +661,8 @@
                                 </div>
                             @endif
 
+                            <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-3" />
+
                             <div class="space-y-2.5 max-h-96 overflow-y-auto pr-1">
                                 @forelse($analysisMaterials as $mat)
                                     @php
@@ -674,7 +677,7 @@
                                         $seasonalNote = $mat['seasonal_notes'] ?? null;
                                         $matImgId = $mat['image_id'] ?? 1;
                                     @endphp
-                                    <div class="tracking-mat-item p-3 rounded-xl border border-stone-200 bg-stone-50/60 hover:bg-stone-50 transition" data-image-id="{{ $matImgId }}">
+                                    <div class="tracking-mat-item p-3 rounded-xl border border-stone-200 bg-stone-50/60 hover:bg-stone-50 transition" data-image-id="{{ $matImgId }}" data-line-id="{{ $mat['line_id'] ?? 'm' . ($loop->index + 1) }}">
                                         <div class="flex items-start justify-between gap-2">
                                             <div>
                                                 <div class="flex items-center gap-1.5 flex-wrap">
@@ -1035,6 +1038,8 @@
             if (trigger) {
                 trigger.setAttribute('data-image-src', trackingImages[idx].url);
             }
+            // Each photo shows only the items the AI found in that photo.
+            window.showAnnotationsForImage?.(stage, trackingImages[idx].id);
             const curEl = document.getElementById('tracking-img-current');
             if (curEl) curEl.textContent = idx + 1;
             document.querySelectorAll('.tracking-thumb-btn').forEach((btn, bIdx) => {

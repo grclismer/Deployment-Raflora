@@ -829,6 +829,12 @@ class SystemDataImporter
                 'event_size' => $b['event_size'] ?? null,
                 'table_count' => $b['table_count'] ?? null,
                 'venue' => $b['venue'] ?? null,
+                'venue_latitude' => $b['venue_latitude'] ?? null,
+                'venue_longitude' => $b['venue_longitude'] ?? null,
+                'venue_setting' => $b['venue_setting'] ?? null,
+                'end_time' => $b['end_time'] ?? null,
+                // Raw insert (no model casts), so the brief is encoded here.
+                'design_brief' => !empty($b['design_brief']) ? json_encode($b['design_brief']) : null,
                 'special_requests' => $b['special_requests'] ?? null,
                 'inspiration_image' => $b['inspiration_image'] ?? null,
                 'status' => $b['status'] ?? 'pending',

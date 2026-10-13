@@ -132,10 +132,15 @@ class ClaimGuestBookingController extends Controller
                     'event_type' => $tempBooking->event_type,
                     'event_date' => $tempBooking->event_date,
                     'event_time' => $tempBooking->event_time,
+                    'end_time' => $tempBooking->end_time,
                     'event_size' => $tempBooking->guest_count,
                     'table_count' => $tempBooking->table_count,
                     'venue' => $tempBooking->venue,
+                    'venue_latitude' => $tempBooking->venue_latitude,
+                    'venue_longitude' => $tempBooking->venue_longitude,
+                    'venue_setting' => $tempBooking->venue_setting,
                     'special_requests' => $tempBooking->special_requests,
+                    'design_brief' => $tempBooking->design_brief,
                     'inspiration_image' => $tempBooking->inspiration_image_path,
                     'status' => 'pending',
                     'total_quoted' => 0,
@@ -244,6 +249,8 @@ class ClaimGuestBookingController extends Controller
                             }
                             
                             $material['inventory_item_id'] = $inventoryItem ? $inventoryItem->id : null;
+                            // The booking line this AI row became, so per-area prices can be read from it.
+                            $material['booking_item_id'] = $existingItem->id;
                             $persistedMaterials[] = $material;
                         }
 

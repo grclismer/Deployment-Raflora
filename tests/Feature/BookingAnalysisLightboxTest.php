@@ -43,10 +43,9 @@ class BookingAnalysisLightboxTest extends TestCase
         $this->assertStringContainsString("imageLightboxModal", $html);
         $this->assertStringContainsString("requestAnimationFrame(() =>", $html);
         $this->assertStringContainsString("addEventListener('load', repositionModalAnnotations", $html);
-        $this->assertStringContainsString("annotationResizeObserver", $html);
-        $this->assertStringContainsString("window.addEventListener('resize', () => window.positionAnnotatedImages())", $html);
-        $this->assertStringContainsString('nearest', $html);
-        $this->assertStringContainsString('MutationObserver', $html);
+        // Boxes are percent rectangles over the photo, so only the stage shape is refitted.
+        $this->assertStringContainsString("window.fitAnnotatedImageStage", $html);
+        $this->assertStringContainsString("window.highlightAnnotationLine", $html);
     }
 
     public function test_guest_analysis_view_initializes_lightbox_after_dom_is_ready(): void
@@ -83,10 +82,9 @@ class BookingAnalysisLightboxTest extends TestCase
         $this->assertStringContainsString("imageLightboxModal", $html);
         $this->assertStringContainsString("requestAnimationFrame(() =>", $html);
         $this->assertStringContainsString("addEventListener('load', repositionModalAnnotations", $html);
-        $this->assertStringContainsString("annotationResizeObserver", $html);
-        $this->assertStringContainsString("window.addEventListener('resize', () => window.positionAnnotatedImages())", $html);
-        $this->assertStringContainsString('nearest', $html);
-        $this->assertStringContainsString('MutationObserver', $html);
+        // Boxes are percent rectangles over the photo, so only the stage shape is refitted.
+        $this->assertStringContainsString("window.fitAnnotatedImageStage", $html);
+        $this->assertStringContainsString("window.highlightAnnotationLine", $html);
     }
 
     public function test_client_analysis_annotations_require_detected_items_with_valid_locations(): void
@@ -104,8 +102,9 @@ class BookingAnalysisLightboxTest extends TestCase
             'totalCost' => 2500,
         ])->render();
 
-        $this->assertSame(7, substr_count($html, 'data-annotation-anchor'));
-        $this->assertSame(7, substr_count($html, 'data-annotation-crop'));
+        // Saved before boxes were requested: these rows only have a point, drawn as a numbered dot.
+        $this->assertSame(7, substr_count($html, 'data-annotation-point '));
+        $this->assertSame(0, substr_count($html, 'data-annotation-box '));
         foreach ($materials as $material) {
             $this->assertStringContainsString($material['item_name'], $html);
         }
@@ -133,8 +132,9 @@ class BookingAnalysisLightboxTest extends TestCase
             'token' => 'guest-token-grounding',
         ])->render();
 
-        $this->assertSame(7, substr_count($html, 'data-annotation-anchor'));
-        $this->assertSame(7, substr_count($html, 'data-annotation-crop'));
+        // Saved before boxes were requested: these rows only have a point, drawn as a numbered dot.
+        $this->assertSame(7, substr_count($html, 'data-annotation-point '));
+        $this->assertSame(0, substr_count($html, 'data-annotation-box '));
         foreach ($materials as $material) {
             $this->assertStringContainsString($material['item_name'], $html);
         }

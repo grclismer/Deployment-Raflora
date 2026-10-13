@@ -6,6 +6,14 @@
     } catch (\Throwable $e) {
         $bookingEventTime = $booking->event_time;
     }
+    try {
+        $bookingEndTime = $booking->end_time ? \Illuminate\Support\Carbon::parse($booking->end_time)->format('g:i A') : null;
+    } catch (\Throwable $e) {
+        $bookingEndTime = $booking->end_time;
+    }
+    if ($bookingEventTime && $bookingEndTime) {
+        $bookingEventTime .= ' – ' . $bookingEndTime;
+    }
 @endphp
 <x-admin-layout :title="$bookingHeading" :description="'Client: ' . $bookingClientName">
     <x-slot:actions>
@@ -474,6 +482,7 @@
                         <div class="sm:col-span-2">
                             <dt class="text-xs font-medium text-slate-500">Venue</dt>
                             <dd class="mt-0.5 text-sm font-medium text-slate-900">{{ $booking->venue ?? 'N/A' }}</dd>
+                            <x-venue-map :booking="$booking" class="mt-2" />
                         </div>
                         @if($booking->event_size)
                             <div>
@@ -500,6 +509,8 @@
                             </div>
                         @endif
                     </dl>
+
+                    <x-design-brief-summary :booking="$booking" />
 
                     <div class="rounded-xl border border-slate-200 p-4">
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Client contact</p>
@@ -557,6 +568,7 @@
                     <i class="fa-solid fa-circle-info mt-0.5 text-amber-600" aria-hidden="true"></i>
                     <p>AI suggestions are decision support only. Confirm, link, or promote each material in the Quotation tab before sending the official quote.@if($aiNeedsReviewCount > 0) <strong>{{ $aiNeedsReviewCount }}</strong> {{ \Illuminate\Support\Str::plural('item', $aiNeedsReviewCount) }} flagged for review.@endif</p>
                 </div>
+                <x-decor-area-breakdown :materials="$aiSuggestions->all()" :booking="$booking" view="admin" class="mx-5 my-4" />
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[720px] text-left text-[13px]">
                         <thead class="rf-admin-thead">

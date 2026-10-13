@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\EventDesignBrief;
 use Illuminate\Foundation\Http\FormRequest;
 
 class BookingRequest extends FormRequest
@@ -29,6 +30,8 @@ class BookingRequest extends FormRequest
             'event_date' => ['required', 'date', 'after_or_equal:today'],
             'event_time' => ['nullable', 'date_format:H:i'],
             'venue' => ['required', 'string', 'max:500'],
+            'venue_latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:venue_longitude'],
+            'venue_longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:venue_latitude'],
             'special_requests' => ['nullable', 'string', 'max:2000'],
             'inspiration_image' => ['nullable', 'image', 'max:5120'],
             'analysis_token' => ['nullable', 'string'],
@@ -37,7 +40,7 @@ class BookingRequest extends FormRequest
             'analysis_nonce' => ['nullable', 'string'],
             'table_count' => ['nullable', 'integer', 'min:1'],
             'guest_count' => ['nullable', 'integer', 'min:1'],
-        ];
+        ] + EventDesignBrief::rules();
     }
 
     /**
@@ -57,9 +60,11 @@ class BookingRequest extends FormRequest
             'event_time.date_format' => 'The event time must be a valid time in 24-hour format (HH:MM).',
             'venue.required' => 'Event venue is required.',
             'venue.max' => 'The venue description may not exceed 500 characters.',
+            'venue_latitude' => 'The pinned venue location is invalid. Please pin the venue on the map again.',
+            'venue_longitude' => 'The pinned venue location is invalid. Please pin the venue on the map again.',
             'special_requests.max' => 'Special requests may not exceed 2000 characters.',
             'inspiration_image.image' => 'The inspiration file must be an image.',
             'inspiration_image.max' => 'The inspiration image may not exceed 4MB.',
-        ];
+        ] + EventDesignBrief::messages();
     }
 }

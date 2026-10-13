@@ -46,6 +46,15 @@ return [
         'api_url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'),
     ],
 
+    // Venue location finder (OpenStreetMap Nominatim). Set GEOCODING_EMAIL to a contact address in production.
+    'geocoding' => [
+        'url' => env('GEOCODING_URL', 'https://nominatim.openstreetmap.org'),
+        'user_agent' => env('GEOCODING_USER_AGENT'),
+        'email' => env('GEOCODING_EMAIL'),
+        'country_codes' => env('GEOCODING_COUNTRY_CODES', 'ph'),
+        'timeout' => (float) env('GEOCODING_TIMEOUT', 8),
+    ],
+
     'brevo' => [
         'key' => env('BREVO_API_KEY'),
         'timeout' => (float) env('BREVO_API_TIMEOUT', 15),

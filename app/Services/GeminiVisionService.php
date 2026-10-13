@@ -2,12 +2,29 @@
 
 namespace App\Services;
 
+use App\Support\DecorAreaBreakdown;
+use App\Support\EventDesignBrief;
+use App\Support\ImageOrientation;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class GeminiVisionService
 {
+    /**
+     * Part of the analysis cache key, so results cached for an older prompt (for example one
+     * box per row instead of one per cluster) are never served for the current one.
+     */
+    public const PROMPT_VERSION = '2026-10-13-boxes';
+
+    /** Box confidence at or above which a box is drawn as a confirmed location. */
+    public const BOX_CONFIDENT = 0.8;
+
+    /** Box confidence at or above which a box is drawn as "possible"; below it, the box is hidden. */
+    public const BOX_POSSIBLE = 0.5;
+
+    public const MAX_BOXES_PER_ROW = 12;
+
     /**
      * Ordered free-tier fallback models.
      * @var string[]
@@ -149,16 +166,8 @@ Set is_clear_usable to true only when the image is clear enough to reliably iden
 PROMPT;
 
         $preparedImage = $this->prepareImageForGemini($filePath);
-        if (is_array($preparedImage)) {
-            $mimeType = $preparedImage['mime_type'];
-            $base64 = $preparedImage['data'];
-            $tempFilePath = null;
-        } else {
-            $tempFilePath = $preparedImage;
-            $fileContents = file_get_contents($tempFilePath);
-            $base64 = base64_encode($fileContents);
-            $mimeType = mime_content_type($tempFilePath) ?: 'image/jpeg';
-        }
+        $mimeType = $preparedImage['mime_type'];
+        $base64 = $preparedImage['data'];
 
         $lastException = null;
         $lastFailureType = 'analysis';
@@ -289,15 +298,7 @@ PROMPT;
                 }
                 Log::error("Image validation failed for model {$model}.", ['message' => $msg]);
                 continue;
-            } finally {
-                if (isset($tempFilePath) && file_exists($tempFilePath) && $tempFilePath !== $filePath) {
-                    @unlink($tempFilePath);
-                }
             }
-        }
-
-        if (isset($tempFilePath) && file_exists($tempFilePath) && $tempFilePath !== $filePath) {
-            @unlink($tempFilePath);
         }
 
         Log::warning('Image validation: All Gemini models failed.', [
@@ -389,7 +390,7 @@ PROMPT;
 
         $groups = [];
 
-        foreach ($materials as $material) {
+        foreach ($materials as $index => $material) {
             if (!is_array($material)) {
                 continue;
             }
@@ -403,12 +404,19 @@ PROMPT;
             $unitCost = $material['unit_cost_php'] ?? $material['estimated_unit_cost_php'] ?? $material['estimated_unit_cost'] ?? 0;
             $detected = filter_var($material['is_detected'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $recommendation = filter_var($material['is_recommendation'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $visualLocation = $this->normalizeVisualLocation($material['visual_location'] ?? null);
+            // Boxes are re-validated here too: analyses saved before boxes were cleaned on arrival
+            // (one box_2d, or a visual_location point) are drawn by the same rules.
+            $boxes = ($detected && !$recommendation) ? $this->normalizeBoxes($material)['boxes'] : [];
+            $visualLocation = !($detected && !$recommendation) ? null
+                : ($boxes !== [] ? $this->boxToRegion($boxes[0]['box_2d']) : ($this->rawBoxEntries($material) === [] ? $this->normalizeVisualLocation($material['visual_location'] ?? null) : null));
             $quality = $this->deriveItemConfidenceMetadata($material, $detected, $recommendation, $visualLocation);
+            $decorArea = DecorAreaBreakdown::normalizeTag($material['decor_area'] ?? null);
+            $colorKey = $decorArea ?? $areaKey;
 
             $groups[$areaKey]['area_key'] = $areaKey;
             $groups[$areaKey]['area_label'] = $areaLabel;
             $normalizedItem = [
+                'line_id' => is_string($material['line_id'] ?? null) && $material['line_id'] !== '' ? $material['line_id'] : 'm' . ($index + 1),
                 'name' => trim((string) ($material['item_name'] ?? 'Unknown item')),
                 'area_key' => $areaKey,
                 'area_label' => $areaLabel,
@@ -420,6 +428,17 @@ PROMPT;
                 'source_type' => $quality['source_type'],
                 'note' => trim((string) ($material['note'] ?? '')),
                 'visual_location' => $visualLocation,
+                // Each box as shares of the displayed photo (x/y top-left), for percent overlays.
+                'boxes' => array_map(fn (array $box) => $this->boxToRegion($box['box_2d']) + ['possible' => $box['possible']], $boxes),
+                'decor_area' => $decorArea,
+                'color_key' => $colorKey,
+                'color' => DecorAreaBreakdown::color($colorKey),
+                'color_label' => match (true) {
+                    $decorArea === DecorAreaBreakdown::SHARED => DecorAreaBreakdown::SHARED_LABEL,
+                    $decorArea !== null => EventDesignBrief::DECOR_AREAS[$decorArea],
+                    default => $areaLabel,
+                },
+                'image_id' => is_numeric($material['image_id'] ?? null) ? (int) $material['image_id'] : null,
                 'confidence' => $quality['confidence'],
                 'confidence_percent' => $quality['confidence_percent'],
                 'detected_regions' => $quality['detected_regions'],
@@ -441,14 +460,7 @@ PROMPT;
 
     protected function deriveItemConfidenceMetadata(array $material, bool $detected, bool $recommendation, ?array $visualLocation): array
     {
-        $rawConfidence = $material['confidence'] ?? $material['ai_confidence'] ?? null;
-        $confidence = is_numeric($rawConfidence) ? (float) $rawConfidence : null;
-        if ($confidence !== null && $confidence > 1 && $confidence <= 100) {
-            $confidence /= 100;
-        }
-        if ($confidence !== null && ($confidence < 0 || $confidence > 1)) {
-            $confidence = null;
-        }
+        $confidence = $this->confidenceOrNull($material['confidence'] ?? $material['ai_confidence'] ?? null);
 
         $detectedRegions = is_numeric($material['detected_regions'] ?? null) ? (int) $material['detected_regions'] : (($detected && $visualLocation !== null) ? 1 : 0);
         $reviewMessage = trim((string) ($material['review_message'] ?? $material['review_reason'] ?? ''));
@@ -508,8 +520,18 @@ PROMPT;
         ];
     }
 
-    protected function normalizeVisualLocation(mixed $location): ?array
+    /**
+     * Where an item is in the photo, as shares of the displayed image: the region {x, y, width,
+     * height} of a box (x/y at its top-left corner), or the bare point {x, y} of an analysis
+     * saved before boxes were requested.
+     */
+    protected function normalizeVisualLocation(mixed $location, mixed $box = null): ?array
     {
+        $box = $this->normalizeBox($box);
+        if ($box !== null) {
+            return $this->boxToRegion($box);
+        }
+
         if (!is_array($location) || !isset($location['x'], $location['y'])
             || !is_numeric($location['x']) || !is_numeric($location['y'])) {
             return null;
@@ -543,6 +565,167 @@ PROMPT;
         return $normalized;
     }
 
+    /**
+     * A [ymin, xmin, ymax, xmax] box on Gemini's 0-1000 scale as shares of the image:
+     * {x, y, width, height} with x/y at the top-left corner. Percent positions over the whole
+     * displayed photo are these shares × 100.
+     */
+    public function boxToRegion(array $box): array
+    {
+        [$ymin, $xmin, $ymax, $xmax] = array_values($box);
+
+        return [
+            'x' => round($xmin / 1000, 6),
+            'y' => round($ymin / 1000, 6),
+            'width' => round(($xmax - $xmin) / 1000, 6),
+            'height' => round(($ymax - $ymin) / 1000, 6),
+        ];
+    }
+
+    /**
+     * A usable [ymin, xmin, ymax, xmax] box on Gemini's 0-1000 scale, or null.
+     *
+     * Edges slightly past the image (up to 10% of a side, from rounding) are clamped to it. A box
+     * entirely outside the image, on another scale (pixels or 0-1 shares), with its edges in the
+     * wrong order, or with no real size after clamping is dropped, never repaired, so no
+     * annotation is drawn from a guessed correction.
+     */
+    public function normalizeBox(mixed $box): ?array
+    {
+        if (!is_array($box) || count($box) !== 4 || !array_is_list($box)) {
+            return null;
+        }
+
+        $values = [];
+        foreach ($box as $value) {
+            if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < -100 || (float) $value > 1100) {
+                return null;
+            }
+            $values[] = (float) $value;
+        }
+
+        [$ymin, $xmin, $ymax, $xmax] = $values;
+        if ($ymin >= $ymax || $xmin >= $xmax || $ymax <= 0 || $xmax <= 0 || $ymin >= 1000 || $xmin >= 1000) {
+            return null;
+        }
+
+        $values = array_map(fn (float $value) => min(1000.0, max(0.0, $value)), $values);
+        [$ymin, $xmin, $ymax, $xmax] = $values;
+        if ($ymax - $ymin < 2 || $xmax - $xmin < 2) {
+            return null;
+        }
+
+        return $values;
+    }
+
+    /**
+     * The box entries a row carries, in any shape the AI or older analyses used: `boxes` as
+     * [{box_2d, confidence}] or bare [ymin, xmin, ymax, xmax] lists, or a single `box_2d`.
+     *
+     * @return list<array{box: mixed, confidence: mixed}>
+     */
+    protected function rawBoxEntries(array $material): array
+    {
+        $entries = [];
+        if (is_array($material['boxes'] ?? null)) {
+            foreach ($material['boxes'] as $entry) {
+                if (is_array($entry) && array_key_exists('box_2d', $entry)) {
+                    $entries[] = ['box' => $entry['box_2d'], 'confidence' => $entry['confidence'] ?? null];
+                } elseif (is_array($entry) && array_is_list($entry)) {
+                    $entries[] = ['box' => $entry, 'confidence' => null];
+                }
+            }
+
+            return $entries;
+        }
+
+        $single = $material['box_2d'] ?? null;
+        if (is_array($single) && array_is_list($single) && is_array($single[0] ?? null)) {
+            foreach ($single as $box) {
+                $entries[] = ['box' => $box, 'confidence' => null];
+            }
+        } elseif ($single !== null) {
+            $entries[] = ['box' => $single, 'confidence' => null];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * A row's boxes after validation: invalid ones dropped, near-duplicates removed, at most
+     * MAX_BOXES_PER_ROW. A box's confidence is its own (or the row's), never above the row's.
+     * From BOX_CONFIDENT it is a confirmed location, from BOX_POSSIBLE a "possible" one, and
+     * below that it is hidden (counted, not kept) for staff review.
+     *
+     * @return array{boxes: list<array{box_2d: array, confidence: ?float, possible: bool}>, hidden: int}
+     */
+    protected function normalizeBoxes(array $material): array
+    {
+        $rowConfidence = $this->confidenceOrNull($material['confidence'] ?? $material['ai_confidence'] ?? null);
+        $kept = [];
+        $hidden = 0;
+
+        foreach ($this->rawBoxEntries($material) as $entry) {
+            $box = $this->normalizeBox($entry['box']);
+            if ($box === null) {
+                continue;
+            }
+
+            $confidence = $this->confidenceOrNull($entry['confidence']);
+            $confidence = $confidence === null ? $rowConfidence : ($rowConfidence === null ? $confidence : min($confidence, $rowConfidence));
+            if ($confidence !== null && $confidence < self::BOX_POSSIBLE) {
+                $hidden++;
+                continue;
+            }
+
+            foreach ($kept as $other) {
+                if ($this->boxOverlap($box, $other['box_2d']) >= 0.85) {
+                    continue 2;
+                }
+            }
+
+            if (count($kept) < self::MAX_BOXES_PER_ROW) {
+                $kept[] = [
+                    'box_2d' => $box,
+                    'confidence' => $confidence !== null ? round($confidence, 2) : null,
+                    'possible' => $confidence !== null && $confidence < self::BOX_CONFIDENT,
+                ];
+            }
+        }
+
+        return ['boxes' => $kept, 'hidden' => $hidden];
+    }
+
+    /** Intersection over union of two 0-1000 boxes. */
+    protected function boxOverlap(array $a, array $b): float
+    {
+        $height = min($a[2], $b[2]) - max($a[0], $b[0]);
+        $width = min($a[3], $b[3]) - max($a[1], $b[1]);
+        if ($height <= 0 || $width <= 0) {
+            return 0.0;
+        }
+
+        $intersection = $height * $width;
+        $union = (($a[2] - $a[0]) * ($a[3] - $a[1])) + (($b[2] - $b[0]) * ($b[3] - $b[1])) - $intersection;
+
+        return $union > 0 ? $intersection / $union : 0.0;
+    }
+
+    /** An AI confidence as 0-1 (percent values are scaled), or null when missing or invalid. */
+    protected function confidenceOrNull(mixed $value): ?float
+    {
+        if (!is_numeric($value) || !is_finite((float) $value)) {
+            return null;
+        }
+
+        $confidence = (float) $value;
+        if ($confidence > 1 && $confidence <= 100) {
+            $confidence /= 100;
+        }
+
+        return $confidence >= 0 && $confidence <= 1 ? $confidence : null;
+    }
+
     protected function formatAreaLabel(string $areaKey): string
     {
         $map = [
@@ -570,8 +753,11 @@ PROMPT;
     /**
      * Validate the minimum complete analysis contract before it can reach a booking.
      * Invalid rows reject the whole response so partial results cannot be persisted.
+     *
+     * Every row gets a `line_id` ("m1", "m2", ...) that its boxes and every list showing it refer
+     * to. With the client's design brief, every row is tagged with a picked area or "shared".
      */
-    public function normalizeAiAnalysis(array $analysis): array
+    public function normalizeAiAnalysis(array $analysis, ?array $designBrief = null): array
     {
         $materials = $analysis['suggested_materials'] ?? [];
         if (!is_array($materials)) {
@@ -601,6 +787,7 @@ PROMPT;
 
             $detected = filter_var($material['is_detected'] ?? true, FILTER_VALIDATE_BOOLEAN);
             $recommended = filter_var($material['is_recommendation'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $isDetection = $detected && !$recommended;
 
             // Quantities and prices are AI estimates only. A missing or invalid value is recorded as
             // unavailable (null) for staff to supply; it is never replaced with a guessed value.
@@ -608,7 +795,27 @@ PROMPT;
             $unitCost = $this->positiveNumberOrNull($material['unit_cost_php'] ?? $material['estimated_unit_cost_php'] ?? $material['estimated_unit_cost'] ?? null);
             $unitCost = $unitCost !== null ? round($unitCost, 2) : null;
 
+            // Per-area breakdown fields are only requested when the client picked areas to decorate.
+            foreach (['decor_area' => 'normalizeTag', 'quantity_basis' => 'normalizeBasis'] as $field => $clean) {
+                if (array_key_exists($field, $material)) {
+                    $material[$field] = DecorAreaBreakdown::$clean($material[$field]);
+                }
+            }
+
+            // Only visible detections keep boxes; a recommendation's boxes are orphans and dropped.
+            $boxes = $isDetection ? $this->normalizeBoxes($material) : ['boxes' => [], 'hidden' => 0];
+            $firstBox = $boxes['boxes'][0]['box_2d'] ?? null;
+
+            // Problems the application finds itself; the AI's own review message is kept in front of them.
+            $aiReviewMessage = trim((string) ($material['review_message'] ?? $material['review_reason'] ?? ''));
+            $systemNotes = array_values(array_filter([
+                DecorAreaBreakdown::basisProblem($material['quantity_basis'] ?? null, $quantity),
+                array_filter(array_column($boxes['boxes'], 'possible')) !== [] ? 'Possible match in the photo: staff should confirm the marked location.' : null,
+                $boxes['hidden'] > 0 ? 'The AI was unsure where this item is in the photo, so that location is hidden for staff review.' : null,
+            ]));
+
             $normalized[] = array_merge($material, [
+                'line_id' => 'm' . (count($normalized) + 1),
                 'item_name' => $itemName,
                 'category' => $category,
                 'unit_type' => $unitType,
@@ -618,10 +825,17 @@ PROMPT;
                 'unit_cost_php' => $unitCost,
                 'estimated_unit_cost_php' => $unitCost,
                 'price_status' => $unitCost !== null ? 'ai_estimate' : 'unavailable',
-                'is_detected' => $detected && !$recommended,
+                'is_detected' => $isDetection,
                 'is_recommendation' => $recommended,
                 'is_custom_item' => (bool) ($material['is_custom_item'] ?? false),
-                'visual_location' => ($detected && !$recommended) ? $this->normalizeVisualLocation($material['visual_location'] ?? null) : null,
+                'boxes' => $boxes['boxes'],
+                'hidden_box_count' => $boxes['hidden'],
+                'box_2d' => $firstBox,
+                'visual_location' => !$isDetection ? null
+                    : ($firstBox !== null ? $this->boxToRegion($firstBox) : ($this->rawBoxEntries($material) === [] ? $this->normalizeVisualLocation($material['visual_location'] ?? null) : null)),
+                'needs_review' => filter_var($material['needs_review'] ?? $material['review_required'] ?? false, FILTER_VALIDATE_BOOLEAN) || $systemNotes !== [],
+                // A note already in the message (an analysis normalized twice) is not repeated.
+                'review_message' => implode(' ', array_filter([$aiReviewMessage, ...array_filter($systemNotes, fn (string $note) => !str_contains($aiReviewMessage, $note))])),
                 'area' => $this->normalizeAreaKey($material['area'] ?? $material['location'] ?? 'overall'),
                 'note' => trim((string) ($material['note'] ?? '')),
                 'suggested_alternative' => !empty($material['suggested_alternative']) ? trim((string) $material['suggested_alternative']) : null,
@@ -632,6 +846,7 @@ PROMPT;
             ]);
         }
 
+        $normalized = DecorAreaBreakdown::assignAreas($normalized, $designBrief);
         $analysis['suggested_materials'] = $normalized;
         $analysis['pricing_summary'] = $this->buildPricingSummary($normalized);
 
@@ -806,6 +1021,10 @@ PROMPT;
                 'source' => $sourceType,
                 'note' => trim((string) ($rawMaterial['note'] ?? '')),
                 'visual_location' => is_array($rawMaterial['visual_location'] ?? null) ? $rawMaterial['visual_location'] : null,
+                'box_2d' => is_array($rawMaterial['box_2d'] ?? null) ? $rawMaterial['box_2d'] : null,
+                'boxes' => is_array($rawMaterial['boxes'] ?? null) ? $rawMaterial['boxes'] : null,
+                'decor_area' => $rawMaterial['decor_area'] ?? null,
+                'quantity_basis' => $rawMaterial['quantity_basis'] ?? null,
                 'suggested_alternative' => $rawMaterial['suggested_alternative'] ?? null,
                 'alternative_reason' => $rawMaterial['alternative_reason'] ?? null,
                 'seasonality_status' => $rawMaterial['seasonality_status'] ?? null,
@@ -824,8 +1043,8 @@ PROMPT;
         ];
 
         $normalizedRequestContext = [];
-        foreach (['event_type', 'event_date', 'event_time', 'end_time', 'venue', 'venue_type', 'venue_size', 'guest_count', 'table_count', 'special_requests'] as $key) {
-            if (array_key_exists($key, $requestContext) && $requestContext[$key] !== null && $requestContext[$key] !== '') {
+        foreach (['event_type', 'event_date', 'event_time', 'end_time', 'venue', 'venue_type', 'venue_size', 'venue_setting', 'guest_count', 'table_count', 'special_requests', 'design_brief'] as $key) {
+            if (array_key_exists($key, $requestContext) && $requestContext[$key] !== null && $requestContext[$key] !== '' && $requestContext[$key] !== []) {
                 $normalizedRequestContext[$key] = $requestContext[$key];
             }
         }
@@ -861,9 +1080,12 @@ PROMPT;
      */
     public static function analysisContextHash(array $context): string
     {
-        $keys = ['event_type', 'event_date', 'event_time', 'end_time', 'venue', 'scale', 'special_requests'];
+        $keys = ['event_type', 'event_date', 'event_time', 'end_time', 'venue', 'venue_setting', 'scale', 'special_requests', 'design_brief'];
 
-        return md5(json_encode(array_map(fn (string $key) => (string) ($context[$key] ?? ''), array_combine($keys, $keys))));
+        return md5(json_encode(array_map(
+            fn (string $key) => is_array($context[$key] ?? null) ? $context[$key] : (string) ($context[$key] ?? ''),
+            array_combine($keys, $keys)
+        ) + ['prompt_version' => self::PROMPT_VERSION]));
     }
 
     /**
@@ -895,7 +1117,9 @@ PROMPT;
         ?string $venue = null,
         ?string $scaleContext = null,
         ?string $eventDate = null,
-        ?string $endTime = null
+        ?string $endTime = null,
+        ?array $designBrief = null,
+        ?string $venueSetting = null
     ): array
     {
         if (!file_exists($filePath)) {
@@ -911,9 +1135,9 @@ DYNAMIC VISUAL DETECTION & ANTI-HALLUCINATION RULES (CRITICAL):
 2. Full Coverage Mandatory: Treat the entire image as a design inventory. If a visible element is meaningful to the arrangement or venue styling, include it. Do not omit obvious flowers in corners, background clusters, or secondary structures simply because the main item is in focus.
 3. No Color Inventing: Restrict variations strictly to the image's dominant, visible color palette. NEVER introduce unrepresented colors.
 4. No Presumptuous Bundling: Do NOT guess unseen accessories or "standard package add-ons" (no photo booths, welcome signages, or aisle carpets unless they physically appear in the photo).
-5. Inferred Mechanics Are Recommendations: Behind-the-scenes mechanical supplies may be listed only as recommendations when they are not directly visible. They must use `is_detected: false`, `is_recommendation: true`, and `visual_location: null`.
+5. Inferred Mechanics Are Recommendations: Behind-the-scenes mechanical supplies may be listed only as recommendations when they are not directly visible. They must use `is_detected: false`, `is_recommendation: true`, and `boxes: []`.
 6. Detection Granularity: Do not create multiple detected rows for the same physical visual element or near-duplicate descriptions. Separate rows are allowed only when the items are genuinely distinct and visually distinguishable.
-7. Detection Versus Recommendation: Every row must be either a visible detection or a recommendation. A recommendation may support planning, but it is not a visual detection and must never receive a visual location merely because it appears in the material list.
+7. Detection Versus Recommendation: Every row must be either a visible detection or a recommendation. A recommendation may support planning, but it is not a visual detection and must never receive boxes merely because it appears in the material list.
 
 CATEGORY CLASSIFICATION (STRICT):
 Assign EVERY detected item to its most fitting functional category. The category output must NEVER be empty, null, or set to "misc". You must use one of the following exact string values:
@@ -924,15 +1148,16 @@ Assign EVERY detected item to its most fitting functional category. The category
 
 ITEMIZATION RULES:
 1. Prevent Floral Aggregation: Do NOT combine clearly distinguishable flower species or color variations into a single generic item line. Separate them only when the visual difference is clear and useful for planning; do not fragment one visual cluster into many arbitrary rows.
-2. Annotation Eligibility: A row may receive a visual location only when the named item itself is visible and the approximate point/region can be tied to that item in the original image. If it is not visually identifiable, hidden, inferred, supporting, or uncertain, keep the row as a recommendation or detected-without-location only when justified, and set `visual_location` to null.
-3. Coverage Audit: Before returning JSON, review the image a second time by zones and confirm that every clearly distinguishable visible material, object, or functional prop useful for the design breakdown was considered. Do not add a fixed number of rows and do not invent uncertain detections; use null locations or recommendations when a visible distinction cannot be supported.
-4. Object-Specific Grounding Audit: For every detected row with a non-null visual_location, identify the actual visible object first, then place the point at that object's center or a clearly representative part of that object. Do not place a flower row on a neighboring flower, mixed cluster, background, garment, or general area. If the point cannot distinguish the named item from nearby items, set visual_location to null instead of returning a broad or misleading coordinate.
-5. Non-Venue Composition Handling: If the upload is a floral garment, wearable arrangement, bouquet, headpiece, floral sculpture, product composition, or other non-venue floral design, analyze the visible composition itself. Do not force venue areas such as ceiling, stage, or tables; use `overall` when no approved area fits. Break out clearly distinguishable flower groups, foliage, structural visible materials, and decorative components, while keeping hidden mechanics as recommendations with null locations.
+2. Annotation Eligibility: A row may receive `boxes` only when the named item itself is visible and each box can be tied to that item in the image. If it is not visually identifiable, hidden, inferred, supporting, or uncertain, keep the row as a recommendation or detected-without-box only when justified, and use `boxes: []`.
+3. Coverage Audit: Before returning JSON, review the image a second time by zones and confirm that every clearly distinguishable visible material, object, or functional prop useful for the design breakdown was considered. Do not add a fixed number of rows and do not invent uncertain detections; use empty `boxes` or recommendations when a visible distinction cannot be supported.
+4. Object-Specific Grounding Audit: For every box, identify the actual visible object first, then draw the box tightly around that object only. One box covers one flower cluster, arrangement or object: never one box per stem or bloom, and never one box around several separate clusters. When the same item appears in several separate places (for example the same roses in every centerpiece), give one box per place, up to 12; when there are more than 12, box the 12 clearest and put the total number of places in `detected_regions`. Do not box a neighboring flower, a mixed cluster, the background, a garment, or a general area for a flower row. If a box cannot separate the named item from nearby items, leave that box out instead of returning a broad or misleading box.
+5. Non-Venue Composition Handling: If the upload is a floral garment, wearable arrangement, bouquet, headpiece, floral sculpture, product composition, or other non-venue floral design, analyze the visible composition itself. Do not force venue areas such as ceiling, stage, or tables; use `overall` when no approved area fits. Break out clearly distinguishable flower groups, foliage, structural visible materials, and decorative components, while keeping hidden mechanics as recommendations with empty `boxes`.
 
 QUANTITY & SCALE GROUNDING:
 1. Primary Anchors: The booked table count and guest count (provided in the Context block below) MUST be used as the absolute anchors for calculating the quantities of table linens, chairs, and centerpieces. Use the uploaded photo only for visual style, bloom density, and material selection, while multiplying those materials by the provided table/guest counts.
 2. Provide realistic estimated quantities and prices in Philippine Pesos (PHP / ₱). Use realistic wholesale floor prices for flowers in the Dangwa/local market context.
 3. Output raw baseline market costs ONLY. Do NOT apply labor, setup, or 3x markup in the item prices (the backend handles the 3x pricing rule).
+4. Boxes Are Not Counts: Quantities come from the Context counts and the counting rules above, never from the number of boxes. A box only marks where an item is visible in this photo, not how many are needed for the event.
 
 SUGGESTED ALTERNATIVES & SEASONAL CONTEXT (DECISION-SUPPORT ONLY):
 1. Alternatives: If a detected or recommended flower is expensive, delicate, or potentially difficult to source in the Philippines, you may suggest a practical, accessible floral substitute in `suggested_alternative` (e.g., Spray Rose for Garden Rose) and state why in `alternative_reason`. If no substitute is needed, set both to null.
@@ -960,26 +1185,23 @@ REQUIRED JSON SCHEMA:
       "alternative_reason": "string or null",
       "seasonality_status": "string or null",
       "seasonal_notes": "string or null",
-      "visual_location": {
-          "x": number,
-          "y": number,
-          "width": number,
-          "height": number
-      } or null
+      "boxes": [{ "box_2d": [ymin, xmin, ymax, xmax], "confidence": number from 0.0 to 1.0 }]
     }
   ]
 }
 
-When area information is available, group items by the area where the item actually appears and indicate whether each entry is an AI-detected element or an AI recommendation. For each visibly identifiable detection, provide one approximate normalized `visual_location` using x and y from 0.0 to 1.0 measured from the original image's left and top edges. Use the point or region that corresponds to the named item, not an arbitrary point in the area. Add width and height from 0.0 to 1.0 only when the visible region can be estimated reliably. Use null when the item cannot be visually grounded with reasonable confidence. Recommendations and non-visible supporting materials must use null. Never derive visual_location from area, item order, array position, a generic region, or another item's location; never invent coordinates. Before returning JSON, verify that every non-null visual_location belongs to a row with `is_detected: true` and `is_recommendation: false`, that every detected row with no reliable location uses null rather than a guess, and that each point visibly lands on the named item itself rather than only its surrounding area.
+When area information is available, group items by the area where the item actually appears and indicate whether each entry is an AI-detected element or an AI recommendation. For each visibly identifiable detection, return its bounding boxes in `boxes`, one per visible cluster or instance. Each `box_2d` is four integers [ymin, xmin, ymax, xmax] on a 0-1000 scale of this image exactly as it was given to you: y is measured down from the top edge as a share of the image height, x is measured right from the left edge as a share of the image width, and (0, 0) is the top-left corner. Keep the order y before x. Draw each box tightly around the visible extent of the named item itself, not an arbitrary part of its area. Each box's `confidence` is your calibrated probability that this box really contains the named item. Use an empty list when the item cannot be visually grounded with reasonable confidence. Recommendations and non-visible supporting materials must use an empty list. Never derive boxes from area, item order, array position, a generic region, or another item's box; never invent coordinates. Before returning JSON, verify that every box belongs to a row with `is_detected: true` and `is_recommendation: false`, that every detected row with no reliable box uses an empty list rather than a guess, and that each box visibly encloses the named item itself rather than only its surrounding area.
 
 CONFIDENCE CALIBRATION:
 - Return `confidence` for every row as your calibrated probability that the named item is actually visible and correctly identified in this image, not how certain you are that the item is commonly used in event design.
-- Use the full 0.0-1.0 range. Clear, unobstructed, object-specific detections with a reliable location should generally be 0.85-0.98. Partially visible, overlapping, small, or ambiguous detections should generally be 0.55-0.84. Recommendations or items not visibly confirmed should generally be 0.30-0.60.
+- Use the full 0.0-1.0 range. Clear, unobstructed, object-specific detections with a reliable box should generally be 0.85-0.98. Partially visible, overlapping, small, or ambiguous detections should generally be 0.55-0.84. Recommendations or items not visibly confirmed should generally be 0.30-0.60.
 - Do not reuse the same confidence value across rows unless their visual evidence is genuinely equivalent. A recommendation must not receive the same confidence as a clearly visible detection.
-- Set `needs_review` to true when confidence is below 0.80, the named item is partly obscured or overlapping, or the visual location cannot be tied to that item. Explain the reason briefly in `review_message`. Set it to false for clear, object-specific detections.
+- Set `needs_review` to true when confidence is below 0.80, the named item is partly obscured or overlapping, or a box cannot be tied to that item. Explain the reason briefly in `review_message`. Set it to false for clear, object-specific detections.
 PROMPT;
 
-        if (!empty($eventType) || !empty($eventDate) || !empty($eventTime) || !empty($endTime) || !empty($venue) || !empty($specialRequests) || !empty($scaleContext)) {
+        $briefLines = EventDesignBrief::promptContextLines($designBrief, $venueSetting);
+
+        if (!empty($eventType) || !empty($eventDate) || !empty($eventTime) || !empty($endTime) || !empty($venue) || !empty($specialRequests) || !empty($scaleContext) || $briefLines !== []) {
             $systemPrompt .= "\n\nContext:";
             if (!empty($eventType)) {
                 $systemPrompt .= "\n- Event Type: " . trim($eventType);
@@ -1002,19 +1224,16 @@ PROMPT;
             if (!empty($specialRequests)) {
                 $systemPrompt .= "\n- Special Requests: " . trim($specialRequests);
             }
+            foreach ($briefLines as $line) {
+                $systemPrompt .= "\n- " . $line;
+            }
         }
 
+        $systemPrompt .= EventDesignBrief::promptRules($designBrief, $venueSetting);
+
         $preparedImage = $this->prepareImageForGemini($filePath);
-        if (is_array($preparedImage)) {
-            $mimeType = $preparedImage['mime_type'];
-            $base64 = $preparedImage['data'];
-            $tempFilePath = null;
-        } else {
-            $tempFilePath = $preparedImage;
-            $fileContents = file_get_contents($tempFilePath);
-            $base64 = base64_encode($fileContents);
-            $mimeType = mime_content_type($tempFilePath) ?: 'image/jpeg';
-        }
+        $mimeType = $preparedImage['mime_type'];
+        $base64 = $preparedImage['data'];
 
         $lastException = null;
         $consecutiveQuotaFailures = 0;
@@ -1152,24 +1371,17 @@ PROMPT;
                     'mime_type' => $mimeType,
                     'width' => null,
                     'height' => null,
-                    'prepared_mime_type' => null,
-                    'prepared_width' => null,
-                    'prepared_height' => null,
+                    'prepared_mime_type' => $mimeType,
+                    'prepared_width' => $preparedImage['width'],
+                    'prepared_height' => $preparedImage['height'],
+                    'exif_orientation' => $preparedImage['exif_orientation'],
+                    'box_orientation' => $preparedImage['box_orientation'],
                 ];
-
-                if (is_string($tempFilePath) && file_exists($tempFilePath)) {
-                    $preparedInfo = @getimagesize($tempFilePath);
-                    if (is_array($preparedInfo) && isset($preparedInfo[0], $preparedInfo[1])) {
-                        $preparedMeta['prepared_mime_type'] = $preparedInfo['mime'] ?? $mimeType;
-                        $preparedMeta['prepared_width'] = (int) $preparedInfo[0];
-                        $preparedMeta['prepared_height'] = (int) $preparedInfo[1];
-                    }
-                }
 
                 return [
                     'model_used' => $model,
                     'analyzed_at' => now()->toIso8601String(),
-                    'analysis' => $parsed,
+                    'analysis' => $this->alignBoxesWithDisplayedImage($parsed, $preparedImage['box_orientation']),
                     'raw_response' => $body,
                     'generation_config' => $generationConfig,
                     'image_metadata' => $preparedMeta,
@@ -1206,15 +1418,7 @@ PROMPT;
                 }
 
                 throw $e;
-            } finally {
-                if (isset($tempFilePath) && file_exists($tempFilePath) && $tempFilePath !== $filePath) {
-                    @unlink($tempFilePath);
-                }
             }
-        }
-
-        if (isset($tempFilePath) && file_exists($tempFilePath) && $tempFilePath !== $filePath) {
-            @unlink($tempFilePath);
         }
 
         Log::warning('All Gemini fallback models failed; throwing exception.', [
@@ -1226,17 +1430,69 @@ PROMPT;
     }
 
     /**
-     * Prepare an image for Gemini by resizing and encoding to optimized JPEG.
-     * @param string $filePath
-     * @return string Temporary JPEG file path
+     * Gemini returns boxes in the frame of the image it was sent. When that was the stored frame
+     * of a turned phone photo, each box is turned the way browsers turn the photo, so it lands
+     * on the item as people see it. When the frame is unknown no box is kept.
+     */
+    protected function alignBoxesWithDisplayedImage(array $analysis, ?int $boxOrientation): array
+    {
+        if ($boxOrientation === 1 || !is_array($analysis['suggested_materials'] ?? null)) {
+            return $analysis;
+        }
+
+        foreach ($analysis['suggested_materials'] as $index => $material) {
+            if (!is_array($material)) {
+                continue;
+            }
+
+            $aligned = [];
+            foreach ($boxOrientation === null ? [] : $this->rawBoxEntries($material) as $entry) {
+                $box = $this->normalizeBox($entry['box']);
+                if ($box !== null) {
+                    $aligned[] = ['box_2d' => ImageOrientation::mapBoxToDisplay($box, $boxOrientation), 'confidence' => $entry['confidence']];
+                }
+            }
+
+            $material['boxes'] = $aligned;
+            unset($material['box_2d'], $material['visual_location']);
+            $analysis['suggested_materials'][$index] = $material;
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * Prepare an image for Gemini: an upright JPEG of at most 1024px when GD is available,
+     * otherwise the original bytes with the EXIF turn tag neutralised.
+     *
+     * `box_orientation` is the EXIF turn still to apply to Gemini's boxes so they match the photo
+     * as browsers show it: 1 for none, null when it cannot be known.
+     *
+     * @return array{mime_type: string, data: string, width: ?int, height: ?int, exif_orientation: int, box_orientation: ?int}
      * @throws \Exception
      */
-    protected function prepareImageForGemini(string $filePath): array|string
+    protected function prepareImageForGemini(string $filePath): array
     {
+        $orientation = ImageOrientation::read($filePath);
+
         if (!function_exists('imagecreatefromjpeg') || !function_exists('imagecreatefrompng') || !function_exists('imagecreatetruecolor') || !function_exists('imagejpeg')) {
+            $bytes = file_get_contents($filePath);
+            $info = @getimagesize($filePath);
+            $boxOrientation = 1;
+
+            if ($orientation !== 1) {
+                $untagged = ImageOrientation::withoutOrientationTag($bytes);
+                $bytes = $untagged ?? $bytes;
+                $boxOrientation = $untagged !== null ? $orientation : null;
+            }
+
             return [
                 'mime_type' => mime_content_type($filePath) ?: 'image/jpeg',
-                'data' => base64_encode(file_get_contents($filePath)),
+                'data' => base64_encode($bytes),
+                'width' => is_array($info) ? (int) $info[0] : null,
+                'height' => is_array($info) ? (int) $info[1] : null,
+                'exif_orientation' => $orientation,
+                'box_orientation' => $boxOrientation,
             ];
         }
 
@@ -1245,62 +1501,89 @@ PROMPT;
             throw new \Exception('Unsupported image format for Gemini upload.');
         }
 
-        [$width, $height, $type] = $info;
-        $maxDimension = 1024;
-        $ratio = min(1, $maxDimension / $width, $maxDimension / $height);
-        $newWidth = (int) round($width * $ratio);
-        $newHeight = (int) round($height * $ratio);
-
-        switch ($type) {
-            case IMAGETYPE_JPEG:
-                $source = imagecreatefromjpeg($filePath);
-                break;
-            case IMAGETYPE_PNG:
-                $source = imagecreatefrompng($filePath);
-                break;
-            case IMAGETYPE_GIF:
-                $source = imagecreatefromgif($filePath);
-                break;
-            case IMAGETYPE_WEBP:
-                $source = imagecreatefromwebp($filePath);
-                break;
-            case IMAGETYPE_BMP:
-                $source = imagecreatefrombmp($filePath);
-                break;
-            default:
-                throw new \Exception('Unsupported image type for Gemini upload.');
-        }
+        $source = match ($info[2]) {
+            IMAGETYPE_JPEG => imagecreatefromjpeg($filePath),
+            IMAGETYPE_PNG => imagecreatefrompng($filePath),
+            IMAGETYPE_GIF => imagecreatefromgif($filePath),
+            IMAGETYPE_WEBP => imagecreatefromwebp($filePath),
+            IMAGETYPE_BMP => imagecreatefrombmp($filePath),
+            default => throw new \Exception('Unsupported image type for Gemini upload.'),
+        };
 
         if ($source === false) {
             throw new \Exception('Failed to read source image for resizing.');
         }
 
+        // GD ignores the EXIF tag, so the pixels are turned upright here before Gemini sees them.
+        $upright = $this->turnUpright($source, $orientation);
+        $boxOrientation = $upright !== null ? 1 : $orientation;
+        $source = $upright ?? $source;
+
+        $width = imagesx($source);
+        $height = imagesy($source);
+        $ratio = min(1, 1024 / $width, 1024 / $height);
+        $newWidth = max(1, (int) round($width * $ratio));
+        $newHeight = max(1, (int) round($height * $ratio));
+
         $resized = imagecreatetruecolor($newWidth, $newHeight);
         if ($resized === false) {
-            imagedestroy($source);
             throw new \Exception('Failed to create resized image canvas.');
         }
 
         imagecopyresampled($resized, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
 
-        $tempFile = tempnam(sys_get_temp_dir(), 'gemini_img_');
-        if ($tempFile === false) {
-            imagedestroy($source);
-            imagedestroy($resized);
-            throw new \Exception('Unable to create temporary file for Gemini upload.');
-        }
+        ob_start();
+        $written = imagejpeg($resized, null, 80);
+        $jpeg = ob_get_clean();
 
-        if (!imagejpeg($resized, $tempFile, 80)) {
-            imagedestroy($source);
-            imagedestroy($resized);
-            @unlink($tempFile);
+        if (!$written || !is_string($jpeg) || $jpeg === '') {
             throw new \Exception('Failed to write resized JPEG image for Gemini upload.');
         }
 
-        imagedestroy($source);
-        imagedestroy($resized);
+        // Upright pixels carry no tag; unturned pixels are sent as stored and their boxes turned later.
+        return [
+            'mime_type' => 'image/jpeg',
+            'data' => base64_encode($jpeg),
+            'width' => $newWidth,
+            'height' => $newHeight,
+            'exif_orientation' => $orientation,
+            'box_orientation' => $boxOrientation,
+        ];
+    }
 
-        return $tempFile;
+    /** The image flipped/turned to its EXIF orientation, or null when GD could not do it. */
+    protected function turnUpright(\GdImage $image, int $orientation): ?\GdImage
+    {
+        if ($orientation === 1) {
+            return $image;
+        }
+
+        // imagerotate() turns anticlockwise; 270 is a quarter turn clockwise.
+        $angle = match ($orientation) {
+            3 => 180,
+            5, 6 => 270,
+            7, 8 => 90,
+            default => 0,
+        };
+
+        if ($angle !== 0) {
+            $image = imagerotate($image, $angle, 0);
+            if ($image === false) {
+                return null;
+            }
+        }
+
+        $flip = match ($orientation) {
+            2, 5, 7 => IMG_FLIP_HORIZONTAL,
+            4 => IMG_FLIP_VERTICAL,
+            default => null,
+        };
+
+        if ($flip !== null && !imageflip($image, $flip)) {
+            return null;
+        }
+
+        return $image;
     }
 
     /**

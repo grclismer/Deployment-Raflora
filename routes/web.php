@@ -54,6 +54,10 @@ Route::get('/booking/start', function () {
 // Public Packages Route
 Route::get('/packages', [\App\Http\Controllers\PackageController::class, 'index'])->name('packages.index');
 
+// Venue location finder (guest + client booking forms, Admin/Staff venue maps)
+Route::get('/location/search', [\App\Http\Controllers\LocationController::class, 'search'])->middleware('throttle:30,1')->name('location.search');
+Route::get('/location/reverse', [\App\Http\Controllers\LocationController::class, 'reverse'])->middleware('throttle:30,1')->name('location.reverse');
+
 // Guest Booking Routes
 Route::get('/guest/booking', [\App\Http\Controllers\GuestBookingController::class, 'create'])->name('guest.booking.create');
 Route::post('/guest/booking', [\App\Http\Controllers\GuestBookingController::class, 'store'])->middleware('throttle:3,1')->name('guest.booking.store');

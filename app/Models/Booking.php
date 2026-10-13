@@ -87,11 +87,16 @@ class Booking extends Model
         'event_type',
         'event_date',
         'event_time',
+        'end_time',
         'event_size',
         'table_count',
         'setup_type',
         'venue',
+        'venue_latitude',
+        'venue_longitude',
+        'venue_setting',
         'special_requests',
+        'design_brief',
         'inspiration_image',
         'status',
         'pre_cancellation_status',
@@ -141,7 +146,18 @@ class Booking extends Model
         'total_quoted' => 'decimal:2',
         'ai_analysis_data' => 'json',
         'analysis_data' => 'json',
+        'venue_latitude' => 'float',
+        'venue_longitude' => 'float',
+        'design_brief' => 'array',
     ];
+
+    /**
+     * Whether the client pinned the venue with the location finder.
+     */
+    public function hasVenueCoordinates(): bool
+    {
+        return $this->venue_latitude !== null && $this->venue_longitude !== null;
+    }
 
     public function isInPreparationPeriod(): bool
     {

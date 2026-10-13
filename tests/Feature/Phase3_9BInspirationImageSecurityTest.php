@@ -93,7 +93,7 @@ class Phase3_9BInspirationImageSecurityTest extends TestCase
             'event_date' => now()->addDays(30)->toDateString(),
             'venue' => 'Secret Garden',
             'inspiration_image' => $image,
-            'theme' => 'Rustic',
+            'theme' => 'rustic', // option key from App\Support\EventDesignBrief::THEMES
             'budget' => 50000,
             'analysis_token' => $analysisToken,
         ]);

@@ -46,6 +46,7 @@ class EventController extends Controller
             'returnRecord' => $assignedBooking->returns()->latest()->first(),
             'dispatchedQuantities' => $dispatchedQuantities,
             'bookingMessages' => $bookingMessages,
+            'aiMaterials' => $assignedBooking->aiAnalyses()->latest('analyzed_at')->first()?->suggested_materials ?? [],
         ]);
     }
 
