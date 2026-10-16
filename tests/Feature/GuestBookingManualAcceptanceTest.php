@@ -306,8 +306,8 @@ class GuestBookingManualAcceptanceTest extends TestCase
         $response->assertSee('Awaiting Claim');
         $response->assertSee('Raflora Review');
         $response->assertDontSee('Request Expires');
-        $response->assertSee('CLAIM YOUR REQUEST');
-        $response->assertSee('Claim Booking');
+        $response->assertSee('CLAIM REQUIRED BEFORE EXPIRATION');
+        $response->assertSee('Create Account &amp; Claim', false);
 
         // Catalog price vs official quote notice
         $response->assertSee('Catalog Package Price');

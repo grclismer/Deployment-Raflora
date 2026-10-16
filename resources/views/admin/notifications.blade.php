@@ -1,6 +1,6 @@
 <x-admin-layout title="Notifications" description="Review payment verification requests, inventory shortages, and other admin alerts in one place.">
     <x-slot:actions>
-        <form method="POST" action="{{ route('admin.alerts.read-all') }}">
+        <form method="POST" action="{{ route('admin.alerts.read-all') }}" data-confirm="Dismiss all alerts?" data-confirm-message="Alerts are marked as read. Stock count requests from Staff stay open until you approve or reject them, and payments still need verifying." data-confirm-label="Dismiss all">
             @csrf
             <button type="submit" class="inline-flex items-center gap-2 h-9 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
                 <i class="fa-solid fa-check-double text-xs" aria-hidden="true"></i>
@@ -133,7 +133,7 @@
                             <button type="button" onclick="openNotificationModal('{{ $card['modalId'] }}')" class="{{ $btnSecondary }} py-1.5">
                                 {{ $card['actionLabel'] }}
                             </button>
-                            @if(!($alert->is_dynamic ?? false))
+                            @if(!($alert->is_dynamic ?? false) && !$alert->requiresDecision())
                                 <form method="POST" action="{{ route('admin.alerts.read', $alert) }}">
                                     @csrf
                                     <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition" title="Mark this alert as read">
@@ -190,7 +190,7 @@
                                             <tr>
                                                 <th scope="col">Item</th>
                                                 <th scope="col" class="!text-right">Physical</th>
-                                                <th scope="col" class="!text-right">Reserved</th>
+                                                <th scope="col" class="!text-right" title="Stock already held for other confirmed bookings">Held for Other Bookings</th>
                                                 <th scope="col" class="!text-right">Shortfall</th>
                                                 <th scope="col" class="!text-right w-32">Add Stock</th>
                                             </tr>
@@ -289,7 +289,8 @@
                             <a href="{{ route('admin.inventory.index') }}" class="{{ $btnSecondary }}">Manage Inventory</a>
                             <button type="button" class="{{ $btnSecondary }}" onclick="closeNotificationModal('{{ $modalId }}')">Close</button>
                         </div>
-                    @elseif($isInventoryAlert)
+                    {{-- A Staff stock count carries an inventory item but needs Approve/Reject, not a restock form. --}}
+                    @elseif($isInventoryAlert && !$isPhysicalVarianceAlert)
                         @php
                             $inventoryItem = $alert->inventory_item_id ? \App\Models\InventoryItem::find($alert->inventory_item_id) : null;
                             $physicalStock = (float) ($inventoryItem?->current_stock ?? 0);
@@ -377,20 +378,20 @@
 
                         <div class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4">
                             @if($isPaymentAlert && $alert->booking_id && $latestPayment)
-                                <form id="reject-payment-alert-{{ $latestPayment->id }}" method="POST" action="{{ route('admin.payments.reject', ['payment' => $latestPayment->id]) }}">
+                                <form id="reject-payment-alert-{{ $latestPayment->id }}" method="POST" action="{{ route('admin.payments.reject', ['payment' => $latestPayment->id]) }}" data-confirm="Reject this payment?" data-confirm-message="The client will be told the payment could not be verified. The booking stays unconfirmed until a valid payment is verified." data-confirm-label="Reject payment" data-confirm-tone="danger">
                                     @csrf
                                     <button type="submit" class="{{ $btnDanger }}">Reject</button>
                                 </form>
-                                <form method="POST" action="{{ route('admin.payments.verify', ['payment' => $latestPayment->id]) }}">
+                                <form method="POST" action="{{ route('admin.payments.verify', ['payment' => $latestPayment->id]) }}" data-confirm="Verify this payment?" data-confirm-message="Only verify after checking the reference against Raflora's account. Verifying records the payment and can confirm the booking." data-confirm-label="Verify payment">
                                     @csrf
                                     <button type="submit" class="{{ $btnPrimary }}"><i class="fa-solid fa-check" aria-hidden="true"></i>Verify &amp; Lock Booking</button>
                                 </form>
                             @elseif($isPhysicalVarianceAlert)
-                                <form method="POST" action="{{ route('admin.inventory.adjustments.reject', $alert) }}">
+                                <form method="POST" action="{{ route('admin.inventory.adjustments.reject', $alert) }}" data-confirm="Reject this stock count?" data-confirm-message="System stock stays as it is and the request is closed." data-confirm-label="Reject count" data-confirm-tone="danger">
                                     @csrf
                                     <button type="submit" class="{{ $btnDanger }}">Reject</button>
                                 </form>
-                                <form method="POST" action="{{ route('admin.inventory.adjustments.approve', $alert) }}">
+                                <form method="POST" action="{{ route('admin.inventory.adjustments.approve', $alert) }}" data-confirm="Apply this stock count?" data-confirm-message="System stock is set to the count Staff observed and the change is recorded." data-confirm-label="Apply count">
                                     @csrf
                                     <button type="submit" class="{{ $btnPrimary }}">Approve &amp; Apply Adjustment</button>
                                 </form>

@@ -40,75 +40,47 @@ class GuestBookingClaimAndExpirationUxTest extends TestCase
 
         $response->assertOk();
 
-        // 1. Header & Request identity
+        // 1. Header & Request identity (the claim actions live once, in the claim panel)
         $response->assertSee('Guest Request');
         $response->assertSee('Booking Request Received');
         $response->assertSee('Track My Booking');
-        $response->assertSee('Claim Booking');
         $response->assertSee('your booking request has been received.');
         $response->assertSee('Raflora will review your event details and, where applicable, analyze your inspiration image before preparing your quotation.');
         $response->assertSee('NO PAYMENT IS REQUIRED AT THIS STAGE');
 
-        // 2. README booking workflow: Guest Workflow (Request Submitted → Awaiting Claim) is current;
+        // 2. Guest Request Journey: the guest and client stages only (no Staff operational stages);
         //    Raflora Review only starts in the Client Workflow after the request is claimed.
         $response->assertSee('Guest Request Journey');
         $response->assertSee('Request Submitted');
         $response->assertSee('Awaiting Claim');
-        $response->assertSee('Stage 2 of 14 · Awaiting Claim');
+        $response->assertSee('Stage 2 of 8 · Awaiting Claim');
         $response->assertSee('Raflora Review');
         $response->assertSee('data-workflow-stage="awaiting_claim" data-workflow-state="current"', false);
         $response->assertSee('data-workflow-stage="raflora_review" data-workflow-state="upcoming"', false);
+        $response->assertDontSee('data-workflow-phase="staff"', false);
         $response->assertDontSee('Request Expires');
         $response->assertDontSee('Booking Confirmed');
         $response->assertDontSee('Payment / Downpayment');
 
-        // 3. Separate Guest Action Section
-        $response->assertSee('CLAIM YOUR REQUEST');
-        $response->assertSee('Claim this request before it expires');
-        $response->assertSee('Create Account &amp; Claim', false);
-        $response->assertSee('Log In &amp; Claim', false);
-
-        // 4. Status cards
-        $response->assertSee('Current Status');
-        $response->assertSee('Request Submitted — Awaiting Claim');
-        $response->assertSee('Your request is saved securely and is waiting to be claimed.');
-        $response->assertDontSee('Request Received &amp; Under Review', false);
-
-        $response->assertSee('Claim Status');
-        $response->assertSee('Not Yet Claimed');
-        $response->assertSee('Create an account or log in to claim this request before it expires.');
-
-        // 5. Expiration Section
+        // 3. One claim panel: its heading, the countdown, and the claim actions
+        $response->assertSee('Claim &amp; Manage Your Booking Request', false);
         $response->assertSee('CLAIM REQUIRED BEFORE EXPIRATION');
         $response->assertSee('Request Active');
         $response->assertSee('remaining');
         $response->assertSee('Claim before');
         $response->assertSee($expiresAt->format('F j, Y'));
+        $response->assertSee('Create Account &amp; Claim', false);
+        $response->assertSeeText('Already have an account? Log In & Claim');
+        $response->assertSee('Create an account or log in to claim this request before it expires. You can still track this request as a guest until the expiration time.');
 
-        // 6. What Raflora Is Doing & What to Expect Next
-        $response->assertSee('What Raflora Is Doing');
-        $response->assertSee('Your request and inspiration details are saved securely. Raflora Review begins as soon as you claim this request with a registered client account.');
-        $response->assertDontSee('Our styling team is assessing your event specifications');
-        $response->assertSee('What You Should Expect Next');
-        $response->assertSee('Raflora will review your request and prepare the appropriate material and quotation details.');
-        $response->assertSee('Claim this request before it expires by creating an account or logging in.');
-        $response->assertSee('Once claimed and the official quotation is ready, you can review and accept the quotation before proceeding with payment.');
+        // 4. Repeated status, claim-status, countdown and "what happens next" blocks are gone:
+        //    the journey above is the one current status.
+        foreach (['Current Status', 'Claim Status', 'Time Remaining', 'Request Status', 'What Raflora Is Doing', 'What You Should Expect Next', 'What Happens Next?', 'CLAIM YOUR REQUEST', 'Track Your Booking Easily'] as $removed) {
+            $response->assertDontSee($removed);
+        }
+        $this->assertSame(1, substr_count($response->getContent(), 'id="expirationCountdownText"'));
 
-        // 7. Claim & Manage Panel (consolidated, no duplicate "Track Your Booking Easily")
-        $response->assertDontSee('Track Your Booking Easily');
-        $response->assertSee('Claim &amp; Manage Your Booking Request', false);
-        $response->assertSee('Your request is saved securely. Create an account now to claim this request and manage it from your client account. If you already have an account, log in to claim it.');
-        $response->assertSee('You can continue tracking this request as a guest until it expires.');
-
-        // 8. What Happens Next — README order (claim first, then the Client Workflow)
-        $response->assertSee('What Happens Next?');
-        $response->assertSee('1. Claim Your Request With a Raflora Account');
-        $response->assertSee('2. Raflora Review');
-        $response->assertSee('3. Material Preparation &amp; Validation', false);
-        $response->assertSee('4. Quotation &amp; Approval', false);
-        $response->assertSee('5. Payment &amp; Confirmation', false);
-
-        // 9. Privacy: Full email is never exposed in the public view text
+        // 5. Privacy: Full email is never exposed in the public view text
         $response->assertDontSee('maria.clara.secret@example.com');
     }
 
@@ -137,7 +109,9 @@ class GuestBookingClaimAndExpirationUxTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Claim Soon');
-        $response->assertSee('Your guest request expires in');
+        // The one countdown, in the claim panel.
+        $response->assertSee('2h 1', false);
+        $response->assertSee('m remaining');
     }
 
     /**

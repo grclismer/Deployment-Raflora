@@ -12,90 +12,35 @@ use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Services\ReturnRecordService;
 use Illuminate\Support\Facades\DB;
 
 class ReturnTrackingController extends Controller
 {
-    protected function collectHardwareItemsForBooking(Booking $booking)
-    {
-        return InventoryTransaction::with('inventoryItem')
-            ->where('booking_id', $booking->id)
-            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-            ->get()
-            ->filter(fn ($tx) => $tx->inventoryItem && !$tx->inventoryItem->is_perishable)
-            ->groupBy('inventory_item_id')
-            ->filter(fn ($txs) => abs((float) $txs->sum('quantity_change')) > 0)
-            ->map(fn ($txs) => $txs->first()->inventoryItem)
-            ->values();
-    }
-
     protected function dispatchedQuantitiesForBooking(Booking $booking): array
     {
-        return InventoryTransaction::with('inventoryItem')
-            ->where('booking_id', $booking->id)
-            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-            ->get()
-            ->filter(fn ($tx) => $tx->inventoryItem && !$tx->inventoryItem->is_perishable)
-            ->groupBy('inventory_item_id')
-            ->map(fn ($txs) => abs((float) $txs->sum('quantity_change')))
-            ->filter(fn ($qty) => $qty > 0)
-            ->all();
+        return app(ReturnRecordService::class)->dispatchedQuantities($booking);
     }
 
-    protected function initializeReturnForBooking(Booking $booking): ?AssetReturn
+    /**
+     * Whether a return audit belongs to this booking's stage: after the event, or a cancelled
+     * booking that had materials dispatched (or already has a return record).
+     */
+    protected function isEligibleForReturnAudit(Booking $booking): bool
     {
-        $hardwareItems = $this->collectHardwareItemsForBooking($booking);
-
-        if ($hardwareItems->isEmpty()) {
-            return null;
+        if (in_array($booking->status, ['event_completed', 'pending_return', 'pending_resolution', 'completed'], true)) {
+            return true;
         }
 
-        return DB::transaction(function () use ($booking, $hardwareItems) {
-            $return = AssetReturn::create([
-                'booking_id' => $booking->id,
-                'assigned_staff_id' => $booking->staff_id ?? null,
-                'status' => 'Pending',
-                'total_damage_charge' => 0,
-                'approval_status' => 'not_required',
-            ]);
-
-            foreach ($hardwareItems as $bookingItem) {
-                ReturnItem::create([
-                    'return_id' => $return->id,
-                    'inventory_item_id' => $bookingItem->id,
-                    'quantity_returned' => 0,
-                    'quantity_good' => 0,
-                    'quantity_damaged' => 0,
-                    'quantity_lost' => 0,
-                    'condition' => 'pending',
-                    'final_amount' => 0,
-                    'damage_charge' => 0,
-                ]);
-            }
-
-            return $return;
-        });
+        return $booking->status === 'cancelled'
+            && ($booking->returns()->exists()
+                || $booking->inventoryTransactions()->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])->exists());
     }
 
     public function index(Request $request)
     {
-        // Auto-initialize returns for bookings requiring return audit (including cancelled bookings with active dispatches)
-        $pendingReturnBookings = Booking::where(function ($q) {
-                $q->whereIn('status', ['event_completed', 'completed', 'pending_return', 'pending_resolution'])
-                  ->orWhere(function ($q2) {
-                      $q2->where('status', 'cancelled')
-                         ->whereHas('inventoryTransactions', function ($tx) {
-                             $tx->whereIn('transaction_type', ['dispatch', 'dispatch_correction']);
-                         });
-                  });
-            })
-            ->doesntHave('returns')
-            ->get();
-
-        foreach ($pendingReturnBookings as $booking) {
-            $this->initializeReturnForBooking($booking);
-        }
-
+        // Listing only: return records are opened when the event ends (Admin booking actions) or
+        // by Admin's "Start return audit" (start()), never by viewing this page.
         $search = trim((string) $request->input('search', ''));
         $status = (string) $request->input('status', 'all');
         $staffFilter = (string) $request->input('staff', 'all');
@@ -278,39 +223,48 @@ class ReturnTrackingController extends Controller
     {
         $booking = Booking::with(['client', 'returns.returnItems.inventoryItem'])->findOrFail($booking->id);
 
-        $hasDispatches = $booking->inventoryTransactions()
-            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-            ->exists();
-        $hasExistingReturn = $booking->returns()->exists();
-
-        $isEligibleStatus = in_array($booking->status, ['event_completed', 'pending_return', 'pending_resolution', 'completed'], true);
-        $isEligibleCancelled = ($booking->status === 'cancelled') && ($hasDispatches || $hasExistingReturn);
-
-        if (!$isEligibleStatus && !$isEligibleCancelled) {
+        if (!$this->isEligibleForReturnAudit($booking)) {
             return redirect()->route('admin.bookings')
                 ->with('error', "Return audit cannot be opened for booking #{$booking->id} because it has not completed event execution or reached an eligible return stage.");
         }
 
         $return = $booking->returns()->with(['returnItems.inventoryItem'])->latest()->first();
-
-        if (!$return) {
-            $return = $this->initializeReturnForBooking($booking);
-
-            if (!$return) {
-                // Booking has no dispatched hardware; create an empty return record so zero-hardware audit can be closed
-                $return = AssetReturn::create([
-                    'booking_id' => $booking->id,
-                    'status' => 'Pending',
-                    'total_damage_charge' => 0,
-                ]);
-            } else {
-                $return->load(['returnItems.inventoryItem']);
-            }
-        }
-
         $dispatchedQuantities = $this->dispatchedQuantitiesForBooking($booking);
 
+        // Viewing never creates the record; Admin starts the audit explicitly (start()).
+        if (!$return) {
+            return view('admin.return-tracking-start', compact('booking', 'dispatchedQuantities'));
+        }
+
         return view('admin.return-tracking-manage', compact('booking', 'return', 'dispatchedQuantities'));
+    }
+
+    /**
+     * Open the booking's return audit (ReturnRecordService): the dispatched reusable items, or an
+     * empty audit Admin can close when nothing was dispatched. Repeats reuse the same record.
+     */
+    public function start(Booking $booking)
+    {
+        if (!$this->isEligibleForReturnAudit($booking)) {
+            return redirect()->route('admin.bookings')
+                ->with('error', "Return audit cannot be opened for booking #{$booking->id} because it has not completed event execution or reached an eligible return stage.");
+        }
+
+        $hadReturn = $booking->returns()->exists();
+        $return = app(ReturnRecordService::class)->openFor($booking, allowEmpty: true);
+
+        if (!$hadReturn) {
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'return_audit_started',
+                'module' => 'return_tracking',
+                'details' => "Return audit {$return->reference} started for booking #{$booking->id} with " . $return->returnItems()->count() . ' dispatched item(s).',
+                'entity_type' => AssetReturn::class,
+                'entity_id' => $return->id,
+            ]);
+        }
+
+        return redirect()->route('admin.return-tracking.manage', $booking);
     }
 
     public function show(AssetReturn $return)
@@ -717,62 +671,7 @@ class ReturnTrackingController extends Controller
                             'entity_id' => $booking->id,
                         ]);
                     } else {
-                        $remainingBalance = $booking->fresh()->remaining_balance;
-
-                        $hasPendingResolution = $booking->returns()
-                            ->whereHas('returnItems', function ($q) {
-                                $q->where('charge_decision', 'pending')
-                                    ->where(function ($sub) {
-                                        $sub->whereIn('condition', ['damaged', 'lost', 'mixed'])
-                                            ->orWhere('quantity_damaged', '>', 0)
-                                            ->orWhere('quantity_lost', '>', 0);
-                                    });
-                            })->exists();
-
-                        if ($hasPendingResolution) {
-                            $targetStatus = 'pending_resolution';
-                        } elseif ($newStatus === 'Completed') {
-                            $targetStatus = ($remainingBalance <= 0) ? 'completed' : 'event_completed';
-                        } else {
-                            $targetStatus = 'pending_return';
-                        }
-
-                        if ($booking->status !== $targetStatus) {
-                            $booking->setNormalizedStatus($targetStatus)->save();
-
-                            AuditLog::create([
-                                'user_id' => auth()->id(),
-                                'action' => 'return_audit_status_applied',
-                                'module' => 'booking',
-                                'details' => 'Booking status changed to ' . $booking->status_display_label . ' after return audit',
-                                'entity_type' => Booking::class,
-                                'entity_id' => $booking->id,
-                            ]);
-
-                            if ($targetStatus === 'completed') {
-                                app(\App\Services\InventoryDispatchService::class)->releaseUnfulfilledReservations(
-                                    $booking,
-                                    auth()->id(),
-                                    'Released unfulfilled reservation upon return completion for booking #' . $booking->id
-                                );
-
-                                // client_id references clients.id; notifications belong to the client's user account.
-                                $clientUser = $booking->client && filter_var($booking->client->email, FILTER_VALIDATE_EMAIL)
-                                    ? \App\Models\User::where('email', $booking->client->email)->first()
-                                    : null;
-
-                                if ($clientUser) {
-                                    ClientNotification::create([
-                                        'user_id' => $clientUser->id,
-                                        'booking_id' => $booking->id,
-                                        'type' => 'booking_update',
-                                        'title' => 'Booking completed',
-                                        'message' => 'Your return audit is complete and your booking has been marked as completed.',
-                                        'is_read' => false,
-                                    ]);
-                                }
-                            }
-                        }
+                        $this->applyReturnOutcomeToBooking($booking, $newStatus);
                     }
                 }
             });
@@ -873,50 +772,205 @@ class ReturnTrackingController extends Controller
         $decision = $validated['decision'];
         $reason = $validated['reason'] ?? null;
 
-        if ($return->approval_status === 'approved' && $decision === 'approved') {
-            return back()->with('info', 'This return damage/loss adjudication has already been approved.');
-        }
+        // One locked transaction: the decision, the return's status and the booking's next
+        // status commit together, and a repeated click finds the decision already made.
+        [$level, $message] = DB::transaction(function () use ($return, $decision, $reason): array {
+            $booking = $return->booking_id ? Booking::whereKey($return->booking_id)->lockForUpdate()->first() : null;
+            $return = AssetReturn::whereKey($return->id)->lockForUpdate()->firstOrFail();
 
-        $return->update([
-            'approval_status' => $decision,
-            'approved_by' => auth()->id(),
-            'approved_at' => now(),
-        ]);
+            if ($return->approval_status === 'approved') {
+                return ['info', 'This return damage/loss adjudication has already been approved.'];
+            }
 
-        if ($decision === 'approved') {
-            foreach ($return->returnItems as $item) {
-                if ($item->charge_decision === 'pending' && ($item->quantity_damaged > 0 || $item->quantity_lost > 0)) {
+            $pendingItems = $return->returnItems()->get()->filter(fn (ReturnItem $item): bool => $this->awaitsChargeDecision($item));
+            if ($pendingItems->isEmpty()) {
+                return ['error', 'No damaged or lost item on this return is waiting for a charge decision.'];
+            }
+
+            $return->update([
+                'approval_status' => $decision,
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+            ]);
+
+            if ($decision === 'approved') {
+                foreach ($pendingItems as $item) {
                     $item->update([
                         'charge_decision' => ((float) $item->damage_charge > 0) ? 'charge' : 'no_charge',
                         'charge_decision_by' => auth()->id(),
                         'charge_decision_at' => now(),
                     ]);
                 }
-            }
-        }
 
-        AuditLog::create([
-            'user_id' => auth()->id(),
-            'action' => $decision === 'approved' ? 'return_damage_approved' : 'return_damage_rejected',
-            'module' => 'return_tracking',
-            'details' => ($decision === 'approved' ? 'Damage/loss adjudication approved' : 'Damage/loss adjudication rejected') .
-                " by " . auth()->user()->name . " for return {$return->reference}" .
-                ((float) $return->total_damage_charge > 0 ? " (Total damage charge: ₱" . number_format($return->total_damage_charge, 2) . ")" : "") .
-                ($reason ? " Reason: {$reason}" : ""),
-            'entity_type' => AssetReturn::class,
-            'entity_id' => $return->id,
-        ]);
+                $return->update([
+                    'status' => $this->returnIsComplete($return, $booking) ? 'Completed' : 'Partially Returned',
+                    'total_damage_charge' => (float) $return->returnItems()->sum('damage_charge'),
+                ]);
+            }
+
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => $decision === 'approved' ? 'return_damage_approved' : 'return_damage_rejected',
+                'module' => 'return_tracking',
+                'details' => ($decision === 'approved' ? 'Damage/loss adjudication approved' : 'Damage/loss adjudication rejected') .
+                    " by " . auth()->user()->name . " for return {$return->reference}" .
+                    ((float) $return->total_damage_charge > 0 ? " (Total damage charge: ₱" . number_format($return->total_damage_charge, 2) . ")" : "") .
+                    ($reason ? " Reason: {$reason}" : ""),
+                'entity_type' => AssetReturn::class,
+                'entity_id' => $return->id,
+            ]);
+
+            if ($decision === 'approved' && $booking) {
+                $this->notifyClientOfReturnReview($booking, (float) $return->total_damage_charge);
+
+                if ($booking->status !== 'cancelled') {
+                    $this->applyReturnOutcomeToBooking($booking, $return->status);
+                }
+            }
+
+            return ['success', "Adjudication decision '{$decision}' recorded successfully."];
+        });
+
+        $return->refresh();
 
         if ($request->wantsJson()) {
             return response()->json([
-                'success' => true,
-                'message' => "Adjudication decision '{$decision}' recorded successfully.",
+                'success' => $level !== 'error',
+                'message' => $message,
                 'approval_status' => $return->approval_status,
-                'approved_by' => auth()->user()->name,
+                'approved_by' => $return->approved_by ? User::find($return->approved_by)?->name : null,
                 'approved_at' => $return->approved_at?->format('M d, Y h:i A'),
-            ]);
+            ], $level === 'error' ? 422 : 200);
         }
 
-        return back()->with('success', "Adjudication decision '{$decision}' recorded successfully.");
+        return back()->with($level, $message);
+    }
+
+    /**
+     * Whether a return line has damage or loss still waiting for Admin's charge decision
+     * (the same rule the booking's "pending resolution" status uses).
+     */
+    protected function awaitsChargeDecision(ReturnItem $item): bool
+    {
+        return $item->charge_decision === 'pending'
+            && (in_array($item->condition, ['damaged', 'lost', 'mixed'], true)
+                || (float) $item->quantity_damaged > 0
+                || (float) $item->quantity_lost > 0);
+    }
+
+    /**
+     * Whether every dispatched unit on the return is accounted for and no charge decision is
+     * pending — the rule update() applies when the audit is saved.
+     */
+    protected function returnIsComplete(AssetReturn $return, ?Booking $booking): bool
+    {
+        $dispatchedQuantities = $booking ? $this->dispatchedQuantitiesForBooking($booking) : [];
+        $dispatchedTotal = 0.0;
+        $accountedTotal = 0.0;
+
+        foreach ($return->returnItems()->get() as $returnItem) {
+            $dispatchedQty = (float) ($dispatchedQuantities[$returnItem->inventory_item_id] ?? 0);
+            $accounted = (float) $returnItem->accounted_quantity;
+            if ($accounted == 0 && in_array($returnItem->condition, ['good', 'damaged', 'lost'], true)) {
+                $accounted = (float) $returnItem->quantity_returned;
+            }
+
+            $dispatchedTotal += $dispatchedQty;
+            $accountedTotal += min($dispatchedQty, $accounted);
+
+            if ($accounted < $dispatchedQty || $this->awaitsChargeDecision($returnItem)) {
+                return false;
+            }
+        }
+
+        return $dispatchedTotal > 0 && $accountedTotal >= $dispatchedTotal;
+    }
+
+    /**
+     * Move the booking to the stage its returns allow: pending resolution while any charge
+     * decision is open, completed (or event completed with a balance) once the audit is
+     * complete, otherwise pending return. On completion, unfulfilled reservations are released
+     * and the client is told.
+     */
+    protected function applyReturnOutcomeToBooking(Booking $booking, string $returnStatus): void
+    {
+        $remainingBalance = $booking->fresh()->remaining_balance;
+
+        $hasPendingResolution = $booking->returns()
+            ->whereHas('returnItems', function ($q) {
+                $q->where('charge_decision', 'pending')
+                    ->where(function ($sub) {
+                        $sub->whereIn('condition', ['damaged', 'lost', 'mixed'])
+                            ->orWhere('quantity_damaged', '>', 0)
+                            ->orWhere('quantity_lost', '>', 0);
+                    });
+            })->exists();
+
+        if ($hasPendingResolution) {
+            $targetStatus = 'pending_resolution';
+        } elseif ($returnStatus === 'Completed') {
+            $targetStatus = ($remainingBalance <= 0) ? 'completed' : 'event_completed';
+        } else {
+            $targetStatus = 'pending_return';
+        }
+
+        if ($booking->status === $targetStatus) {
+            return;
+        }
+
+        $booking->setNormalizedStatus($targetStatus)->save();
+
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'return_audit_status_applied',
+            'module' => 'booking',
+            'details' => 'Booking status changed to ' . $booking->status_display_label . ' after return audit',
+            'entity_type' => Booking::class,
+            'entity_id' => $booking->id,
+        ]);
+
+        if ($targetStatus === 'completed') {
+            app(\App\Services\InventoryDispatchService::class)->releaseUnfulfilledReservations(
+                $booking,
+                auth()->id(),
+                'Released unfulfilled reservation upon return completion for booking #' . $booking->id
+            );
+
+            $this->notifyClient($booking, 'Booking completed', 'Your return audit is complete and your booking has been marked as completed.', 'booking_update');
+        }
+    }
+
+    /**
+     * Tell the client the outcome of Admin's damage/loss review and any charge it added.
+     */
+    protected function notifyClientOfReturnReview(Booking $booking, float $totalCharge): void
+    {
+        $message = $totalCharge > 0
+            ? 'Raflora reviewed the materials returned for booking #' . $booking->id . '. Damage and loss charges of ₱' . number_format($totalCharge, 2)
+                . ' were added; your remaining balance is ₱' . number_format((float) $booking->fresh()->remaining_balance, 2) . '.'
+            : 'Raflora reviewed the materials returned for booking #' . $booking->id . '. No damage or loss charges apply.';
+
+        $this->notifyClient($booking, 'Return review complete', $message, 'payment_update');
+    }
+
+    /**
+     * client_id references clients.id; notifications belong to the client's user account.
+     */
+    protected function notifyClient(Booking $booking, string $title, string $message, string $type): void
+    {
+        $clientUser = $booking->client && filter_var($booking->client->email, FILTER_VALIDATE_EMAIL)
+            ? User::where('email', $booking->client->email)->first()
+            : null;
+
+        if ($clientUser) {
+            ClientNotification::create([
+                'user_id' => $clientUser->id,
+                'booking_id' => $booking->id,
+                'type' => $type,
+                'title' => $title,
+                'message' => $message,
+                'is_read' => false,
+            ]);
+        }
     }
 }

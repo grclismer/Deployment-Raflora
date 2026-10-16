@@ -145,7 +145,9 @@ class ClaimGuestBookingController extends Controller
                     'status' => 'pending',
                     'total_quoted' => 0,
                     'raw_materials_sum' => 0,
-                    'multiplier' => 1.0,
+                    // A package's catalog price is final (1×); a custom request starts at the same
+                    // quotation markup as a client's own custom booking, which Admin may then adjust.
+                    'multiplier' => $tempBooking->booking_type === 'preset' && $tempBooking->package_id ? 1.0 : Booking::DEFAULT_QUOTATION_MARKUP,
                     'final_quoted_price' => 0,
                     'price_valid_until' => $priceValidUntil,
                     'suggested_procurement_date' => $suggestedProcurement,
@@ -261,7 +263,8 @@ class ClaimGuestBookingController extends Controller
                             'analyzed_at' => Carbon::now(),
                         ]);
 
-                        app(\App\Services\QuotationPricingService::class)->calculateTotals($booking, false);
+                        // Admin's working totals from Raflora prices; saved so the Admin page starts from them.
+                        app(\App\Services\QuotationPricingService::class)->calculateTotals($booking);
                     }
                 }
 

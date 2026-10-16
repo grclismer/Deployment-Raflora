@@ -14,7 +14,7 @@ class ClientViewBookingDataFlowTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_price_update_visible_to_client_and_stale_ai_does_not_override()
+    public function test_working_and_ai_prices_stay_hidden_until_a_quotation_is_issued()
     {
         $user = User::factory()->create(['role' => 'client']);
         $client = Client::create(['full_name' => 'Test Client', 'email' => $user->email, 'phone' => '09170000000', 'address' => 'Address', 'user_id' => $user->id]);
@@ -32,10 +32,10 @@ class ClientViewBookingDataFlowTest extends TestCase
         $response = $this->actingAs($user)->get("/client/bookings/analysis/{$booking->id}");
 
         $response->assertStatus(200);
-        
-        // Assert that the view receives the authoritative price, NOT the AI price
-        $viewData = $response->original->gatherData();
-        $this->assertEquals(5799.99, $viewData['totalCost']);
+        $response->assertDontSee('5,799.99');
+        $response->assertDontSee('9,999.99');
+        $response->assertSee('Not yet issued');
+        $this->assertNull($response->original->gatherData()['sharedQuotation']);
     }
 
     public function test_current_quotation_is_loaded_and_historical_is_ignored()
@@ -77,7 +77,7 @@ class ClientViewBookingDataFlowTest extends TestCase
         $this->assertEquals('Roses', $viewData['activeQuotation']->items_snapshot[0]['item_name']);
     }
 
-    public function test_no_quotation_yet_falls_back_to_booking_pricing()
+    public function test_no_quotation_yet_shows_no_booking_or_ai_price()
     {
         $user = User::factory()->create(['role' => 'client']);
         $client = Client::create(['full_name' => 'Test Client', 'email' => $user->email, 'phone' => '09170000000', 'address' => 'Address', 'user_id' => $user->id]);
@@ -98,7 +98,10 @@ class ClientViewBookingDataFlowTest extends TestCase
         $viewData = $response->original->gatherData();
         
         $this->assertNull($viewData['activeQuotation']);
-        $this->assertEquals(6000, $viewData['totalCost']);
+        $this->assertNull($viewData['sharedQuotation']);
+        $this->assertNull($booking->fresh()->shared_quote_total);
+        $response->assertDontSee('6,000.00');
+        $response->assertDontSee('8,000.00');
     }
 
     public function test_package_integrity()

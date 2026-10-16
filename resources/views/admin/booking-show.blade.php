@@ -17,7 +17,12 @@
 @endphp
 <x-admin-layout :title="$bookingHeading" :description="'Client: ' . $bookingClientName">
     <x-slot:actions>
-        <a href="{{ route('admin.bookings') }}" class="inline-flex items-center gap-2 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition">
+        @php
+            // Only a list URL stored by the bookings page itself is used.
+            $bookingsListUrl = session('admin.bookings.list_url');
+            $bookingsListUrl = is_string($bookingsListUrl) && str_starts_with($bookingsListUrl, route('admin.bookings')) ? $bookingsListUrl : route('admin.bookings');
+        @endphp
+        <a href="{{ $bookingsListUrl }}" class="inline-flex items-center gap-2 h-9 px-3.5 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition">
             <i class="fa-solid fa-arrow-left text-xs" aria-hidden="true"></i>
             Back to Bookings
         </a>
@@ -423,13 +428,13 @@
                             </div>
                             @if($payment->status === 'pending')
                                 <div class="flex shrink-0 gap-2">
-                                    <form method="POST" action="{{ route('admin.payments.reject', $payment->id) }}">
+                                    <form method="POST" action="{{ route('admin.payments.reject', $payment->id) }}" data-confirm="Reject this payment?" data-confirm-message="The client will be told the payment could not be verified. The booking stays unconfirmed until a valid payment is verified." data-confirm-label="Reject payment" data-confirm-tone="danger">
                                         @csrf
-                                        <button type="submit" onclick="return confirm('Reject this payment?')" class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 transition">Reject</button>
+                                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 transition">Reject</button>
                                     </form>
-                                    <form method="POST" action="{{ route('admin.payments.verify', $payment->id) }}">
+                                    <form method="POST" action="{{ route('admin.payments.verify', $payment->id) }}" data-confirm="Verify this payment?" data-confirm-message="Only verify after checking the reference against Raflora's account. Verifying records the payment and can confirm the booking." data-confirm-label="Verify payment">
                                         @csrf
-                                        <button type="submit" onclick="return confirm('Verify this payment?')" class="{{ $btnPrimary }}"><i class="fa-solid fa-check" aria-hidden="true"></i>Verify</button>
+                                        <button type="submit" class="{{ $btnPrimary }}"><i class="fa-solid fa-check" aria-hidden="true"></i>Verify</button>
                                     </form>
                                 </div>
                             @endif
@@ -943,6 +948,8 @@
                                         <dd class="relative w-44 shrink-0">
                                             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400">₱</span>
                                             <input id="final-quoted-total-override" type="number" step="0.01" name="final_quoted_price" value="{{ old('final_quoted_price', $booking->final_quoted_price ?: $booking->total_quoted) }}" class="w-full rounded-md border border-brand-300 bg-white py-2 pl-7 pr-2.5 text-right font-semibold text-brand-800 tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
+                                            {{-- 1 once the Admin types a price (or one was set before); while 0 the box only mirrors the running total and the calculated quotation price applies. --}}
+                                            <input id="final-price-overridden" type="hidden" name="final_price_overridden" value="0" @if($bookingLocked) disabled @endif>
                                         </dd>
                                     </div>
                                 </dl>
@@ -1067,9 +1074,9 @@
                         <h2 id="decline-heading" class="text-sm font-semibold text-rose-800">Decline this booking</h2>
                         <p class="mt-0.5 text-[13px] text-slate-500">Reject the request if Raflora cannot take this event.</p>
                     </div>
-                    <form method="POST" action="{{ route('admin.bookings.decline', ['booking' => $booking->id]) }}" class="shrink-0">
+                    <form method="POST" action="{{ route('admin.bookings.decline', ['booking' => $booking->id]) }}" class="shrink-0" data-confirm="Decline this booking?" data-confirm-message="The client is told Raflora cannot take this event. This cannot be undone from this page." data-confirm-label="Decline booking" data-confirm-tone="danger">
                         @csrf
-                        <button type="submit" onclick="return confirm('Are you sure you want to reject this booking?')" class="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 transition">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 transition">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>Reject / Decline Booking
                         </button>
                     </form>
@@ -2010,17 +2017,23 @@
             }
 
             const finalOverrideInput = document.getElementById('final-quoted-total-override');
+            const finalOverrideFlag = document.getElementById('final-price-overridden');
+            const markManualOverride = () => {
+                finalOverrideInput.dataset.manualOverride = 'true';
+                if (finalOverrideFlag) {
+                    finalOverrideFlag.value = '1';
+                }
+            };
+
             if (finalOverrideInput) {
                 // Initial check: if the server provided a value that differs from the calculation, treat it as a manual override
                 const initialVal = Number(finalOverrideInput.value);
                 const calculatedTotal = Number(document.getElementById('calculated-quotation-total')?.textContent.replace(/[^0-9.-]+/g, '')) || 0;
                 if (initialVal > 0 && Math.abs(initialVal - calculatedTotal) > 0.01) {
-                    finalOverrideInput.dataset.manualOverride = 'true';
+                    markManualOverride();
                 }
 
-                finalOverrideInput.addEventListener('input', () => {
-                    finalOverrideInput.dataset.manualOverride = 'true';
-                });
+                finalOverrideInput.addEventListener('input', markManualOverride);
 
                 finalOverrideInput.addEventListener('focus', () => {
                     finalOverrideInput.dataset.manualEdit = 'true';

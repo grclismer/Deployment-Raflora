@@ -318,3 +318,428 @@ Real pages were rendered from the application (seeded with representative bookin
 
 ### Next step
 Gemini AI accuracy and evidence validation (`README_Gemini_AI_Accuracy_and_Evidence_Validation.md`).
+
+---
+
+## Frontend Workflow Stabilization — Booking Step 2, shared guest/client structure
+
+**Status:** Complete for the booking forms; Admin/Staff verified, not changed (see Remaining work)
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | A photo linked to some of the picked areas was always refused at submission: the analysis is hashed with the brief narrowed to the photo's areas (`EventDesignBrief::forPhoto`), the submission compared the full brief. Every booking with 2+ areas failed (guest and client). | BROKEN | Probe: analyze for `stage` with `entrance`+`stage` picked → store → `analysis_error` |
+| 2 | Client "Other" event types were analyzed with `event_type=other` and the type folded into the notes, but submitted with `other_event_type` and plain notes → always refused. | BROKEN | Probe (client) |
+| 3 | `analysis_error` was set in 9 places and rendered nowhere; the client form then restored the refused photos as "analyzed" → silent resubmission loop. | BROKEN | `grep analysis_error resources/views` |
+| 4 | Every `throttle:N,1` route shared one counter per IP/user: 3 estimate refreshes + 1 venue search made the guest **submission** return 429 (client submission likewise). | BROKEN | Probe; `ThrottleRequests::resolveRequestSignature` |
+| 5 | Guest photo requests sent no `Accept: application/json`: oversized/wrong-type photos and HTTP 429 were reported as "connection problem". | BROKEN | Guest analyze fetch |
+| 6 | "Retry" on a photo restored from a saved draft (no file) left it on "Analyzing" forever and blocked Next. | BROKEN | `processUploadQueue` → `analyzeSingleImage` returned early |
+| 7 | Preference edits after analysis: the warning lived inside the closed dialog, Next was not blocked, the server refused at submission. | PARTIAL | Design brief stale banner |
+| 8 | Guest and client Step 2 were separate implementations (≈1,500 and ≈500 lines of JS) that had drifted; the client form had no per-photo analysis view and no review step. | PARTIAL | Views |
+| 9 | Area notes (`decor_area_notes`) were already stored in `design_brief`, validated, sent to the AI prompt and shown to Admin/Staff. | WORKING | `EventDesignBrief::displayRows` |
+| 10 | Admin/Staff handoffs (review → quotation → payment → execution → return → completion) work; AI rows reach Admin as unvalidated ("0/7 validated", "Unmatched / AI Suggestion"). | WORKING | `Phase7ReadmeEndToEndJourneyTest`; Admin page rendered for a booking made in the browser |
+
+### Changes made
+- **Server:** `InspirationPhotos::analysisIsStale()` compares each photo against the brief narrowed to its own areas (used by `GuestBookingController::store` and `BookingController::store`). Both analyze endpoints pass the resolved event type (e.g. "Product launch") to Gemini. Booking-flow throttles get their own counters (`throttle:N,1,<prefix>`): photo-analysis, ai-estimate, location, image-check, guest-booking, client-booking; limits unchanged.
+- **`components/inspiration-photos`** (new, used by both forms): preferences summary + dialog with Save/Cancel (Cancel restores the previous values), upload with client-side type/size checks, gallery of 3 cards per page (only the current page is in the DOM; page clamps on removal), indeterminate progress with Cancel, per-photo truthful states (waiting, analyzing, analyzed, failed, cancelled, out of date, needs areas), design summary with server ranges, and dialogs for one photo's analysis (existing viewer, boxes, material pager), one area (note, photos, range, paginated materials) and the price breakdown. Dialogs: focus moves in and back, Tab stays inside, Escape closes, full screen on phones. A photo is out of date when the event details or its own areas' preferences changed; changing them back makes it current again.
+- **Guest form:** Step 2 uses the component (4,261 → ~2,100 lines); refusal message shown on Step 2 with the photos marked; the draft is kept until the tracking page confirms the request (cleared there).
+- **Client form:** 3 steps — Event Details → Booking Method & Design → Review & Submit (new); same component and wording as the guest form; "Other" event types sent as submitted; refusal message shown; package inclusions inserted as text.
+
+### Tests run
+- `tests/Feature/BookingStep2WorkflowFixesTest.php` (new): 11 tests — pass. Mutation check: reverting the per-photo hash or the throttle prefixes makes 4 of them fail.
+- Updated for the new structure (assertions on moved IDs only): `Step2CompactionAndAreaPreferencesTest`, `Step2StaleContextAndTruthfulProgressTest`, `AiAnnotationAccuracyTest`.
+- Full suite: 1590 tests, 8355 assertions, 0 failures (baseline before this work: 1579 tests, 0 failures).
+- Browser (headless Chrome via DevTools Protocol, real app on SQLite, fake Gemini endpoint via `GEMINI_API_URL`): guest journey 49/49 checks, client journey 24/24, edge cases 10/10 (AI rejection, outage, rate limit, focus trap, reload mid-analysis, validation error keeps photos). No horizontal overflow at 390, 768 and 1366 px.
+
+### Remaining work
+- **Decision needed:** the "Combined AI Estimate" total across areas (added 2026-10-15) conflicts with the 2026-10-14 rule "no combined total for guests/clients". Behavior left unchanged.
+- No physical phone/Safari testing; screenshots from headless Chrome only.
+- Admin/Staff screens were verified, not redesigned (no verified defects in scope).
+
+### Other findings (not changed)
+- Auth/OTP routes still share one throttle counter per IP (login, register, password reset, admin recovery). Low risk, same fix pattern.
+- An AJAX request that reaches the server between a failed submit and its redirect consumes Laravel's one-time flash (errors disappear). Seen only when submitting within milliseconds of an estimate refresh.
+- An AI service outage (HTTP 500 from Gemini) is shown as "try a clearer image" (`GeminiVisionService::failureMessageForType`).
+- Staff see the client's stated budget range in the design brief (existing, asserted by `EventDesignBriefTest`).
+
+---
+
+## System-wide frontend consistency (Guest, Client, Admin, Staff)
+
+**Status:** Partially complete — shared patterns applied where defects or inconsistencies were verified; no page-by-page redesign of Admin/Staff (they already passed the UI modernization phase)
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | Payment verify/reject, booking decline, inventory archive/restore and session/device revokes used the browser's `confirm()`, while the Admin layout already had the app's confirmation dialog. | INCONSISTENT | `grep "return confirm(" resources/views` (7 forms) |
+| 2 | Ten list pages used Laravel's default pager; the shared `components.pagination` hard-coded "packages" and purple and was used only on Packages. Filters were already kept (`withQueryString()`). | INCONSISTENT | Controllers and views |
+| 3 | The client inbox loaded every notification ever sent. | UNBOUNDED | `ClientNotificationController::index` `->get()` |
+| 4 | "Back to Bookings" on the Admin booking page dropped the list's search, filters and page. | PARTIAL | `route('admin.bookings')` without query |
+| 5 | Area notes could only be edited inside the full preferences dialog; the main screen showed "· note". | PARTIAL | `components/inspiration-photos` |
+| 6 | Decoration areas come from the fixed `EventDesignBrief::DECOR_AREAS` (7, not Admin-configurable); the picker already wraps chips and has a searchable, scrollable add list. | WORKING | `components/design-brief-fields` |
+| 7 | Staff queues are scoped to the staff member's own active events; the dashboard shows 12 and the tasks page paginates. Staff are refused Admin routes (403). | WORKING | `Staff\WorkspaceController`; browser check |
+| 8 | Viewing the Admin booking page and Admin notifications links booking materials to inventory items by name (a write on GET). It never confirms or reserves stock. | UNCLEAR (existing, not changed) | `reconcileBookingInventoryLinks` |
+
+### Changes made
+- `components/confirm-modal`: declarative `data-confirm` / `data-confirm-message` / `data-confirm-label` / `data-confirm-tone` on any form (carries a named submit button's value, single submission, warning icon for danger). Used by `admin/booking-show`, `admin/inventory/index`, `admin/inventory/archived`, `admin/settings`.
+- `components/pagination` generalized (counts, `aria-current`, phone layout "Page x of y", brand colors) and set as the default view in `AppServiceProvider`.
+- `Admin\BookingController::index` remembers the list URL; `admin/booking-show` "Back to Bookings" uses it (only a URL that starts with the bookings list).
+- `ClientNotificationController::index`: the 100 most recent, unread count from all notifications, note about older ones (still on each booking's Updates page).
+- `components/inspiration-photos`: per-area note dialog (Save/Cancel, 500-character counter, warning when analyzed photos for that area would need re-analysis); chips show a note preview and Add/Edit note. Writes the existing `decor_area_notes[area]` field only on Save.
+
+### Tests run
+- `tests/Feature/SystemWideFrontendConsistencyTest.php` (new): 8 tests, 66 assertions — pass. Removing the inbox cap or the stored list URL makes 2 of them fail.
+- Browser (headless Chrome, real app on SQLite): Admin 18/18 (sign-in with emailed code, filtered second page and pager, "Back to Bookings", decline/verify/archive dialogs incl. Escape and a real verification, no overflow at 390/1366 px), Staff 10/10 incl. 403 on Admin pages, Client notes and inbox 15/15 plus 2 count checks that matched the database once a real "Payment Verified" notification was counted.
+- Full suite: see the final report of this pass.
+
+### Remaining work
+- Decision still needed on the "Combined AI Estimate" total (see previous section).
+- Admin settings still uses `alert()`/`confirm()` in its own scripts (photo size, remove photo, import file); not form actions, left as is.
+- Login and password-reset routes still share one rate-limit counter per IP.
+
+---
+
+## Quotation Price Integrity (Admin audit F1–F3)
+
+**Status:** Complete for send, reissue and revised reconfirmation; payment defects from the audit (F4, F5, F16) not in scope
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | An Admin override never reached the quotation: `QuotationIssuanceService::issue` recalculated the total, then the controller wrote the posted price onto the booking only. Client saw/paid ₱18,000; Admin's balance expected ₱20,000. | UNSAFE | Audit probe; `test_admin_override_is_the_issued_quotation_booking_client_and_payment_price` fails on the old code |
+| 2 | The price summed every line (`calculateTotals`), the snapshot only confirmed ones, and "Remove" only set `procurement_status` → removed and unconfirmed lines stayed in the snapshot and/or the price. | BROKEN | Probe: snapshot kept the removed line, ₱19,500 vs ₱18,000 |
+| 3 | A refused send/reissue saved the booking in its `catch` after prices, items and fields were already changed; item writes and auto-confirmations before a refusal were kept. | UNSAFE | Probe: refused re-send after acceptance saved ₱25,000 on the booking |
+| 4 | The editor's "Final Quoted Total" is always posted and follows its own running total, which can include unconfirmed AI rows carrying Gemini estimates. Treating every posted value as an override would put AI estimates into client prices. | Design constraint | `booking-show` script; `persistAiSuggestedMaterials` keeps `estimated_unit_cost_php` |
+
+### Changes made
+- `QuotationPricingService`: `quotableItems()` (confirmed, quantity > 0, not removed) and `quotationTotals()` (Σ qty × unit price × multiplier + existing labour). `calculateTotals()` keeps its working-figure role for booking creation/claim (shared arithmetic, same results). `REMOVED_FROM_QUOTATION = 'unmatched'` names the existing removal marker.
+- `QuotationIssuanceService::issue()`: price and snapshot from the same quotable lines; optional `overridePrice`; the booking takes the issued figures (raw sum, multiplier, final price). Package bookings keep their stored price as before.
+- `Admin\BookingController::update()`: send, reissue and revised reconfirmation run in one transaction; refusals throw (`refuseBookingUpdate`) so nothing is kept; removed the code that copied the posted price onto the booking; the client email is sent after commit.
+- `admin/booking-show`: hidden `final_price_overridden` (1 once the Admin types a price or the page loads with a previous override; 0 while the box only mirrors the running total). A posted price without the flag (non-browser callers, existing tests) is still treated as the Admin's price.
+
+### Tests run
+- `tests/Feature/QuotationPriceIntegrityTest.php` (new): 9 tests, 100 assertions — pass. All 9 fail against the pre-change service and controller.
+- `AdminNotificationsTest`: two fixtures given one confirmed line, because they only passed through F2/F3 (a quotation of only a removed line; rows kept after a refused send). Their assertions about the kept line and the new catalog entry are unchanged.
+- Full suite (Gemini and Brevo pointed at a closed local port): 1620 tests, 8685 assertions, 0 failures.
+- Headless Chrome on server-rendered copies of the editor (network blocked): flag 0 → follows quantity edits; typing sets 1 and keeps the typed price; a reloaded override loads as 1 — 9/9.
+
+### Remaining work
+- Reissue and revised reconfirmation still ignore on-screen quantity/price/remove edits (only "Approve & Send" applies them); a typed override is honoured. Decide whether reissue should apply edits.
+- A removed line that was confirmed still counts for reservation and dispatch (`confirmedInventoryItems`).
+- Ticking "Remove" on an unconfirmed AI suggestion that is not linked to inventory does not get past the "Confirm every material requirement" check.
+- With an override, snapshot lines (unit prices) no longer add up to the total shown to the client; the quotation keeps raw sum, multiplier and labour so the difference is traceable.
+
+### Other findings (not changed)
+- Substituting a material clears its confirmation, so a substitution made while sending leaves that line off the quotation.
+- When labour is set (no Admin input exists; demo/imported data only), the editor's load check treats the stored total as an override.
+- An invalid `valid_until` still raises an error (now with nothing saved).
+
+---
+
+## Payment Closure and Final Payment Integrity (Admin audit F4, F5, F16)
+
+**Status:** Complete for decline, cancellation approval, payment rejection and final payment
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | Declining (or approving a cancellation) left the client's waiting payment open; rejecting it later set a declined booking back to "admin_approved" (payment unlocked). Rejecting during a cancellation request also wiped the request. | UNSAFE | Audit probe; `PaymentClosureIntegrityTest` fails on the old code |
+| 2 | "Log Final Payment" had no status, amount or balance check: ₱0 on a pending booking was saved as a verified payment. | UNSAFE | Audit probe |
+| 3 | Rejecting a payment told the client nothing, although the confirmation dialog says the client will be told. | BROKEN | Audit probe (0 notifications) |
+
+### Decision (user, this phase)
+A booking is not declined or cancelled while a client payment waits for checking: Admin verifies or rejects it first.
+
+### Changes made
+- `Admin\BookingController`: decline (with a row lock), cancellation approval and closing through the booking form are refused while a payment waits. Rejection moves the booking back only when it was waiting for that payment; during a cancellation request it updates the saved prior stage instead; a closed booking stays closed. The client gets a "Payment Not Verified" notification with the next step. Final payment: event started, amount above ₱0 and not above the balance, no client payment waiting (the legacy `log_final_payment` action gets the waiting-payment check too).
+
+### Tests run
+- `tests/Feature/PaymentClosureIntegrityTest.php` (new): 7 tests, 44 assertions — pass; all 7 fail against the previous controller.
+- Full suite (Gemini and Brevo pointed at a closed local port): 1627 tests, 8729 assertions, 0 failures.
+
+### Remaining work
+- Neither "Payment Verified" nor "Payment Not Verified" is emailed to registered clients (in-app only); guests still get the existing status email.
+- No reason field when rejecting a payment; Verify/Reject inside the Notifications pop-up still have no confirmation step.
+- No refund handling when a booking with verified payments is declined or cancelled.
+
+---
+
+## Notification Actions vs. Review Decisions (Admin audit F12)
+
+**Status:** Complete for Notifications, Dashboard alerts and the inline restock path
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | For Staff stock-count requests (`physical_count_variance`), `is_read` is the decision record: approve and reject both just set it. "Mark Read", "Dismiss All" (Notifications and Dashboard) and the Dashboard's per-alert dismiss therefore closed requests without a decision or audit entry. | UNSAFE | Audit probe; `AdminAlertDecisionIntegrityTest` |
+| 2 | The Notifications pop-up classified stock-count requests as stock shortages (they carry an inventory item), so it showed a Restock form instead of Approve/Reject; the approve/reject buttons were unreachable. | BROKEN | Rendered page; `@elseif($isInventoryAlert)` came first |
+| 3 | That Restock form posted the request's `alert_id`, so adding stock also closed the stock-count request. | UNSAFE | `InventoryController::resolveShortage` |
+| 4 | Reject had no "already reviewed" check (approve had one), so a request could be decided twice. | PARTIAL | `rejectStockAdjustment` |
+| 5 | Payment Verify/Reject in the pop-up had no confirmation step (the booking page has one). | UX | View |
+| 6 | Other Staff alerts (material requests, issue reports) and system alerts have no Admin decision step; "read" means acknowledged. | WORKING | Alert creators |
+
+### Changes made
+- `AdminAlert::DECISION_TYPES` / `requiresDecision()`: one definition of alerts closed only by approve/reject.
+- `routes/web.php`: mark-read refuses an open decision alert; Dismiss All skips them and says how many still need a decision.
+- `Admin\BookingController::rejectStockAdjustment`: decided once, like approval.
+- `Admin\InventoryController::resolveShortage`: a restock never closes a decision alert.
+- Views: Notifications pop-up shows Approve/Reject for stock counts (both with confirmation); no "Mark Read" on open requests; Verify/Reject payment and Dismiss All ask for confirmation. Dashboard: "Review" link instead of dismiss for open requests; Dismiss All asks for confirmation.
+
+### Tests run
+- `tests/Feature/AdminAlertDecisionIntegrityTest.php` (new): 9 tests, 44 assertions — pass; 6 fail against the previous files (the other 3 guard behaviour that must not change: ordinary dismiss, approval, Staff refused).
+- Related existing tests (notifications, dashboard, staff inventory/workspace, shortage resolution, frontend consistency): 108 tests — pass.
+- Full suite (Gemini and Brevo pointed at a closed local port): 1636 tests, 8773 assertions, 0 failures.
+- Confirmation dialogs verified as rendered attributes only; not clicked in a browser.
+
+### Remaining work (not in this task)
+- Email for payment verified/not verified, a rejection reason, and refund handling (needs a business decision).
+
+---
+
+## Return Lifecycle Integrity (Admin audit F11, F13)
+
+**Status:** Complete — one return-record path; approval re-evaluates the booking
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | Four places created return records. `Admin\BookingController::ensureReturnRecordForBooking` (run when the event ends, on final payment and on cancellation) built items from booking lines plus name keywords and **created inventory items**; the Return Tracking page and the Staff event page built them from the dispatch ledger. An ended event therefore got rows for undispatched hardware and unlinked lines (and new catalog entries). | UNSAFE | `ReturnLifecycleIntegrityTest::test_event_completion_creates_one_return_from_dispatched_items_only` fails on the old code |
+| 2 | Viewing created records: the Return Tracking list created one for every eligible booking, the manage page created one (or an empty one), the Staff event page created one. Merely opening the manage page of a zero-hardware booking made its audit a completion requirement. | UNSAFE | `test_display_pages_do_not_create_return_records` fails on the old code |
+| 3 | Existence checks ran without a lock, so simultaneous requests could create two records (a second open record blocks completion). | PARTIAL (code) | No row lock before the check |
+| 4 | Approving damage/loss set the charge decisions but never re-evaluated the return or the booking: the booking stayed "pending resolution", the client was not told, and nothing was in a transaction. Approval with nothing to decide was accepted and logged. | BROKEN | 4 approval tests fail on the old code |
+| 5 | The return audit itself (split quantities, stock credit, charges, completion rules on save) works. | WORKING | Existing return tests unchanged in their assertions |
+
+### Changes made
+- `app/Services/ReturnRecordService.php` (new): dispatched quantities and `openFor()` — locks the booking, reuses the existing record, otherwise creates one from the dispatch ledger (empty only when Admin asks).
+- `Admin\BookingController::ensureReturnRecordForBooking`, `Staff\EventController::ensureReturnRecord`: use the service (no keyword guessing, no catalog creation). `Staff\EventController::show` no longer creates.
+- `Admin\ReturnTrackingController`: list and manage pages only read; manage shows `admin/return-tracking-start` (new view) when no record exists; new `start()` (POST `admin.return-tracking.start`, Admin only) opens it. `approve()`: one locked transaction; refused when nothing awaits a decision or when already approved; recomputes the return status and charge total; applies the same booking rules as saving the audit (`applyReturnOutcomeToBooking`, extracted unchanged from `update()`); one "Return review complete" client notification (with the charge and new balance), plus the existing "Booking completed" one when it completes.
+- `routes/web.php`: the start route.
+
+### Tests run
+- `tests/Feature/ReturnLifecycleIntegrityTest.php` (new): 10 tests, 59 assertions — pass. Run first against the unchanged code: 8 of 10 detect the defects (2 error because the start route did not exist, 6 fail); the other 2 guard unchanged behaviour (split quantities, rejected adjudication). No working-tree file was swapped for this comparison.
+- Existing tests whose setup relied on a page view creating the record now open it the new way (Admin start, or the service as at event end); their assertions are unchanged: `AdminReturnTrackingModernizedWorkflowTest`, `MixedConditionMaterialReturnTest`, `Phase2b8EventExecutionAndReturnAccountabilityTest`, `Phase6StaffOperationsStabilizationTest`, `ReturnAuditIntegrityTest`, `StaffMaterialReturnTest`, `ReadmeBookingWorkflowFlowTest`, `Step16GCoreWorkflowEndToEndVerificationTest`, `DeterministicMultiItemLockOrderingTest`, `AdminNotificationsTest` (one test). The list-page test now asserts that viewing creates nothing. `AdminReturnTrackingAccountabilityTest` approves a return with a real pending loss (it previously approved one with nothing to decide).
+- Related return/staff/workflow/payment files: 463 tests — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1646 tests, 8833 assertions, 0 failures. `php -l` clean on all changed PHP files.
+- Browser: NOT VERIFIED (no live session; pages checked through feature-test responses only).
+
+### Remaining work / other findings (not changed)
+- No unique constraint on returns per booking: the code reads the latest record and loops over all, and existing data was not inspected; the booking lock prevents new duplicates.
+- Bookings already past the event without a record (older data) need Admin's "Start return audit"; the Staff page says recording becomes available until then.
+- `Admin\BookingController::inferIsPerishableFromName` is now unused.
+- "Rejected" adjudication still only records the decision; what it should mean for the client is undefined.
+- `Staff\EventController::show` still writes the staff checklist on view (`ensureChecklist`).
+
+---
+
+## Inventory Consistency (Admin audit F7, F8, F9)
+
+**Status:** Complete for the verified defects; two definitional questions left for a decision (see Remaining work)
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | "Reserved" means two different, separately tested things: the ledger (`InventoryItem::reserved_stock`: locks − releases − dispatches, reusable items only) used by reservation, dispatch, payment verification, the booking page, Staff and the shortage command; and booked demand (confirmed lines on upcoming active bookings, fresh flowers included) on the Inventory page, where it drives "To Procure". Both are asserted by existing tests (`ReservedStockIntegrityTest` / `GeminiEvidenceValidationTest`, `AdminInventoryProcurementReceiptTest`). | UNCLEAR (label) | Code and tests |
+| 2 | The Notifications booking-shortage panel subtracted the booking's *requirement* from total holds to get "held by other bookings", so a booking that had not reserved yet saw other bookings' holds disappear (3 on hand, 2 held elsewhere, 2 needed → no shortage shown). | BROKEN | `test_booking_shortage_counts_stock_held_by_other_bookings` fails on the old code |
+| 3 | The booked-demand query was copied twice in `InventoryController::index`; the per-booking ledger formula is repeated in several services. | PARTIAL | Code |
+| 4 | Low-stock counts differ: Dashboard/Reports use `current_stock <= min_stock`; `InventoryItem::isLowStock()` uses ledger availability; the Inventory page uses booked demand. | UNCLEAR | Code |
+| 5 | Any free-text row in the quotation editor became a catalog item (non-perishable, cost = quoted price) on every save, not only on Send. | UNSAFE | `test_free_text_quotation_line_does_not_create_a_catalog_item` fails on the old code |
+| 6 | `promoteAiItem` with a line id that is not on the booking created a catalog item *and* a booking line from unvalidated quantity/price. All promote paths created duplicate names. | UNSAFE | 2 tests fail on the old code |
+| 7 | Name auto-linking lower-cased *after* stripping non `a-z0-9` characters, so capitals were deleted ("White Roses" → "hite oses"): real matches failed and unrelated names collided ("Rose"/"hose"). With duplicate catalog names it linked one arbitrarily (then Send auto-confirmed it). | UNSAFE | `test_send_does_not_link_an_ai_line_to_an_ambiguous_name` fails on the old code |
+| 8 | Viewing the Admin booking page, its edit page and Notifications ran the name auto-linking (database writes on GET). | UNSAFE | GET-write probe; `test_admin_booking_and_notification_pages_do_not_write` fails on the old code |
+| 9 | Return processing no longer creates catalog items (fixed in the F11 phase). | WORKING | `ReturnLifecycleIntegrityTest` |
+| 10 | Staff dashboard/event pages create the event's default checklist rows on view; Staff event page records message read receipts. Both are intended (documented by `StaffChecklistTest` and code comments), idempotent, and the checklist has a unique (booking, key) index. | WORKING (intentional) | GET-write probe over all Admin/Staff/Client GET pages |
+
+### Changes made
+- `app/Models/InventoryItem.php`: `reservedForBooking()` (the per-booking ledger rule, shared with `reserved_stock`), `scopeWithBookedDemand()` (the Inventory page's single definition), `scopeNamed()` (case/space-insensitive name lookup).
+- `app/Http/Controllers/Admin/InventoryController.php`: both index queries use `withBookedDemand()` (same results).
+- `app/Http/Controllers/Admin/BookingController.php`: shortage panel uses `reservedForBooking()`; Notifications and the booking/edit pages no longer link on view; Send links a line only to a name with exactly one catalog match, with the casing fix; free-text lines stay unlinked (`pending`, never the "removed" marker); `promoteAiItem` refuses a line id not on the booking and validates quantity/price; every promote path refuses an existing catalog name (`duplicateCatalogNameError()`).
+
+### Tests run
+- `tests/Feature/InventoryConsistencyIntegrityTest.php` (new): 9 tests, 40 assertions — pass. Run first against the unchanged code: 6 fail on the defects, 2 error on the new shared helpers, 1 passes (explicit linking must keep working). No working-tree file was swapped.
+- `AdminNotificationsTest::test_admin_update_creates_inventory_catalog_entry_for_proposal_items` asserted the F8 behaviour itself; renamed `…_keeps_proposal_items_without_creating_catalog_entries` and now asserts the line is kept unlinked with no catalog item.
+- Baseline before changes: 1646 tests, 8833 assertions, 0 failures. After: 1655 tests, 8872 assertions, 0 failures (Gemini and Brevo pointed at a closed local port). `php -l` clean on changed files.
+- GET-write probe (scratch, not committed): before — Admin Notifications/booking pages linked materials; after — only the two intentional Staff writes remain.
+- Browser: NOT VERIFIED (no live session).
+
+### Remaining work / decisions
+- **Decision:** should the Inventory page call booked demand "Reserved" (it is not held stock), and which low-stock rule should Dashboard, Reports and the Inventory page share? Left unchanged; no approved requirement found.
+- The per-booking ledger formula is still repeated in `InventoryDispatchService`, `verifyPayment` and the booking page; only the shortage panel was moved to the shared helper.
+- The shortage panel counts the full required quantity even when part was already dispatched.
+- `promoteBookingItemsToInventory` (Notifications "add missing items") still creates items as non-perishable with the quoted price as cost; client-side AI matching (`BookingController::persistAiSuggestedMaterials`) has its own name matcher (out of scope).
+- Staff checklist initialisation on view is kept; a simultaneous first view could hit the unique index and error once.
+
+---
+
+## Inventory Definitions (Admin audit F7, decision resolution)
+
+**Status:** Complete for terminology, the on-hand low-stock rule, equivalent ledger copies and the shortage panel; listed differences kept on purpose
+
+### Definitions (from code and existing tests)
+| Term | Calculation | Meaning | Used by |
+|------|-------------|---------|---------|
+| Reserved Stock | Per booking: locks − releases − net dispatch, floored at 0, summed (`InventoryItem::reserved_stock`, `reservedForBooking()`) | Reusable stock actually held for confirmed bookings in their preparation period; fresh flowers are never held | Reservation, dispatch, payment verification, booking page, Staff, Notifications |
+| Booked Demand | Confirmed (or non-AI) lines on upcoming bookings not cancelled/declined/completed (`scopeWithBookedDemand()`) | What upcoming bookings need, flowers included; basis of To Procure | Inventory page |
+| Available Stock | On hand − Reserved Stock (`net_available`); on the Inventory page, on hand − Booked Demand | Stock free for new commitments | Reservation/dispatch checks; Inventory page status |
+| Low Stock — on hand | `current_stock <= min_stock` (`scopeBelowMinimum()`) | Reorder point on physical stock | Dashboard, Reports, Notifications (which also flags over-held items) |
+| Low Stock — planning | (on hand − Booked Demand) <= minimum | Will booked events leave stock below minimum | Inventory page status |
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | The Inventory page labelled Booked Demand "Reserved" ("Quantity committed to valid event bookings"), the same word the ledger uses for stock actually held. | PARTIAL (label) | `InventoryDefinitionsTest` label test fails on the old view |
+| 2 | Dashboard and Reports already agreed (on-hand rule) but each repeated it; the Inventory page's planning rule is a different, legitimate purpose. `isLowStock()` (ledger) has no caller in the application. | PARTIAL | Code |
+| 3 | The dispatch check and the unfulfilled-release in `InventoryDispatchService` repeated the ledger formula with the same meaning. Payment verification differs (throws on a negative ledger as an integrity guard), the booking page shows total held including dispatched, and reservation computes what is left to hold — not the same meaning, left as they are. | PARTIAL | Code |
+| 4 | The Notifications shortage panel compared a line's full quantity with stock on hand, although dispatched units have already left on-hand stock: 4 needed, 3 dispatched, 1 held, 2 on hand → false shortage of 2. | BROKEN | Shortage test fails on the old code |
+
+### Changes made
+- `app/Models/InventoryItem.php`: `scopeBelowMinimum()`, `dispatchedForBooking()`; docblocks for `isLowStock()` and the definitions.
+- `resources/views/admin/inventory/index.blade.php`: "Reserved" → "Booked Demand" in the column, drawer, help text, receive-stock dialog and To Procure wording; STATUS tooltip explains the planning rule. Calculations unchanged.
+- `Admin\DashboardController`, `Admin\ReportController`: on-hand low stock through `belowMinimum()` (same results).
+- `app/Services/InventoryDispatchService.php`: dispatch check and unfulfilled release use `reservedForBooking()` (the only writer stores releases as positive quantities, so results are identical).
+- `Admin\BookingController::notifications()`: each line's requirement is reduced by units already dispatched to that booking (spread over its lines for the same item).
+
+### Tests run
+- `tests/Feature/InventoryDefinitionsTest.php` (new): 5 tests, 26 assertions — pass. First run against the unchanged code: 2 fail (label, shortage), 1 errors (shared low-stock scope did not exist), 2 pass (distinct figures; dispatch/release), which guard unchanged behaviour. No working-tree file was swapped.
+- Wording assertions updated to the new label only: `AdminInventoryProcurementReceiptTest` (2), `AdminInventoryRedesignTest` (3), `AdminInventoryTerminologyAndSharedHeaderTest` (2).
+- Inventory-related files: 35 tests, 212 assertions — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1660 tests, 8901 assertions, 0 failures. `php -l` clean on changed files.
+- Browser: NOT VERIFIED (no live session).
+
+### Remaining work / decisions
+- Should the Dashboard and Reports also warn on planning low stock (after Booked Demand)? Kept on hand; no approved requirement found.
+- `isLowStock()` (ledger) is unused by the application; kept because tests use it.
+- The Notifications shortage table's "Reserved" column shows stock held for *other* bookings; label unchanged.
+- Imported data (System Data import) inserts ledger rows directly; a negative release there would now be read as recorded instead of by absolute value in the unfulfilled-release step.
+
+---
+
+## Ledger Import Integrity (follow-up to F7)
+
+**Status:** Complete — import now enforces the release sign; shortage-table label corrected
+
+### Ledger sign convention (application writers)
+| Movement | Stored sign | Writer |
+|----------|-------------|--------|
+| `booking_lock` (hold) | negative | `Admin\BookingController::reserveReusableMaterialsForBooking` (older versions also wrote positive and 0; readers use abs or `< 0`) |
+| `booking_release` | **positive** | `InventoryDispatchService::releaseUnfulfilledReservations` — the only writer, positive in every version in history |
+| `dispatch` / `dispatch_correction` | negative / positive | `InventoryDispatchService` |
+| `procurement`, `return` / `damage`, `adjustment` | positive, positive/negative, signed | Inventory, return audit, stock adjustment |
+
+Readers that depend on the release sign: `InventoryItem::reservedForBooking()`/`reserved_stock` subtract the stored value; the booking page, reserve-materials and payment verification count only releases `> 0`.
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | System Data import validated only references for ledger rows: any sign, any type and non-numeric quantities (cast to 0) were inserted. A negative release (−1 against a −4 hold) would read as a hold of 5 in `reserved_stock` and be ignored by the booking page — the readers disagree. Application exports cannot produce it (releases are always positive); only edited or foreign datasets. | UNSAFE (import boundary) | `SystemDataLedgerImportTest`: negative release and non-numeric quantity previews returned 200 on the old code |
+| 2 | Valid imported holds and releases already behaved exactly like application-made ones. | WORKING | Same test passes on old and new code |
+| 3 | The Notifications shortage table's "Reserved" column showed stock held for *other* bookings. The single-item stock alert's "Reserved" is the total ledger hold — accurate, unchanged. | PARTIAL (label) | `Admin\BookingController::notifications()` |
+| 4 | Import has no duplicate check: bookings and ledger rows are inserted on every import, so importing the same dataset twice duplicates them (clients and users are matched by email). | UNCLEAR (code reading, not changed) | `SystemDataImporter::executeImport` |
+
+### Changes made
+- `app/Services/SystemData/SystemDataImporter.php` (`validateDataset`): a ledger row needs a numeric `quantity_change`; a `booking_release` must be positive. Validation runs in preview and again before the import transaction, so a refused dataset writes nothing. Other types are not sign-checked (holds were historically stored with both signs; older types such as `consumed` and `event_started` exist).
+- `resources/views/admin/notifications.blade.php`: shortage-table column "Reserved" → "Held for Other Bookings" (with a tooltip). Calculation unchanged.
+
+### Tests run
+- `tests/Feature/SystemDataLedgerImportTest.php` (new): 4 tests — pass. First run against the unchanged code: 3 fail (negative release accepted, non-numeric quantity accepted, label), 1 passes (valid import parity). No working-tree file was swapped.
+- Focused and related files (System Data, inventory definitions/consistency, reserved stock, dispatch, partial release, notifications, shortage resolution): 82 tests, 454 assertions — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1664 tests, 8917 assertions, 0 failures. `php -l` clean.
+- Browser: NOT VERIFIED (no live session).
+
+### Remaining work
+- Re-importing a dataset duplicates bookings and ledger rows (finding 4); import idempotency was out of scope.
+- Hold, dispatch and correction signs are not validated on import (historical data has positive holds); readers still disagree on a positive hold (`reserved_stock` uses abs, the booking page counts only negative holds).
+- Ledger rows with an empty `transaction_type` are still accepted.
+
+---
+
+## Historical Ledger Consistency (follow-up to F7)
+
+**Status:** Complete — hold sign and transaction type enforced at import; readers already agree on all data the application or import can produce
+
+### Correction to the previous section
+"Ledger Import Integrity" said holds were historically stored with both signs. Git history shows otherwise: every application version wrote `booking_lock` as `-$requiredQty`, and one version (`c962c25`, 2026-07-30) wrote `0` as a "downpayment verified" marker. The positive `$requiredQty` seen in `0d309c4` belongs to a `booking_release` row. The committed database dump and the demo dataset contain no hold rows.
+
+### Hold readers
+| Reader | Reads holds as | Meaning |
+|--------|----------------|---------|
+| `InventoryItem::reservedForBooking()` / `reserved_stock` (→ dispatch check, unfulfilled release, shortage panel) | Σ abs(hold) − releases − net dispatch | Net hold still held |
+| `Staff\StaffWorkspaceService::dispatchRows` | Σ abs(hold) − releases; dispatched separately | Total hold recorded |
+| Booking page `buildBookingReviewView` | abs(Σ negative holds) − positive releases; dispatch separately | Total hold recorded |
+| `reserveReusableMaterialsForBooking` | same | Total hold, to work out what is left to hold |
+| `verifyPayment` | abs(Σ negative holds) − positive releases − dispatch; throws if negative | Net hold, integrity guard |
+| `BookingWorkflowService::netLocked`, `CheckTieredInventoryShortages`, mark-in-progress check | negative holds only | Total hold / any real hold |
+
+On negative holds and zero markers both forms give identical results (a zero marker adds nothing; `0 < 0` is false, so it never counts as a real hold). They differ only for a positive hold, which no application path writes. The readers' distinct purposes (net hold, total hold, remaining to hold) were kept; no reader was changed.
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | System Data import accepted a positive `booking_lock`, which the shared rule would count as a hold while the booking page, payment verification and workflow would ignore it. | UNSAFE (import boundary) | `HistoricalLedgerConsistencyTest`: preview returned 200 on the old code |
+| 2 | Import accepted empty, blank or missing `transaction_type`. | UNSAFE (import boundary) | Same test, 3 cases |
+| 3 | Hold readers agree on canonical data including legacy zero markers; payment verification still rejects an impossible ledger (more released than held). | WORKING | Guard tests pass on old and new code |
+
+### Changes made
+- `app/Services/SystemData/SystemDataImporter.php` (`validateDataset`): `transaction_type` must be a non-blank string (no fixed list — older types `consumed` and `event_started` still import); `booking_lock` must be negative or 0. Release and numeric checks from the previous task kept. Runs in preview and again before the import transaction, so refused datasets write nothing.
+
+### Tests run
+- `tests/Feature/HistoricalLedgerConsistencyTest.php` (new): 5 tests — pass. First run against the unchanged code: 2 fail (positive hold, empty type), 3 pass (historical import, reader agreement, payment integrity guard). One fixture of mine was corrected before the baseline: a dispatched booking is treated as a post-event payment, which skips the integrity check by design.
+- Related files (ledger import, System Data, inventory definitions/consistency, reserved stock, dispatch, partial release, preparation reservation, payment integrity, stock rules): 86 tests, 454 assertions — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1669 tests, 8938 assertions, 0 failures. `php -l` clean.
+- Browser: NOT VERIFIED (no live session).
+
+### Remaining work
+- Rows already in a database that came from foreign data or direct edits (positive holds) are not rewritten; readers still differ on them. No such rows exist in the committed dump.
+- Test fixtures (e.g. `AdminInventoryStockRulesTest`) create positive holds directly; they exercise only the abs-based reader.
+- Import idempotency: re-importing a dataset duplicates bookings and ledger rows (unchanged).
+- Dispatch and dispatch-correction signs are not validated on import.
+
+## Admin Account UI — Add Account Form Isolation and Team Status
+
+**Status:** Complete — findings 1–4 of the Admin Account UI audit fixed; password-session policy unchanged (awaiting decision)
+
+### Confirmed findings
+| # | Finding | Class | Evidence |
+|---|---------|-------|----------|
+| 1 | A failed Add Account refilled the Admin's own Profile "Full Name" with the applicant's name (shared field `name`, profile used `old('name')`). Saving the profile would rename the Admin. | UNSAFE (data) | `AdminAccountCreationFormTest`: profile input held "Applicant Name" on the old code |
+| 2 | An Add Account password mismatch opened Security and read as the Admin's own password change failing (tab chosen from field names). | BROKEN | Same test file |
+| 3 | The Add Account dialog closed on error and lost name/email; errors only in the page-level list. | PARTIAL | Same test file |
+| 4 | Team Accounts labelled every account "Active", though new Staff have `email_verified_at` NULL until first sign-in and no status field exists. | PARTIAL (data shown) | Same test file |
+
+### Changes made
+- `app/Http/Controllers/Admin/AdminSettingsController.php` (`storeAccount`): validates with `validateWithBag('createAccount', …)`. Rules (Staff only, unique email, confirmed password) unchanged.
+- `resources/views/admin/settings.blade.php`:
+  - Tab selection: errors in the `createAccount` bag open Administration first (before the query parameter and field-name checks).
+  - Profile "Full Name" ignores old input when the Add Account form failed.
+  - Add Account dialog: reopens on load (`data-open-on-load`, focus on the first invalid field), in-dialog error summary (`role="alert"`), per-field messages with `aria-invalid`/`aria-describedby`, labels tied to inputs, name/email refilled from old input only after its own failure. Passwords never refilled (Laravel's `dontFlash` keeps them out of old input; inputs have no `value`).
+  - Team Accounts: column "Verification" shows "Email verified" or "Awaiting first sign-in verification" from `email_verified_at`; no claim about active/disabled.
+- `tests/Feature/Phase2AuthAndOwnershipStabilizationTest.php`: the "no second Admin" assertion now names the `createAccount` bag (same refusal, new bag).
+
+### Tests run
+- `tests/Feature/AdminAccountCreationFormTest.php` (new): 9 tests — pass. Against the unchanged code: 5 fail (profile contamination, dialog reopen/values, password mismatch tab, role error bag, status), 4 pass (passwords not refilled, successful creation, profile/password forms' own validation, Staff forbidden).
+- `AdminAccountSettingsTest` 23 tests and `AdminBootstrapAndRecoveryTest` 31 tests — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1678 tests, 9003 assertions, 0 failures. `php -l` clean.
+- Browser: NOT VERIFIED (no live session); dialog auto-open and focus are checked in rendered HTML only.
+
+### Remaining work
+- Password change from Settings does not sign out other sessions or trusted devices — policy decision pending.
+- Unreachable "Reset My Password" dialog; Add Account subtitle still says "admin or staff"; no inline errors on the Security password form; sidebar label.
+
+## Admin Password Change — Session and Trusted-Device Revocation
+
+**Status:** Complete — approved policy applied to the Account Settings password change
+
+### Existing mechanisms (reused)
+| Mechanism | Where | Used by |
+|-----------|-------|---------|
+| Delete the user's rows from the `sessions` table (database session driver, `SESSION_DRIVER=database`) | `AdminPasswordResetController`, `AdminRecoveryController`, `AdminSettingsController::revokeOtherSessions` (keeps the current row) | Reset, recovery, "Sign out other sessions" |
+| Set `revoked_at` on `trusted_devices` rows; `TrustedDeviceService::findUsableForUser` ignores revoked rows | `AdminRecoveryController`, `TrustedDevice::revoke()` | Recovery, single-device revoke |
+| Laravel remember-me | Suppressed for Admin/Staff (`AuthController`); the trusted-device cookie replaces it | — |
+
+Reset and recovery also end the current session because the user is not signed in there; in Settings the Admin is signed in, so the current session is kept (as "Sign out other sessions" does).
+
+### Changes made
+- `app/Http/Controllers/Admin/AdminSettingsController.php` (`updatePassword`, also serves `admin.account.password`): after validation, one `DB::transaction` updates the password, deletes the Admin's other `sessions` rows (current kept) and revokes all of the Admin's unrevoked trusted devices. On any failure the transaction rolls back (password unchanged) and an error is shown on Security. After commit: this browser's trust cookie is cleared, audit entries `password_updated`, `sessions_revoked`, `trusted_devices_revoked`, and the success message says what was signed out. Validation rules unchanged.
+
+### Tests run
+- `tests/Feature/AdminPasswordChangeRevocationTest.php` (new, database session driver, real session rows and trusted devices): 4 tests, 49 assertions — pass. Against the unchanged controller: 2 fail (successful change, backward-compatible route), 2 pass (rejected changes touch nothing, Staff forbidden).
+- `AdminAccountSettingsTest` 23, `AdminAccountCreationFormTest` 9, `AdminBootstrapAndRecoveryTest` 31 — pass. Full suite (Gemini and Brevo pointed at a closed local port): 1682 tests, 9052 assertions, 0 failures. `php -l` clean.
+- Browser: NOT VERIFIED (no live session).
+
+### Remaining work
+- Session revocation relies on the database session driver; with another driver the `sessions` delete removes nothing (same limitation as reset, recovery and "Sign out other sessions").
+- A request already in progress in another browser when the password changes can write its session row back when it finishes (database session handler upsert); the next password change or "Sign out other sessions" removes it.

@@ -45,10 +45,10 @@
                                         </span>
                                     </td>
                                     <td data-label="Quoted total">
-                                        @if((float) ($booking->total_obligation ?? 0) > 0)
+                                        @if($booking->shared_quote_total !== null)
                                             <div class="space-y-1">
-                                                <div>Quote: ₱{{ number_format((float) $booking->total_obligation, 2) }}</div>
-                                                <div>Balance: ₱{{ number_format((float) ($booking->remaining_balance ?? 0), 2) }}</div>
+                                                <div>Quote: ₱{{ number_format($booking->shared_quote_total, 2) }}</div>
+                                                <div>Balance: ₱{{ number_format($booking->shared_remaining_balance, 2) }}</div>
                                             </div>
                                         @else
                                             <span class="text-slate-500">Not yet quoted</span>

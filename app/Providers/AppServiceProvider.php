@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\BrevoApiTransport;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -22,6 +23,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // One pager for every list (search and filters stay in its links; see the component).
+        Paginator::defaultView('components.pagination');
+
         Password::defaults(function () {
             return Password::min(8);
         });

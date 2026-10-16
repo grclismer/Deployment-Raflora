@@ -37,12 +37,7 @@ class InventoryController extends Controller
             'inventoryTransactions' => function ($q) {
                 $q->with(['booking', 'performedByUser'])->latest();
             }
-        ])->withSum(['bookings as reserved_stock' => function ($query) {
-            // Unconfirmed AI suggestions are not demand until staff confirm them; AI output never reserves stock.
-            $query->whereDate('bookings.event_date', '>=', Carbon::today())
-                  ->whereNotIn('bookings.status', ['cancelled', 'completed', 'declined'])
-                  ->where(fn ($q) => $q->whereNotNull('booking_items.confirmed_at')->orWhere('booking_items.is_ai_suggested', false));
-        }], 'booking_items.quantity');
+        ])->withBookedDemand(); // "Reserved" here is booked demand (InventoryItem::scopeWithBookedDemand)
         
         if ($category !== 'all') {
             $query->where('category', $category);
@@ -114,11 +109,7 @@ class InventoryController extends Controller
         $categories = InventoryItem::select('category')->distinct()->whereNotNull('category')->pluck('category');
 
         // Compute system-wide stats for cards (unfiltered)
-        $allStatsItems = InventoryItem::withSum(['bookings as reserved_stock' => function ($q) {
-            $q->whereDate('bookings.event_date', '>=', Carbon::today())
-              ->whereNotIn('bookings.status', ['cancelled', 'completed', 'declined'])
-              ->where(fn ($inner) => $inner->whereNotNull('booking_items.confirmed_at')->orWhere('booking_items.is_ai_suggested', false));
-        }], 'booking_items.quantity')->get();
+        $allStatsItems = InventoryItem::withBookedDemand()->get();
 
         $totalItemsCount = $allStatsItems->count();
         $inStockCount = 0;
@@ -722,8 +713,10 @@ class InventoryController extends Controller
                     ]);
 
                     if (!empty($validated['alert_id'])) {
+                        // A restock never closes a request that waits for an approve/reject decision.
                         AdminAlert::where('id', $validated['alert_id'])
                             ->where('is_read', false)
+                            ->whereNotIn('type', AdminAlert::DECISION_TYPES)
                             ->update(['is_read' => true]);
                     }
 

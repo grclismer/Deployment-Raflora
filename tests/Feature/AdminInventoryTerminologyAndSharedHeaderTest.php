@@ -46,7 +46,7 @@ class AdminInventoryTerminologyAndSharedHeaderTest extends TestCase
 
         // Check authoritative headers
         $response->assertSee('ON HAND');
-        $response->assertSee('RESERVED');
+        $response->assertSee('BOOKED DEMAND');
         $response->assertSee('TO PROCURE');
         $response->assertSee('MINIMUM');
         $response->assertSee('STATUS');
@@ -118,7 +118,7 @@ class AdminInventoryTerminologyAndSharedHeaderTest extends TestCase
         $response->assertSee('STOCK DEFINITIONS');
         $response->assertSee('On Hand:');
         $response->assertSee('To Procure:');
-        $response->assertSee('Additional quantity required to fulfill current reserved event demand.');
+        $response->assertSee('Additional quantity required to fulfill booked event demand.');
     }
 
     /**

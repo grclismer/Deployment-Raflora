@@ -65,7 +65,7 @@
                                 {{ $item->deleted_at->format('M d, Y') }}
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <form action="{{ route('admin.inventory.restore', $item->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Restore this item to active inventory?');">
+                                <form action="{{ route('admin.inventory.restore', $item->id) }}" method="POST" class="inline-block" data-confirm="Restore this item?" data-confirm-message="It returns to active inventory with its history." data-confirm-label="Restore item" data-confirm-tone="restore">
                                     @csrf
                                     <button type="submit" class="inline-flex items-center justify-center px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-brand-50 hover:text-brand-800 hover:border-brand-200 transition" title="Restore Item">
                                         <i class="fa-solid fa-rotate-left mr-1.5"></i> Restore

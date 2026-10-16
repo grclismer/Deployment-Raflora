@@ -12,6 +12,8 @@
     'accent' => 'emerald',
     'id' => 'booking-workflow',
     'audience' => null,
+    // False where the page already shows the current status prominently (the client booking page).
+    'showCurrent' => true,
 ])
 
 @php
@@ -34,6 +36,36 @@
 
     $isTerminal = !empty($workflow['terminal']);
     $isFinished = !empty($workflow['finished']);
+
+    // Guests and clients never see Staff-only operational detail. Guests, and clients whose booking
+    // is not yet confirmed (the service's "Confirmed" stage, reached only by a verified payment),
+    // see no Staff stages; confirmed clients see them with client wording instead of stock counts.
+    if (in_array($audience, ['guest', 'client'], true)) {
+        $confirmedReached = $isFinished || in_array($workflow['stages']['confirmed']['state'] ?? null, ['complete', 'current'], true);
+        if ($audience === 'guest' || !$confirmedReached) {
+            $workflow['stages'] = array_filter($workflow['stages'], fn (array $stage) => $stage['phase'] !== 'staff');
+            unset($workflow['phases']['staff']);
+            $workflow['total'] = count($workflow['stages']);
+            if (($workflow['current_phase'] ?? null) === 'staff') {
+                $workflow['current'] = null;
+            }
+        } else {
+            $clientWording = [
+                'preparation_reservation' => 'Raflora is preparing the materials for your event.',
+                'dispatch' => 'Your event materials are on their way and being set up.',
+                'material_return' => 'Raflora is collecting the reusable materials after your event.',
+            ];
+            foreach ($clientWording as $stageKey => $text) {
+                if (!empty($workflow['stages'][$stageKey]['detail'])) {
+                    $workflow['stages'][$stageKey]['detail'] = $text;
+                }
+                if (($workflow['current'] ?? null) === $stageKey) {
+                    $workflow['current_detail'] = $text;
+                }
+            }
+        }
+    }
+    $phaseCount = max(1, count($workflow['phases']));
 
     $palette = match ($accent) {
         'purple' => [
@@ -137,7 +169,7 @@
                 <p class="mt-1 text-xs leading-relaxed text-rose-700">{{ $workflow['terminal_detail'] }}</p>
             </div>
         </div>
-    @elseif($workflow['current'] && !$isFinished)
+    @elseif($workflow['current'] && !$isFinished && $showCurrent)
         <div class="mt-4 flex items-start gap-3 rounded-xl border p-4 {{ $palette['now'] }}" role="status">
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {{ $palette['nowIcon'] }}" aria-hidden="true">
                 <i class="fa-solid {{ $phaseIcons[$workflow['current_phase']] ?? 'fa-location-dot' }} text-sm"></i>
@@ -155,7 +187,7 @@
     @endif
 
     {{-- 14-segment progress strip, grouped by phase --}}
-    <div class="mt-5 grid grid-cols-[2fr_6fr_6fr] gap-2 sm:gap-3" aria-hidden="true">
+    <div class="mt-5 grid {{ $phaseCount === 3 ? 'grid-cols-[2fr_6fr_6fr]' : 'grid-cols-[2fr_6fr]' }} gap-2 sm:gap-3" aria-hidden="true">
         @foreach($workflow['phases'] as $phase)
             <div class="min-w-0">
                 <div class="mb-1.5 flex items-baseline justify-between gap-1">
@@ -179,7 +211,7 @@
     <p class="sr-only">{{ $completedStages }} of {{ $workflow['total'] }} workflow stages complete.</p>
 
     {{-- Phase lists: current phase open on phones, every phase open on large screens --}}
-    <div class="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-4">
+    <div class="mt-5 grid grid-cols-1 gap-3 {{ $phaseCount === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2' }} lg:gap-4">
         @foreach($workflow['phases'] as $phase)
             @php $openByDefault = $phase['state'] === 'current' || ($isTerminal && $phase['key'] === 'guest'); @endphp
             <details class="group min-w-0 rounded-xl border {{ $phase['state'] === 'current' ? $palette['phaseCurrent'] : 'border-slate-200 bg-slate-50/50' }}" data-workflow-phase="{{ $phase['key'] }}" data-workflow-phase-details @if($openByDefault) open @endif>

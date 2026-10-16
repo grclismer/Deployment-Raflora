@@ -377,7 +377,7 @@ class AdminInventoryProcurementReceiptTest extends TestCase
 
         // 24. Table columns: ON HAND, RESERVED, TO PROCURE, MINIMUM
         $response->assertSee('ON HAND');
-        $response->assertSee('RESERVED');
+        $response->assertSee('BOOKED DEMAND');
         $response->assertSee('TO PROCURE');
         $response->assertSee('MINIMUM');
 
@@ -389,7 +389,7 @@ class AdminInventoryProcurementReceiptTest extends TestCase
         $response->assertSee('openItemDrawer(' . $item->id . ')', false);
 
         // 26. Drawer displays TO PROCURE card and demand coverage note (50 - 20 = 30 stems needed)
-        $response->assertSee('30 stems still needed for current reserved event demand.');
+        $response->assertSee('30 stems still needed for booked event demand.');
 
         // 27. Receive Stock action button in drawer
         $response->assertSee('Receive Stock');

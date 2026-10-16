@@ -169,7 +169,7 @@
                 <h3 id="active-alerts-heading" class="rf-admin-card__title">Active Alerts</h3>
                 <span class="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-amber-100 text-amber-800 tabular-nums">{{ $activeAlerts->count() }} unread</span>
             </div>
-            <form method="POST" action="{{ route('admin.alerts.read-all') }}">
+            <form method="POST" action="{{ route('admin.alerts.read-all') }}" data-confirm="Dismiss all alerts?" data-confirm-message="Alerts are marked as read. Stock count requests from Staff stay open until you approve or reject them in Notifications." data-confirm-label="Dismiss all">
                 @csrf
                 <button type="submit" class="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 bg-white rounded-lg px-3 h-8 hover:bg-slate-50 transition cursor-pointer">
                     Dismiss All
@@ -199,12 +199,16 @@
                             @endif
                         </div>
                     </div>
+                    @if($alert->requiresDecision())
+                        <a href="{{ route('admin.notifications') }}" class="rf-admin-card__link shrink-0 text-xs">Review</a>
+                    @else
                     <form method="POST" action="{{ route('admin.alerts.read', $alert) }}" class="shrink-0">
                         @csrf
                         <button type="submit" title="Dismiss" aria-label="Dismiss alert" class="opacity-60 group-hover:opacity-100 focus:opacity-100 transition w-7 h-7 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center cursor-pointer">
                             <i class="fa-solid fa-xmark text-xs"></i>
                         </button>
                     </form>
+                    @endif
                 </li>
             @endforeach
         </ul>

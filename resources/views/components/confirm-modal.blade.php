@@ -63,7 +63,7 @@
         if (actionType === 'archive' || actionType === 'danger') {
             submitBtn.classList.add('bg-rose-600', 'hover:bg-rose-700', 'focus:ring-rose-500');
             iconContainer.classList.add('bg-rose-50');
-            iconEl.className = "fa-solid fa-box-archive text-rose-600 text-xl";
+            iconEl.className = (actionType === 'archive' ? "fa-solid fa-box-archive" : "fa-solid fa-triangle-exclamation") + " text-rose-600 text-xl";
         } else if (actionType === 'restore') {
             submitBtn.classList.add('bg-emerald-700', 'hover:bg-emerald-800', 'focus:ring-emerald-500');
             iconContainer.classList.add('bg-emerald-50');
@@ -92,10 +92,45 @@
         if (currentConfirmFormId) {
             const form = document.getElementById(currentConfirmFormId);
             if (form) {
+                // One submission only: the page is about to navigate.
+                document.getElementById('confirmModalSubmitBtn').disabled = true;
                 form.submit();
             }
         }
     }
+
+    /*
+     * Declarative use, instead of the browser's confirm():
+     *   <form method="POST" action="..." data-confirm="Verify this payment?"
+     *         data-confirm-message="..." data-confirm-label="Verify payment" data-confirm-tone="default|danger|archive">
+     * The form is submitted only after the dialog's confirm button is pressed.
+     */
+    document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-confirm')) return;
+        event.preventDefault();
+        if (!form.id) form.id = 'confirm-form-' + Math.random().toString(36).slice(2, 10);
+        // A named submit button's value would be lost by form.submit(), so it is carried over.
+        const submitter = event.submitter;
+        form.querySelectorAll('input[data-confirm-submitter]').forEach((input) => input.remove());
+        if (submitter && submitter.name) {
+            const carried = document.createElement('input');
+            carried.type = 'hidden';
+            carried.name = submitter.name;
+            carried.value = submitter.value;
+            carried.dataset.confirmSubmitter = '';
+            form.appendChild(carried);
+        }
+        document.getElementById('confirmModalSubmitBtn').disabled = false;
+        openConfirmModal(
+            form.id,
+            form.dataset.confirm,
+            form.dataset.confirmMessage || 'Please confirm that you want to continue.',
+            form.dataset.confirmLabel || 'Confirm',
+            form.dataset.confirmTone || 'default',
+            submitter || document.activeElement
+        );
+    });
 
     // Keyboard handling: Escape to close, Tab focus trapping
     document.addEventListener('keydown', (event) => {

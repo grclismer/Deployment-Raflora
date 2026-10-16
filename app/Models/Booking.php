@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +12,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Booking extends Model
 {
+    /**
+     * Official quotation markup a custom (Smart AI) booking starts with, before Admin adjusts it:
+     * the bookings.multiplier column default. Package bookings use 1× because their catalog price
+     * is final. Separate from the AI estimate markup (Setting::KEY_AI_ESTIMATE_MARKUP).
+     */
+    public const DEFAULT_QUOTATION_MARKUP = 3.0;
+
     protected static function booted(): void
     {
         static::creating(function (Booking $booking): void {
@@ -62,15 +70,22 @@ class Booking extends Model
                 ]);
             }
 
-            if (is_null($booking->client_id) && $booking->guest_email && ($statusChanged || $quoteChanged)) {
+            // Guests hear about a price only when Admin issues a quotation, the only update that
+            // sets price_valid_until (QuotationIssuanceService); a working-price edit sends nothing.
+            // Sent after commit so the email reads the quotation issued in the same transaction.
+            $quotationIssued = $booking->wasChanged('price_valid_until');
+
+            if (is_null($booking->client_id) && $booking->guest_email && ($statusChanged || $quotationIssued)) {
                 $context = $statusChanged ? 'status_updated' : 'quote_updated';
-                
-                try {
-                    \Illuminate\Support\Facades\Mail::to($booking->guest_email)
-                        ->send(new \App\Mail\GuestBookingNotificationMail($booking, $context));
-                } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::error('Failed to send guest booking update email: ' . $e->getMessage());
-                }
+
+                DB::afterCommit(function () use ($booking, $context): void {
+                    try {
+                        \Illuminate\Support\Facades\Mail::to($booking->guest_email)
+                            ->send(new \App\Mail\GuestBookingNotificationMail($booking->fresh() ?? $booking, $context));
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::error('Failed to send guest booking update email: ' . $e->getMessage());
+                    }
+                });
             }
         });
     }
@@ -301,6 +316,37 @@ class Booking extends Model
         return $this->hasOne(Quotation::class, 'booking_id', 'id')
             ->where('status', Quotation::STATUS_ACCEPTED)
             ->latestOfMany('version');
+    }
+
+    /**
+     * The quotation Raflora has shared with the client: the accepted one, else the issued one.
+     * Null until Admin issues a quotation. Guests and clients see Raflora prices only from here;
+     * the booking's own price fields are Admin's working figures.
+     */
+    public function sharedQuotation(): ?Quotation
+    {
+        return $this->acceptedQuotation ?? $this->activeQuotation;
+    }
+
+    /**
+     * What the client owes as Raflora shared it: the shared quotation's price plus any damage
+     * charges. Null before a quotation is issued.
+     */
+    public function getSharedQuoteTotalAttribute(): ?float
+    {
+        $quotation = $this->sharedQuotation();
+
+        return $quotation ? (float) $quotation->final_quoted_price + $this->damage_charges : null;
+    }
+
+    /**
+     * The client's balance against the shared quotation; null before a quotation is issued.
+     */
+    public function getSharedRemainingBalanceAttribute(): ?float
+    {
+        $total = $this->shared_quote_total;
+
+        return $total === null ? null : max(0.0, $total - $this->total_paid);
     }
 
     /**

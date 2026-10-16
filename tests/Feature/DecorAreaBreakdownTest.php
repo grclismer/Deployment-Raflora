@@ -83,7 +83,7 @@ class DecorAreaBreakdownTest extends TestCase
             $this->row('White Roses', 120, 35, 'centerpieces'),
             $this->row('Candles', 10, 40, 'vip_table', null, 'prop', 'tables'),   // unpicked area, visual "tables": centerpieces
             $this->row('Arch Roses', 40, 35, 'entrance', null, 'flower', 'entrance'), // unpicked area, no picked match: shared
-            $this->row('Ribbon', 2, 50, 'garden', null, 'supply'),                // not an area at all
+            $this->row('Ribbon', 2, 50, 'garden', null, 'supply', 'ceiling'),     // not an area, seen on the ceiling: shared
             ['item_name' => 'Floral Foam', 'category' => 'supply', 'quantity' => 4, 'unit_type' => 'piece', 'unit_cost_php' => 25],
         ]], ['decor_areas' => ['centerpieces', 'aisle']]);
 
@@ -256,7 +256,7 @@ class DecorAreaBreakdownTest extends TestCase
             'table_count' => 10,
         ] + $brief;
 
-        $response = $this->actingAs($user)->postJson(route('bookings.analyze-temp-image'), $request(['decor_areas' => ['centerpieces', 'aisle']]))
+        $response = $this->actingAs($user)->postJson(route('bookings.analyze-temp-image'), $request(['decor_areas' => ['centerpieces', 'aisle'], 'photo_areas' => ['centerpieces', 'aisle']]))
             ->assertOk()
             ->assertJsonPath('analysis.area_breakdown.mode', 'quantities')
             ->assertJsonPath('analysis.area_breakdown.areas.0.key', 'centerpieces')
@@ -344,7 +344,7 @@ class DecorAreaBreakdownTest extends TestCase
         // Admin: Raflora's raw costs per area (144 × ₱30), never the AI's ₱35.
         $this->actingAs($admin)->get(route('admin.bookings.show', $booking))
             ->assertOk()
-            ->assertSeeInOrder(['Materials per area', 'Raw total (Raflora prices)', '₱4,920.00', 'Table centerpieces', '₱4,320.00', '144 stem', 'White Roses', '₱30.00', '12 tables × 12 stems = 144 stems', 'Aisle', DecorAreaBreakdown::MISSING_MESSAGE, 'Shared & general', 'Floral Foam', 'Price pending', 'Added by Raflora', 'Table Runner', '₱600.00']);
+            ->assertSeeInOrder(['Materials per area', 'Raw total (Raflora prices)', '₱4,920.00', 'Table centerpieces', '₱4,320.00', '144 stem', 'White Roses', '₱30.00', '12 tables × 12 stems = 144 stems', 'Aisle', DecorAreaBreakdown::MISSING_MESSAGE, 'Shared Materials', 'Floral Foam', 'Price pending', 'Added by Raflora', 'Table Runner', '₱600.00']);
 
         // Staff: the same groups and booking quantities, no prices.
         $this->actingAs($staff)->get(route('staff.events.show', $booking))
@@ -379,7 +379,7 @@ class DecorAreaBreakdownTest extends TestCase
 
         $this->actingAs($clientUser)->get(route('bookings.show', $booking))
             ->assertOk()
-            ->assertSeeInOrder(['Materials per area', 'Quoted price', '₱14,760.00', 'Table centerpieces', '₱12,960.00', '87.8% of your quote', 'Shared & general', 'Floral Foam', 'Not in your quotation', 'Added by Raflora', '₱1,800.00'])
+            ->assertSeeInOrder(['Materials per area', 'Quoted price', '₱14,760.00', 'Table centerpieces', '₱12,960.00', '87.8% of your quote', 'Shared Materials', 'Floral Foam', 'Not in your quotation', 'Added by Raflora', '₱1,800.00'])
             ->assertDontSee('₱4,320.00');
     }
 
@@ -388,14 +388,14 @@ class DecorAreaBreakdownTest extends TestCase
         Mail::fake();
         $analysis = ['suggested_materials' => [$this->row('White Roses', 96, 35, 'centerpieces', '8 tables × 12 stems = 96 stems')]];
 
-        $this->post(route('guest.booking.store'), [
+        // The analysis comes from this session's photo analysis, never from the browser.
+        $this->withSession(['booking_analysis_payloads' => ['token-1' => ['analysis' => $analysis]]])->post(route('guest.booking.store'), [
             'guest_name' => 'Samantha Cruz',
             'guest_email' => 'samantha.cruz@example.com',
             'guest_phone' => '09179876543',
             'guest_address' => '78 Magnolia Lane, Quezon City',
             'booking_type' => 'custom_ai',
             'analysis_tokens' => json_encode(['token-1']),
-            'analysis_data' => json_encode($analysis),
             'event_type' => 'wedding',
             'event_date' => Carbon::now()->addDays(30)->toDateString(),
             'event_time' => '15:00',
@@ -421,8 +421,12 @@ class DecorAreaBreakdownTest extends TestCase
         $this->get(route('guest.booking.create'))->assertOk()
             ->assertSee('id="guest-area-breakdown"', false)
             ->assertSee('id="review-area-breakdown"', false)
-            ->assertSee("window.RafloraAreaBreakdown?.render('review-area-breakdown', combinedAreaBreakdown(completedImages));", false)
-            ->assertSee(DecorAreaBreakdown::MISSING_MESSAGE);
+            // The review step asks the server to combine the photos (views of one design are never added up).
+            ->assertSee('loadReviewEstimate(completedImages);', false)
+            ->assertSee(json_encode(route('bookings.analysis-estimate')), false)
+            ->assertSee('id="review-ai-estimate"', false)
+            // The panel script carries the message as JSON for areas with nothing suggested.
+            ->assertSee(json_encode(DecorAreaBreakdown::MISSING_MESSAGE), false);
         $this->actingAs($this->clientUser())->get(route('bookings.create'))->assertOk()->assertSee('id="client-area-breakdown"', false);
     }
 

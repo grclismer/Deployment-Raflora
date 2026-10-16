@@ -319,10 +319,10 @@ class GuestBookingJourneyTrackingTest extends TestCase
         $response->assertSee('data-workflow-stage="awaiting_claim" data-workflow-state="current"', false);
         $response->assertSee('data-workflow-stage="quotation" data-workflow-state="upcoming"', false);
         $response->assertDontSee('Request Expires');
-        $response->assertSee('CLAIM YOUR REQUEST');
-        $response->assertSee('Claim Booking');
+        // One claim panel with its actions, and the status-specific quotation notice.
+        $response->assertSee('CLAIM REQUIRED TO CONTINUE');
+        $response->assertSee('Create a free account &amp; Claim', false);
         $response->assertSee('Official Quotation Ready');
-        $response->assertSee('What Raflora Is Doing');
-        $response->assertSee('What You Should Expect Next');
+        $response->assertDontSee('What Raflora Is Doing');
     }
 }

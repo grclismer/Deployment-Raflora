@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: model_decision
 ---
 
 RAFLORA — IDE AGENT DEVELOPMENT RULES
@@ -36,6 +36,7 @@ Never create fake data, fake statuses, fake notifications, fake success messages
 6. SYSTEMUI RULE
 SystemUI is the approved visual/UX reference. Match its layout, hierarchy, spacing, typography, cards, buttons, forms, navigation, terminology, visual identity, desktop/mobile behavior, and responsive structure where applicable.
 SystemUI does NOT authorize new functionality. Every action must correspond to an approved/existing Raflora function. If SystemUI and implementation differ, classify the difference as visual, functional, business-rule, missing requirement, or unresolved dependency. Do not silently change business behavior during a visual task.
+SystemUI defines the intended visual reference, not proof of backend functionality. Before implementing an interaction shown in a mockup, verify its requirement, available data, route, permissions, and business behavior. If it is unsupported, report the dependency rather than inventing behavior. Before changing shared layouts, components, styles, routes, or services, identify affected guest, client, administrator, and staff workflows. Test affected consumers and preserve role-specific permissions and behavior. Shared visual consistency does not mean identical
 
 7. RESPONSIVE & ACCESSIBLE UI
 Check desktop/mobile and tablet where applicable. Prevent horizontal overflow. Keep text readable, controls usable/touch-friendly, spacing logical, focus states visible, and validation/error/empty/loading states understandable where applicable. Every input needs a label. Interactive controls need accessible names. Do not rely on color alone. Reuse existing responsive architecture.
@@ -80,7 +81,7 @@ A page loading or button appearing is NOT proof a function works. A function is 
 Test realistic end-to-end journeys, not only isolated pages.
 UI tests: layout, responsive behavior, forms, validation, buttons/links, error/loading/empty states.
 Backend tests: valid/invalid input, authorization, ownership, database state, business state, workflow, error handling.
-If tests cannot run because of environment limitations, report that honestly. Never claim a test passed unless actually executed.
+If tests cannot run because of environment limitations, report that honestly. Never claim a test passed unless actually executed. Report automated tests, browser/manual tests, and production or deployment verification separately. A passing automated suite does not prove that every responsive layout, interaction, authorization boundary, or end-to-end workflow was manually verified.
 
 15. CHANGE CONTROL / NO SCOPE CREEP
 Make the smallest safe change. Do not rewrite unrelated modules, replace dependencies unnecessarily, add packages without need, redesign architecture, rename unrelated database fields, change unrelated routes/UI, or add dashboards, analytics, notifications, integrations, roles, payment systems, automation, AI features, or other enhancements unless required by approved scope/current task.
@@ -128,8 +129,7 @@ UNDERSTAND → INSPECT → IDENTIFY → PRIORITIZE → PLAN → IMPLEMENT → TE
 Do not skip INSPECT. Do not implement before understanding the existing code. Do not declare DONE before verification.
 
 21. IDE TASK COMPLIANCE
-Every implementation prompt may define TASK, CONTEXT, SCOPE, OUT OF SCOPE, TARGET FILES, REQUIREMENTS, CONSTRAINTS, IMPLEMENTATION PROCESS, TEST PLAN, ACCEPTANCE CRITERIA, and FINAL REPORT. Follow these task-specific instructions while these Rules control execution behavior.
-If the task prompt conflicts with higher-level Raflora requirements or actual implementation, identify the conflict before making an unsafe/unrelated change.
+For every substantial implementation task, the agent MUST establish the task, context, scope, out-of-scope items, target files/modules, requirements, constraints, implementation process, test plan, acceptance criteria, and final report. If information is unavailable, identify the gap rather than inventing it. For small, straightforward tasks, use a proportionate version without unnecessary ceremony.
 
 22. FINAL REPORT
 After every implementation task report:

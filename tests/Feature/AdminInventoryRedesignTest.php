@@ -416,8 +416,8 @@ class AdminInventoryRedesignTest extends TestCase
         $response->assertSee('STOCK SUMMARY');
         $response->assertSee('STOCK DEFINITIONS');
         $response->assertSee('Physical quantity currently in inventory.');
-        $response->assertSee('Quantity committed to valid event bookings.');
-        $response->assertSee('Additional quantity required to fulfill current reserved event demand.');
+        $response->assertSee('Quantity needed by upcoming confirmed booking lines (not yet held or dispatched).');
+        $response->assertSee('Additional quantity required to fulfill booked event demand.');
         $response->assertSee('Configured minimum inventory threshold.');
         $response->assertSee('ITEM INFORMATION');
         $response->assertSee('Delphinium Blue');
@@ -529,7 +529,7 @@ class AdminInventoryRedesignTest extends TestCase
         $response->assertSee('ITEM');
         $response->assertSee('CATEGORY');
         $response->assertSee('ON HAND');
-        $response->assertSee('RESERVED');
+        $response->assertSee('BOOKED DEMAND');
         $response->assertSee('TO PROCURE');
         $response->assertSee('MINIMUM');
         $response->assertSee('STATUS');

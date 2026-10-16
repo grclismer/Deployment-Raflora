@@ -65,7 +65,8 @@ class ReportController extends Controller
         );
         $averageBookingValue = $confirmedThisMonth > 0 ? $totalConfirmedContractValue / $confirmedThisMonth : 0.0;
 
-        $stockAlerts = InventoryItem::whereColumn('current_stock', '<=', 'min_stock')->count();
+        // On-hand low stock (InventoryItem::scopeBelowMinimum), the rule the Dashboard uses too.
+        $stockAlerts = InventoryItem::belowMinimum()->count();
 
         // Quoted pipeline value across active prospective bookings
         $pipelineValue = (float) Booking::whereIn('status', $pipelineStatuses)
@@ -135,7 +136,7 @@ class ReportController extends Controller
         $materialLabels = $topMaterials->pluck('name')->toArray();
         $materialData = $topMaterials->pluck('total_qty')->map(fn ($qty) => (float) $qty)->toArray();
 
-        $lowStockItems = InventoryItem::whereColumn('current_stock', '<=', 'min_stock')
+        $lowStockItems = InventoryItem::belowMinimum()
             ->orderByRaw('(current_stock - min_stock) asc')->limit(5)
             ->get(['name', 'current_stock', 'min_stock', 'unit']);
 

@@ -369,7 +369,7 @@ class DeterministicMultiItemLockOrderingTest extends TestCase
         ]);
 
         // Manage returns: only dispatched item1 exists as ReturnItem
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->first();
         $returnItem1 = $return->returnItems()->first();
 
@@ -433,7 +433,7 @@ class DeterministicMultiItemLockOrderingTest extends TestCase
             'confirmed_at' => now(),
         ]);
 
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -514,7 +514,7 @@ class DeterministicMultiItemLockOrderingTest extends TestCase
             ]);
         }
 
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->first();
 
         return [$booking->fresh(), $return, $items];

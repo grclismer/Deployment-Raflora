@@ -294,6 +294,14 @@ class AdminNotificationsTest extends TestCase
             'total_quoted' => 15000,
             'final_quoted_price' => 15000,
         ]);
+        // 10 × ₱600 × 3 markup = ₱18,000 when the quotation is issued.
+        BookingItem::create([
+            'booking_id' => $booking->id,
+            'item_name' => 'White Roses',
+            'quantity' => 10,
+            'quoted_unit_price' => 600,
+            'confirmed_at' => now(),
+        ]);
 
         $response = $this->actingAs($admin)->put(route('admin.bookings.update', $booking), [
             '_method' => 'PUT',
@@ -308,11 +316,13 @@ class AdminNotificationsTest extends TestCase
         ]);
 
         $response->assertRedirect();
+        $response->assertSessionMissing('error');
         $booking->refresh();
 
+        // A first quotation states the issued total; the unissued ₱15,000 working figure never reaches the client.
         $this->assertStringContainsString('Price changes:', $booking->admin_notes);
-        $this->assertStringContainsString('Quote updated', $booking->admin_notes);
-        $this->assertStringContainsString('18,000.00', $booking->admin_notes);
+        $this->assertStringContainsString('Quoted total: ₱18,000.00', $booking->admin_notes);
+        $this->assertStringNotContainsString('15,000.00', $booking->admin_notes);
     }
 
     public function test_admin_approval_blocks_when_requested_item_quantity_exceeds_available_stock_without_deleting_booking_items(): void
@@ -431,6 +441,15 @@ class AdminNotificationsTest extends TestCase
             'procurement_status' => 'pending',
             'confirmed_at' => now(),
         ]);
+        // A quotation still needs one line to quote once White Roses is removed.
+        BookingItem::create([
+            'booking_id' => $booking->id,
+            'item_name' => 'Eucalyptus',
+            'quantity' => 5,
+            'quoted_unit_price' => 20,
+            'is_ai_suggested' => 0,
+            'confirmed_at' => now(),
+        ]);
 
         $response = $this->actingAs($admin)->put(route('admin.bookings.update', $booking), [
             '_method' => 'PUT',
@@ -452,14 +471,15 @@ class AdminNotificationsTest extends TestCase
         ]);
 
         $response->assertRedirect();
+        $response->assertSessionMissing('error');
         $bookingItem->refresh();
 
-        $this->assertSame(1, BookingItem::count());
+        $this->assertSame(2, BookingItem::count());
         $this->assertSame('unmatched', $bookingItem->procurement_status);
         $this->assertSame(2.0, (float) $bookingItem->quantity);
     }
 
-    public function test_admin_update_creates_inventory_catalog_entry_for_proposal_items(): void
+    public function test_admin_update_keeps_proposal_items_without_creating_catalog_entries(): void
     {
         $admin = User::create([
             'name' => 'Admin User',
@@ -475,6 +495,15 @@ class AdminNotificationsTest extends TestCase
             'venue' => 'The Garden Hall',
             'status' => 'pending',
             'total_quoted' => 15000,
+        ]);
+        // A confirmed line lets the quotation issue; a refused send keeps none of its changes.
+        BookingItem::create([
+            'booking_id' => $booking->id,
+            'item_name' => 'Eucalyptus',
+            'quantity' => 5,
+            'quoted_unit_price' => 20,
+            'is_ai_suggested' => 0,
+            'confirmed_at' => now(),
         ]);
 
         $response = $this->actingAs($admin)->put(route('admin.bookings.update', $booking), [
@@ -496,15 +525,15 @@ class AdminNotificationsTest extends TestCase
         ]);
 
         $response->assertRedirect();
+        $response->assertSessionMissing('error');
         $booking->refresh();
-        $bookingItem = $booking->bookingItems()->latest()->first();
+        $bookingItem = $booking->bookingItems()->where('item_name', 'Custom Candle Holder')->first();
 
+        // Audit F8: a proposal line is kept for Admin to link or promote; free text never adds a catalog item.
         $this->assertNotNull($bookingItem);
-        $this->assertNotNull($bookingItem->inventory_item_id);
-        $inventoryItem = InventoryItem::find($bookingItem->inventory_item_id);
-        $this->assertNotNull($inventoryItem);
-        $this->assertSame(0.0, (float) $inventoryItem->current_stock);
-        $this->assertSame(180.0, (float) $inventoryItem->unit_cost);
+        $this->assertNull($bookingItem->inventory_item_id);
+        $this->assertSame(180.0, (float) $bookingItem->quoted_unit_price);
+        $this->assertSame(0, InventoryItem::where('name', 'Custom Candle Holder')->count());
     }
 
     public function test_client_can_submit_payment_reference_after_admin_approval(): void
@@ -934,6 +963,8 @@ class AdminNotificationsTest extends TestCase
             'performed_by' => $admin->id,
         ]);
 
+        // Admin starts the audit (viewing the page no longer creates it), then reviews it.
+        $this->actingAs($admin)->post(route('admin.return-tracking.start', ['booking' => $booking]));
         $response = $this->actingAs($admin)->get(route('admin.return-tracking.manage', ['booking' => $booking]));
 
         $response->assertOk();

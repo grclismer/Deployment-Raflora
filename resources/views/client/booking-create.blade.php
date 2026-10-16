@@ -5,29 +5,37 @@
                 <!-- Header -->
                 <span class="rf-badge rf-badge--success mb-3">Authenticated client portal</span>
                 <h1 class="page-title mt-1">Create Event Booking</h1>
-                <p class="section-subtitle mt-2 mb-8 max-w-2xl">Tell us about your event first, then choose a custom AI design or a curated package. Your event details help the AI suggest the right quantities.</p>
+                <p class="section-subtitle mt-2 mb-6 max-w-2xl">Tell us about your event first, then choose a custom AI design or a curated package, and review your request before sending it. Your event details help the AI suggest the right quantities.</p>
 
                 @php
                     $clientDisplayErrors = collect($errors->keys())
                         ->reject(fn($key) => in_array($key, ['inspiration_image', 'analysis_token']))
                         ->flatMap(fn($key) => $errors->get($key));
-                    // Step 1 = event details, Step 2 = booking method, photo and design brief (same order as the guest form,
-                    // so the photo is analyzed with the event details already filled in).
+                    // Same order as the guest form: event details, then booking method and design (the photos
+                    // are analyzed with the event details already filled in), then review. Contact details come
+                    // from the client's profile, so there is no contact step.
                     $hasStep1Errors = $errors->hasAny(['event_type', 'other_event_type', 'event_date', 'event_time', 'end_time', 'venue', 'venue_latitude', 'venue_longitude', 'venue_setting', 'guest_count', 'table_count', 'special_requests']);
-                    $hasStep2Errors = $errors->hasAny(array_merge(['inspiration_image', 'analysis_token', 'package_id', 'booking_type'], \App\Support\EventDesignBrief::FIELDS, ['decor_areas.*', 'color_palette.*']));
+                    $hasStep2Errors = $errors->hasAny(array_merge(['inspiration_image', 'analysis_token', 'analysis_tokens', 'package_id', 'booking_type', 'photo_areas'], \App\Support\EventDesignBrief::FIELDS, ['decor_areas.*', 'color_palette.*', 'decor_area_notes.*']))
+                        || session('analysis_error');
                     $initialStep = ($hasStep2Errors && !$hasStep1Errors) ? 2 : 1;
                     $selectedBookingType = old('booking_type', request('package_id') ? 'preset' : 'custom_ai');
+                    $steps = [1 => 'Event Details', 2 => 'Booking Method & Design', 3 => 'Review & Submit'];
+
+                    $clientUser = auth()->user();
+                    $clientModel = $clientUser?->client ?? \App\Models\Client::where('email', $clientUser?->email)->first();
+                    $clientName = $clientModel?->full_name ?: ($clientUser?->name ?: 'Valued Client');
+                    $clientEmail = $clientModel?->email ?: ($clientUser?->email ?: 'Not specified');
+                    $clientPhone = $clientModel?->phone ?: ($clientUser?->mobile_number ?: 'Not provided');
+                    $clientAddress = $clientModel?->address ?: ($clientUser?->address ?: 'Not provided');
                 @endphp
 
-                <nav class="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Booking form progress">
-                    <div id="progress-step-1" class="rounded-xl border {{ $initialStep === 1 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-4 py-3" {{ $initialStep === 1 ? 'aria-current="step"' : '' }}>
-                        <p class="text-[11px] font-bold uppercase tracking-wide {{ $initialStep === 1 ? 'text-emerald-700' : 'text-slate-500' }}">Step 1</p>
-                        <p class="text-sm font-semibold {{ $initialStep === 1 ? 'text-slate-900' : 'text-slate-500' }}">Event Details</p>
-                    </div>
-                    <div id="progress-step-2" class="rounded-xl border {{ $initialStep === 2 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-4 py-3" {{ $initialStep === 2 ? 'aria-current="step"' : '' }}>
-                        <p class="text-[11px] font-bold uppercase tracking-wide {{ $initialStep === 2 ? 'text-emerald-700' : 'text-slate-500' }}">Step 2</p>
-                        <p class="text-sm font-semibold {{ $initialStep === 2 ? 'text-slate-900' : 'text-slate-500' }}">Booking Method & Design</p>
-                    </div>
+                <nav class="mb-6 grid grid-cols-3 gap-2 sm:gap-3" aria-label="Booking form progress">
+                    @foreach($steps as $number => $label)
+                        <div id="progress-step-{{ $number }}" data-progress-step="{{ $number }}" class="rounded-xl border {{ $initialStep === $number ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-2.5 py-2 sm:px-4 sm:py-3" {!! $initialStep === $number ? 'aria-current="step"' : '' !!}>
+                            <p class="text-[11px] font-bold uppercase tracking-wide {{ $initialStep === $number ? 'text-emerald-700' : 'text-slate-500' }}">Step {{ $number }}</p>
+                            <p class="text-xs font-semibold sm:text-sm {{ $initialStep === $number ? 'text-slate-900' : 'text-slate-500' }}">{{ $label }}</p>
+                        </div>
+                    @endforeach
                 </nav>
 
                 @if($clientDisplayErrors->isNotEmpty())
@@ -153,12 +161,12 @@
                     </div>
                     </div>
 
-                    <!-- STEP 2: BOOKING METHOD, PHOTO & DESIGN BRIEF -->
-                    <div id="booking-step-2" class="{{ $initialStep === 2 ? 'space-y-8' : 'hidden space-y-8' }}">
+                    <!-- STEP 2: BOOKING METHOD & DESIGN -->
+                    <div id="booking-step-2" class="{{ $initialStep === 2 ? 'space-y-6' : 'hidden space-y-6' }}">
 
                     <!-- 1. SELECT BOOKING TYPE -->
                     <div>
-                        <h3 class="text-sm font-bold text-slate-800 mb-3">1. Select Booking Type</h3>
+                        <h3 class="text-sm font-bold text-slate-800 mb-3">1. Choose Booking Method</h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <!-- AI Card -->
                             <label id="card-ai" onclick="switchMode('ai')" class="relative flex items-start gap-3 rounded-xl border-2 {{ $selectedBookingType === 'custom_ai' ? 'border-emerald-600 bg-white ring-1 ring-emerald-600' : 'border-slate-200 bg-white hover:border-slate-300' }} p-4 shadow-sm transition-all cursor-pointer focus-within:ring-4 focus-within:ring-emerald-100">
@@ -171,7 +179,7 @@
                                         <span class="font-bold text-slate-900 text-sm">Smart AI Custom Design</span>
                                         <span class="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded ml-2 uppercase">POPULAR</span>
                                     </div>
-                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug">Upload your inspiration image. Gemini AI analyzes your inspiration image and suggests possible floral materials. These suggestions are reviewed by Raflora staff before they are used for your quotation.</p>
+                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug">Upload up to 5 inspiration photos. The AI suggests floral materials for each one, and Raflora reviews them before your official quotation.</p>
                                 </div>
                             </label>
 
@@ -183,41 +191,27 @@
                                 </div>
                                 <div>
                                     <div class="font-bold text-slate-900 text-sm">Pre-Set Curated Package</div>
-                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug">Select from our ready-made floral packages with fixed pricing set by our master florists.</p>
+                                    <p class="text-xs text-slate-500 mt-0.5 leading-snug">Choose a ready-made floral package with a fixed catalog price set by our florists.</p>
                                 </div>
                             </label>
                         </div>
                     </div>
 
-                    <!-- DYNAMIC AI SECTION -->
-                    <section id="section-ai" class="{{ $selectedBookingType === 'preset' ? 'hidden' : '' }} rounded-xl border border-dashed border-emerald-300 bg-slate-50/60 p-5 sm:p-6" aria-labelledby="inspiration-heading">
-                        {{-- Read by the AI when the photo is analyzed, so it comes before the upload --}}
-                        <x-design-brief-fields id="design-brief" class="mb-5" />
-
-                        <h3 id="inspiration-heading" class="mb-2 text-sm font-bold text-slate-800">Inspiration image <span class="text-rose-600 font-bold" aria-hidden="true">*</span></h3>
-                        <p class="mb-4 text-xs leading-5 text-slate-500">Upload a floral or event reference photo so Gemini can prepare an initial design analysis. AI output serves as decision support for staff quotation review, not final pricing.</p>
-                        <div id="dropzone_container" role="button" tabindex="0" aria-controls="inspiration_image_input" aria-describedby="inspiration-help" class="cursor-pointer select-none rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/20 p-6 text-center transition hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-100 sm:p-8">
-                            <div id="dropzone_preview_target" class="flex flex-col items-center justify-center">
-                                <div class="flex flex-col items-center">
-                                    <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                                        <svg class="h-6 w-6" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002 2z"></path></svg>
-                                    </div>
-                                    <p class="text-sm font-bold text-slate-800">Upload your event photo or bouquet reference</p>
-                                    <p id="inspiration-help" class="mt-1 text-xs text-slate-500">PNG, JPG or WEBP. Maximum file size is enforced by the existing upload validation.</p>
-                                </div>
+                    <!-- SMART AI CUSTOM DESIGN: preferences, photos and their analysis (shared with the guest form) -->
+                    <section id="section-ai" class="{{ $selectedBookingType === 'preset' ? 'hidden' : '' }} space-y-3" aria-label="Smart AI custom design">
+                        @if(session('analysis_error'))
+                            <div id="client-analysis-error" class="rf-alert rf-alert--danger" role="alert">
+                                <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                                <span>{{ session('analysis_error') }}</span>
                             </div>
-                            <input type="file" id="inspiration_image_input" name="inspiration_image" accept="image/*" class="hidden">
-                        </div>
+                        @endif
                         @error('inspiration_image')
-                            <p class="text-xs text-rose-600 mt-2 font-semibold">{{ $message }}</p>
+                            <p class="text-xs font-semibold text-rose-600" role="alert">{{ $message }}</p>
                         @enderror
-                        <input type="hidden" name="analysis_token" id="client_analysis_token" value="{{ old('analysis_token') }}">
-                        <input type="hidden" name="analysis_temp_path" id="client_analysis_temp_path" value="{{ old('analysis_temp_path') }}">
-                        <input type="hidden" name="analysis_data" id="client_analysis_data" value="{{ old('analysis_data') }}">
-                        <input type="hidden" name="analysis_nonce" id="client_analysis_nonce" value="{{ old('analysis_nonce') }}">
-                        <div id="clientImageStatus" class="mt-3 text-sm" role="status" aria-live="polite"></div>
-                        {{-- Materials and estimate per area the client picked in the design brief --}}
-                        <x-decor-area-breakdown-live id="client-area-breakdown" class="mt-3" />
+                        @error('analysis_tokens')
+                            <p class="text-xs font-semibold text-rose-600" role="alert">{{ $message }}</p>
+                        @enderror
+                        <x-inspiration-photos prefix="client" :analyze-url="route('bookings.analyze-temp-image')" />
                     </section>
 
                     <!-- DYNAMIC PRESET PACKAGE CARDS GRID -->
@@ -290,14 +284,317 @@
                         </div>
                     </div>
 
+                    <p id="client-step2-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800" role="alert" tabindex="-1"></p>
+
                     <div class="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:justify-between">
                         <button type="button" id="back-step-btn" class="rf-btn rf-btn-secondary">
                             <span aria-hidden="true">←</span> Back
                         </button>
-                        <button type="submit" id="clientSubmitBtn" class="rf-btn rf-btn-primary">
-                            Submit Booking Request <span aria-hidden="true">→</span>
+                        <button type="button" id="review-step-btn" class="rf-btn rf-btn-primary">
+                            Next: Review <span aria-hidden="true">→</span>
                         </button>
                     </div>
+                    </div>
+
+                    <!-- STEP 3: REVIEW & SUBMIT -->
+                    <div id="booking-step-3" class="hidden space-y-5 animate-fade-in">
+                        
+                        <!-- Request Submission & Payment Notice -->
+                        <div class="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 sm:p-5 text-emerald-950">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                                <div class="text-xs sm:text-sm leading-relaxed">
+                                    <h4 class="font-bold text-emerald-900 uppercase tracking-wider text-xs mb-1">Booking Request Submission Notice</h4>
+                                    <p class="text-emerald-800">This submission creates a <strong>booking request</strong> for Raflora review. It does not confirm your booking.</p>
+                                    <p class="text-emerald-900 font-bold mt-1">NO PAYMENT IS REQUIRED AT THIS STAGE.</p>
+                                    <p class="text-emerald-700 mt-0.5">Package prices shown are catalog rates. Custom designs show an indicative AI price range per area, which is not a quotation; the official price is set in the official quotation prepared after Raflora staff review and material validation.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 items-start">
+                            
+                            <!-- Left Content: Compact Review Cards -->
+                            <div class="lg:col-span-2 space-y-4">
+
+                                <!-- Review Card 1: Event Details -->
+                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="client-review-card-event">
+                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
+                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
+                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="min-w-0">
+                                                    <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">Event Details</h4>
+                                                    <span id="client-review-event-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">-</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 shrink-0">
+                                                    <button type="button" data-goto-step="1" class="inline-flex items-center gap-1 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        Edit
+                                                    </button>
+                                                    <button type="button" onclick="toggleClientReviewCard('client-review-card-event')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Event Details">
+                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <!-- Detailed Content Grid -->
+                                            <div id="client-review-card-event-body" class="mt-4 pt-3.5 border-t border-slate-100 hidden sm:grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-3.5 gap-x-3">
+                                                <div>
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Event Type</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-event-type">-</div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Event Date</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-event-date">-</div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Event Time</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-event-time">-</div>
+                                                </div>
+                                                <div class="sm:col-span-2 md:col-span-3">
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Venue Address</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-venue">-</div>
+                                                </div>
+                                                <div class="sm:col-span-2 md:col-span-3">
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Indoor / Outdoor</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-venue-setting">-</div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Guests / Pax</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-guest-count">-</div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tables</div>
+                                                    <div class="text-xs sm:text-sm font-bold text-[#0B1E43] mt-0.5" id="client-review-table-count">-</div>
+                                                </div>
+                                                <div class="sm:col-span-2 md:col-span-3">
+                                                    <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Additional Notes</div>
+                                                    <div class="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-1 leading-relaxed" id="client-review-notes">-</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Review Card 2: Booking Method & Design -->
+                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="client-review-card-method">
+                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
+                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
+                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="min-w-0">
+                                                    <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">Booking Method &amp; Design</h4>
+                                                    <span id="client-review-method-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">Smart AI Custom Design</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 shrink-0">
+                                                    <button type="button" data-goto-step="2" class="inline-flex items-center gap-1 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        Edit
+                                                    </button>
+                                                    <button type="button" onclick="toggleClientReviewCard('client-review-card-method')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Booking Method">
+                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div id="client-review-card-method-body" class="mt-2 text-xs sm:text-sm font-bold text-[#0B1E43] hidden sm:block">
+                                                <span id="client-review-method-title">Smart AI Custom Design</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Review Card 3: Inspiration Images & Design Brief -->
+                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="client-review-card-images">
+                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
+                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
+                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2 mb-2">
+                                                <div class="min-w-0">
+                                                    <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif" id="client-review-design-title">Inspiration Images</h4>
+                                                    <span id="client-review-media-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">Photos analyzed</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 shrink-0">
+                                                    <button type="button" data-goto-step="2" class="inline-flex items-center gap-1 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs">
+                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        Edit
+                                                    </button>
+                                                    <button type="button" onclick="toggleClientReviewCard('client-review-card-images')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Inspiration Images">
+                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div id="client-review-card-images-body" class="space-y-3.5 hidden sm:block">
+                                                <p class="text-xs text-slate-600" id="client-review-design-status"></p>
+                                                
+                                                <!-- Package Inclusions Block -->
+                                                <div id="client-review-package-inclusions-wrapper" class="hidden pt-2 border-t border-slate-100">
+                                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Package Inclusions</span>
+                                                    <ul id="client-review-package-items" class="space-y-1 text-xs text-slate-600"></ul>
+                                                </div>
+
+                                                <!-- Multi-image thumbnails strip (for custom AI) -->
+                                                <div id="client-review-multi-images-row" class="hidden pt-2 border-t border-slate-100">
+                                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Inspiration Photos</span>
+                                                    <div id="client-review-multi-thumbnails" class="flex flex-wrap gap-2.5"></div>
+                                                </div>
+
+                                                <!-- Design brief (custom AI, only when something was filled in) -->
+                                                <div id="client-review-design-brief-row" class="hidden pt-2 border-t border-slate-100">
+                                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Design Brief</span>
+                                                    <dl id="client-review-brief" class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs"></dl>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Review Card 4: AI Analysis Summary (Custom AI Only) -->
+                                <div id="client-review-ai-materials-section" class="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5 hidden">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2.5 min-w-0">
+                                            <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                                            </div>
+                                            <div>
+                                                <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">AI Analysis Summary</h4>
+                                                <p class="text-[11px] text-slate-500">Indicative ranges and material suggestions per decoration area</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 shrink-0">
+                                            <button type="button" data-goto-step="2" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition shadow-2xs">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                                <span class="hidden sm:inline">View AI Analysis</span>
+                                            </button>
+                                            <button type="button" onclick="toggleClientReviewCard('client-review-ai-materials-section')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle AI Analysis Summary">
+                                                <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div id="client-review-ai-materials-section-body" class="space-y-3.5">
+                                        <!-- Compact Multi-Image AI Summary Metrics -->
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs">
+                                            <div>
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Inspiration Images</span>
+                                                <span class="font-bold text-slate-800" id="client-review-images-count-text">1 image</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Detected Materials</span>
+                                                <span class="font-bold text-emerald-700" id="client-review-materials-count-text">0 items</span>
+                                            </div>
+                                            <div class="col-span-2 sm:col-span-1">
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Price</span>
+                                                <span class="font-bold text-slate-800">In your official quotation</span>
+                                            </div>
+                                        </div>
+
+                                        {{-- All photos combined on the server: per-area AI ranges and quantities, with no figure counted twice --}}
+                                        <p id="client-review-estimate-status" class="hidden text-[11px] text-slate-500" role="status"></p>
+                                        <x-ai-estimate id="client-review-ai-estimate" class="mb-3 hidden" />
+                                        <x-decor-area-breakdown-live id="client-review-area-breakdown" class="mb-3" />
+
+                                        <!-- Review AI Disclaimers -->
+                                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                                            <p><strong class="text-slate-700">Seasonal Context:</strong> Sourced information is AI-assisted and reference-based. It requires Raflora florist validation and does not guarantee supplier availability.</p>
+                                            <p><strong class="text-slate-700">Business Truth:</strong> AI detection ≠ procurement feasibility ≠ inventory availability ≠ official quotation.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Review Card 5: Client Information (Authenticated Profile) -->
+                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="client-review-card-contact">
+                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
+                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
+                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="min-w-0">
+                                                    <div class="flex items-center gap-2">
+                                                        <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">Client Profile</h4>
+                                                        <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                                                            Authenticated
+                                                        </span>
+                                                    </div>
+                                                    <span id="client-review-contact-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">{{ $clientName }}</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 shrink-0">
+                                                    <button type="button" onclick="toggleClientReviewCard('client-review-card-contact')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Client Profile">
+                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="client-review-card-contact-body" class="mt-4 pt-3.5 border-t border-slate-100 hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-3 text-xs">
+                                                <div>
+                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Client Name</span>
+                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="client-review-contact-name">{{ $clientName }}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Email Address</span>
+                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block truncate" id="client-review-contact-email">{{ $clientEmail }}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Mobile Number</span>
+                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="client-review-contact-phone">{{ $clientPhone }}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Billing / Contact Address</span>
+                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="client-review-contact-address">{{ $clientAddress }}</span>
+                                                </div>
+                                                <div class="sm:col-span-2 pt-1 text-[11px] text-slate-500">
+                                                    This booking request will be linked to your client account. Contact details can be updated anytime in your profile settings.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <!-- Right Column: Request Summary & Submission Card (Sticky on Desktop) -->
+                            <div class="lg:col-span-1 space-y-4 lg:sticky lg:top-6">
+                                <aside class="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-4" id="client-review-card-summary" aria-labelledby="client-review-summary-heading">
+                                    <h3 id="client-review-summary-heading" class="text-sm sm:text-base font-bold text-[#0B1E43] font-serif border-b border-slate-100 pb-3">Request Summary</h3>
+                                    
+                                    <dl class="space-y-2.5 text-xs">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500 font-medium">Booking Method</dt>
+                                            <dd class="text-right font-bold text-[#0B1E43]" id="client-review-summary-method">Smart AI Custom Design</dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500 font-medium" id="client-review-summary-price-label">Price</dt>
+                                            <dd class="text-right font-bold text-[#0B1E43]" id="client-review-summary-price">In your official quotation</dd>
+                                        </div>
+                                    </dl>
+
+                                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-600 leading-relaxed space-y-1">
+                                        <p class="font-bold text-emerald-900">No payment is required today.</p>
+                                        <p>Raflora will review your request, prepare floral blueprints, and send an official quotation to your portal.</p>
+                                    </div>
+
+                                    <div class="space-y-2.5 pt-2">
+                                        <button type="submit" id="clientSubmitBtn" class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer focus:ring-2 focus:ring-emerald-500 outline-none">
+                                            <span>Submit Booking Request</span>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                                        </button>
+                                        <button type="button" data-goto-step="2" class="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold transition text-center">
+                                            <span aria-hidden="true">←</span> Back to Design
+                                        </button>
+                                    </div>
+                                </aside>
+                            </div>
+
+                        </div>
                     </div>
                 </form>
             </div>
@@ -307,104 +604,153 @@
 
 <script>
     function switchMode(mode) {
+        const isAi = mode === 'ai';
+        const form = document.getElementById('client-booking-form');
+        const radio = form?.querySelector(`input[name="booking_type"][value="${isAi ? 'custom_ai' : 'preset'}"]`);
+        if (radio) radio.checked = true;
+        const selected = 'border-emerald-600 bg-white ring-1 ring-emerald-600';
+        const idle = 'border-slate-200 bg-white hover:border-slate-300';
         const cardAi = document.getElementById('card-ai');
         const cardPreset = document.getElementById('card-preset');
+        [[cardAi, isAi], [cardPreset, !isAi]].forEach(([card, on]) => {
+            if (!card) return;
+            selected.split(' ').forEach(cls => card.classList.toggle(cls, on));
+            idle.split(' ').forEach(cls => card.classList.toggle(cls, !on));
+        });
         const iconPreset = document.getElementById('client-preset-icon-box');
-        const sectionAi = document.getElementById('section-ai');
-        const sectionPreset = document.getElementById('section-preset');
-        const form = document.getElementById('client-booking-form');
-        const fileInput = document.getElementById('inspiration_image_input');
-        const packageRadios = form?.querySelectorAll('input[name="package_id"]') || [];
-        const analysisInputs = form?.querySelectorAll('input[name^="analysis_"]') || [];
-
-        if (mode === 'ai') {
-            packageRadios.forEach(radio => { radio.checked = false; });
-            const aiRadio = form?.querySelector('input[name="booking_type"][value="custom_ai"]');
-            if (aiRadio) aiRadio.checked = true;
-            cardAi.className = 'relative flex items-start p-4 border-2 border-emerald-600 bg-emerald-50/30 rounded-xl cursor-pointer transition-all shadow-sm ring-1 ring-emerald-600';
-            cardPreset.className = 'relative flex items-start p-4 border-2 border-slate-200 bg-white rounded-xl cursor-pointer transition-all hover:border-slate-300';
-            iconPreset.className = 'w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5 transition-all';
-            sectionAi.classList.remove('hidden');
-            sectionPreset.classList.add('hidden');
-        } else {
-            if (fileInput) fileInput.value = '';
-            analysisInputs.forEach(input => { input.value = ''; });
-            const presetRadio = form?.querySelector('input[name="booking_type"][value="preset"]');
-            if (presetRadio) presetRadio.checked = true;
-            cardPreset.className = 'relative flex items-start p-4 border-2 border-emerald-600 bg-emerald-50/30 rounded-xl cursor-pointer transition-all shadow-sm ring-1 ring-emerald-600';
-            cardAi.className = 'relative flex items-start p-4 border-2 border-slate-200 bg-white rounded-xl cursor-pointer transition-all hover:border-slate-300';
-            iconPreset.className = 'w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 mr-3 mt-0.5 transition-all';
-            sectionPreset.classList.remove('hidden');
-            sectionAi.classList.add('hidden');
+        if (iconPreset) {
+            ['bg-emerald-600', 'text-white'].forEach(cls => iconPreset.classList.toggle(cls, !isAi));
+            ['bg-slate-100', 'text-slate-600'].forEach(cls => iconPreset.classList.toggle(cls, isAi));
         }
-
+        // Photos stay when switching: a package request ignores them, and switching back keeps them.
+        document.getElementById('section-ai')?.classList.toggle('hidden', !isAi);
+        document.getElementById('section-preset')?.classList.toggle('hidden', isAi);
+        document.getElementById('client-step2-error')?.classList.add('hidden');
         document.dispatchEvent(new CustomEvent('client-booking-mode-changed'));
     }
     window.switchMode = switchMode;
 
     document.addEventListener('DOMContentLoaded', function() {
-        const dropzone = document.getElementById('dropzone_container');
-        const contentTarget = document.getElementById('dropzone_preview_target');
-        const fileInput = document.getElementById('inspiration_image_input');
-        const analysisTokenInput = document.getElementById('client_analysis_token');
-        const analysisTempPathInput = document.getElementById('client_analysis_temp_path');
-        const analysisDataInput = document.getElementById('client_analysis_data');
-        const analysisNonceInput = document.getElementById('client_analysis_nonce');
-        const statusBox = document.getElementById('clientImageStatus');
-        const submitBtn = document.getElementById('clientSubmitBtn');
         const form = document.getElementById('client-booking-form');
-        const stepOne = document.getElementById('booking-step-1');
-        const stepTwo = document.getElementById('booking-step-2');
+        const submitBtn = document.getElementById('clientSubmitBtn');
+        const steps = [1, 2, 3].map(step => document.getElementById('booking-step-' + step));
         const nextStepBtn = document.getElementById('next-step-btn');
         const backStepBtn = document.getElementById('back-step-btn');
-        const progressStepOne = document.getElementById('progress-step-1');
-        const progressStepTwo = document.getElementById('progress-step-2');
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
-        const analyzeUrl = '{{ route("bookings.analyze-temp-image") }}';
-        const designBrief = window.RafloraDesignBrief?.get('design-brief');
-        let imageValid = Boolean(analysisTokenInput && analysisTokenInput.value);
-        let analysisPending = false;
+        const reviewStepBtn = document.getElementById('review-step-btn');
+        const step2Error = document.getElementById('client-step2-error');
+        const designBrief = () => window.RafloraDesignBrief?.get('design-brief');
+        const analysisError = @json(session('analysis_error'));
+        let currentStep = {{ $initialStep }};
 
-        if (imageValid) {
-            setStatus('success', '✓ Inspiration image verified. Material suggestions prepared for staff quotation review.');
-            try {
-                window.RafloraAreaBreakdown?.render('client-area-breakdown', JSON.parse(analysisDataInput?.value || '{}').area_breakdown);
-            } catch (e) {}
+        // The event details an analysis depends on (the server hashes the same details and refuses
+        // photos analyzed with different ones when the booking is submitted).
+        function getClientContextFingerprint() {
+            const eventType = document.querySelector('select[name="event_type"]')?.value || '';
+            const otherEventType = document.querySelector('input[name="other_event_type"]')?.value || '';
+            const value = (selector) => (document.querySelector(selector)?.value || '').trim();
+            return [
+                eventType === 'other' ? (otherEventType.trim() || 'other') : eventType.trim(),
+                value('input[name="event_date"]'),
+                value('input[name="event_time"]'),
+                value('input[name="end_time"]'),
+                value('input[name="venue"]'),
+                value('input[name="venue_setting"]:checked'),
+                value('input[name="guest_count"]'),
+                value('input[name="table_count"]'),
+                value('textarea[name="special_requests"]'),
+            ].join('|');
         }
 
-        document.addEventListener('client-booking-mode-changed', () => {
-            imageValid = false;
-            analysisPending = false;
-            resetAnalysisPayload();
-            resetStatus();
-            updateSubmitState();
+        // The same details, sent with each photo. "Other" event types go as other_event_type, exactly
+        // as the booking is submitted, so the analysis and the submission describe the same event.
+        function appendClientEventContext(formData) {
+            const value = (selector) => document.querySelector(selector)?.value || '';
+            formData.append('event_type', value('select[name="event_type"]'));
+            formData.append('other_event_type', value('input[name="other_event_type"]'));
+            formData.append('event_date', value('input[name="event_date"]'));
+            formData.append('event_time', value('input[name="event_time"]'));
+            formData.append('end_time', value('input[name="end_time"]'));
+            formData.append('venue', value('input[name="venue"]'));
+            formData.append('venue_setting', value('input[name="venue_setting"]:checked'));
+            formData.append('special_requests', value('textarea[name="special_requests"]'));
+            const guestCount = value('input[name="guest_count"]');
+            const tableCount = value('input[name="table_count"]');
+            if (guestCount) formData.append('guest_count', guestCount);
+            if (tableCount) formData.append('table_count', tableCount);
+        }
+
+        const clientPhotos = window.RafloraInspirationPhotos.create(document.getElementById('client-inspiration-photos'), {
+            contextFingerprint: getClientContextFingerprint,
+            appendContext: appendClientEventContext,
+            isActive: () => currentStep === 2,
         });
 
+        // Event details changed: an analysis in flight for the old details is cancelled, and finished
+        // photos show as out of date until they are re-analyzed (or the details are changed back).
+        function handleClientEventContextChanged() {
+            clientPhotos.handleContextChanged();
+        }
+        function cancelActiveClientAnalysis() {
+            clientPhotos.cancel();
+        }
+        window.cancelActiveClientAnalysis = cancelActiveClientAnalysis;
+
         function showBookingStep(step) {
-            const showFirst = step === 1;
-            stepOne?.classList.toggle('hidden', !showFirst);
-            stepTwo?.classList.toggle('hidden', showFirst);
-            progressStepOne?.classList.toggle('bg-emerald-50', showFirst);
-            progressStepOne?.classList.toggle('border-emerald-200', showFirst);
-            progressStepTwo?.classList.toggle('bg-emerald-50', !showFirst);
-            progressStepTwo?.classList.toggle('border-emerald-200', !showFirst);
-            progressStepTwo?.querySelector('p:first-child')?.classList.toggle('text-emerald-700', !showFirst);
-            progressStepTwo?.querySelector('p:first-child')?.classList.toggle('text-slate-500', showFirst);
-            progressStepTwo?.querySelector('p:last-child')?.classList.toggle('text-slate-900', !showFirst);
-            progressStepTwo?.querySelector('p:last-child')?.classList.toggle('text-slate-500', showFirst);
-            progressStepOne?.toggleAttribute('aria-current', showFirst);
-            progressStepTwo?.toggleAttribute('aria-current', !showFirst);
+            currentStep = step;
+            steps.forEach((el, index) => el?.classList.toggle('hidden', index + 1 !== step));
+            document.querySelectorAll('[data-progress-step]').forEach(item => {
+                const on = Number(item.dataset.progressStep) === step;
+                item.classList.toggle('bg-emerald-50', on);
+                item.classList.toggle('border-emerald-200', on);
+                item.classList.toggle('bg-slate-50', !on);
+                item.classList.toggle('border-slate-200', !on);
+                item.querySelector('p:first-child')?.classList.toggle('text-emerald-700', on);
+                item.querySelector('p:first-child')?.classList.toggle('text-slate-500', !on);
+                item.querySelector('p:last-child')?.classList.toggle('text-slate-900', on);
+                item.querySelector('p:last-child')?.classList.toggle('text-slate-500', !on);
+                if (on) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
+            });
+            if (step === 2) clientPhotos.resume();
+            if (step === 3) populateClientReview();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        const initialStep = {{ $initialStep }};
-        if (initialStep === 2) {
-            showBookingStep(2);
+        // Why Step 2 cannot be left yet, or null.
+        function step2Issue() {
+            const bookingType = form?.querySelector('input[name="booking_type"]:checked')?.value || 'custom_ai';
+            if (bookingType === 'preset') {
+                return form?.querySelector('input[name="package_id"]:checked') ? null : 'Please select a curated package before continuing.';
+            }
+            return clientPhotos.blockingIssue();
         }
 
+        // Step 1 (event details) must be complete before the photo is analyzed in Step 2.
+        nextStepBtn?.addEventListener('click', () => {
+            const firstInvalid = Array.from(steps[0]?.querySelectorAll('input, select, textarea') || [])
+                .find(el => !el.disabled && !el.checkValidity());
+            if (firstInvalid) {
+                firstInvalid.reportValidity();
+                firstInvalid.focus();
+                return;
+            }
+            showBookingStep(2);
+        });
+        backStepBtn?.addEventListener('click', () => showBookingStep(1));
+        reviewStepBtn?.addEventListener('click', () => {
+            const issue = step2Issue();
+            if (step2Error) {
+                step2Error.textContent = issue || '';
+                step2Error.classList.toggle('hidden', !issue);
+                if (issue) step2Error.focus();
+            }
+            if (!issue) showBookingStep(3);
+        });
+        document.querySelectorAll('[data-goto-step]').forEach(button => {
+            button.addEventListener('click', () => showBookingStep(Number(button.dataset.gotoStep)));
+        });
+
         // Handle numeric stripping for guest_count and table_count
-        const numericInputs = ['guest_count', 'table_count'].map(id => document.getElementById(id)).filter(el => el !== null);
-        numericInputs.forEach(input => {
+        ['guest_count', 'table_count'].map(id => document.getElementById(id)).filter(Boolean).forEach(input => {
             input.addEventListener('input', function() {
                 this.value = this.value.replace(/\D/g, '');
             });
@@ -413,23 +759,15 @@
         // Large event warning logic
         const guestCountInputWarning = document.getElementById('guest_count');
         const largeEventWarning = document.getElementById('large-event-warning');
-        if (guestCountInputWarning && largeEventWarning) {
-            guestCountInputWarning.addEventListener('input', function() {
-                const count = parseInt(this.value, 10);
-                if (!isNaN(count) && count >= 1000) {
-                    largeEventWarning.classList.remove('hidden');
-                } else {
-                    largeEventWarning.classList.add('hidden');
-                }
-            });
-        }
+        guestCountInputWarning?.addEventListener('input', function() {
+            const count = parseInt(this.value, 10);
+            largeEventWarning?.classList.toggle('hidden', !(!isNaN(count) && count >= 1000));
+        });
 
         // Clear validation errors on input
         document.querySelectorAll('input, select, textarea').forEach(input => {
             input.addEventListener('input', function() {
-                this.classList.remove('border-red-500', 'is-invalid');
-                this.classList.remove('focus:border-red-500');
-                this.classList.remove('focus:ring-red-500');
+                this.classList.remove('border-red-500', 'is-invalid', 'focus:border-red-500', 'focus:ring-red-500');
             });
         });
 
@@ -441,93 +779,482 @@
                 venueInput.value = address.slice(0, 500);
                 venueInput.dispatchEvent(new Event('input', { bubbles: true }));
             }
+            handleClientEventContextChanged();
         });
+        document.getElementById('venue-finder')?.addEventListener('location-finder:clear', handleClientEventContextChanged);
 
-        // Step 1 (event details) must be complete before the photo is analyzed in Step 2.
-        nextStepBtn?.addEventListener('click', () => {
-            const firstInvalid = Array.from(stepOne?.querySelectorAll('input, select, textarea') || [])
-                .find(el => !el.disabled && !el.checkValidity());
-            if (firstInvalid) {
-                firstInvalid.reportValidity();
-                firstInvalid.focus();
-                return;
+        // Context-affecting Step 1 field listeners
+        ['other_event_type', 'event_date', 'event_time', 'end_time', 'venue', 'guest_count', 'table_count', 'special_requests'].forEach(id => {
+            const el = document.getElementById(id);
+            ['input', 'change'].forEach(evt => el?.addEventListener(evt, handleClientEventContextChanged));
+        });
+        document.querySelector('select[name="event_type"]')?.addEventListener('change', handleClientEventContextChanged);
+        document.querySelectorAll('input[name="venue_setting"]').forEach(el => el.addEventListener('change', handleClientEventContextChanged));
+
+        // Photos analyzed in this session come back after a validation error; photos the server
+        // refused at submission are marked so the client can re-analyze or replace them.
+        try {
+            const restoredTokens = JSON.parse(clientPhotos.initialInputs().tokens || '[]');
+            if (Array.isArray(restoredTokens) && restoredTokens.length) {
+                clientPhotos.restoreTokens(restoredTokens, { rejected: analysisError || null });
             }
-            showBookingStep(2);
-        });
-        backStepBtn?.addEventListener('click', () => showBookingStep(1));
+        } catch (e) {}
 
-        if (dropzone && fileInput) {
-            dropzone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('click', (e) => e.stopPropagation());
-            dropzone.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    fileInput.click();
+        // ---------------------------------------------------------------- Review step
+        const text = (selector) => (document.querySelector(selector)?.value || '').trim();
+        const formatTime = (value) => {
+            if (!value) return '';
+            const [h, m] = value.split(':');
+            const hour = Number(h);
+            return ((hour % 12) || 12) + ':' + m + ' ' + (hour >= 12 ? 'PM' : 'AM');
+        };
+        function reviewItem(list, label, value, wide) {
+            const row = document.createElement('div');
+            if (wide) row.className = 'sm:col-span-2';
+            const dt = document.createElement('dt');
+            dt.className = 'text-xs font-medium text-slate-500';
+            dt.textContent = label;
+            const dd = document.createElement('dd');
+            dd.className = 'mt-0.5 break-words font-semibold text-slate-900';
+            dd.textContent = value;
+            row.append(dt, dd);
+            list.appendChild(row);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        let clientReviewEstimateRequest = 0;
+        window.latestEstimateData = null;
+        window.latestBreakdownData = null;
+
+        function loadClientReviewEstimate(tokens) {
+            const statusEl = document.getElementById('client-review-estimate-status');
+            const requestId = ++clientReviewEstimateRequest;
+            window.latestEstimateData = null;
+            window.latestBreakdownData = null;
+            window.RafloraAiEstimate?.render('client-review-ai-estimate', null);
+            window.RafloraAreaBreakdown?.render('client-review-area-breakdown', null);
+            if (!tokens || tokens.length === 0) return;
+            if (statusEl) { statusEl.textContent = 'Working out the AI estimate for your photos…'; statusEl.classList.remove('hidden'); }
+
+            const formData = new FormData();
+            tokens.forEach(token => formData.append('analysis_tokens[]', token));
+            window.RafloraDesignBrief?.get('design-brief')?.appendTo(formData);
+            fetch(@json(route('bookings.analysis-estimate')), {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                body: formData,
+            })
+            .then(async res => ({ ok: res.ok, data: await res.json().catch(() => ({})) }))
+            .then(({ ok, data }) => {
+                if (requestId !== clientReviewEstimateRequest) return;
+                if (!ok) {
+                    if (statusEl) statusEl.textContent = data.message || 'The AI estimate is unavailable right now. Raflora will price your design in the official quotation.';
+                    return;
                 }
+                statusEl?.classList.add('hidden');
+                window.latestEstimateData = data.estimate || null;
+                window.latestBreakdownData = data.area_breakdown || null;
+                window.RafloraAiEstimate?.render('client-review-ai-estimate', data.estimate);
+                window.RafloraAreaBreakdown?.render('client-review-area-breakdown', data.area_breakdown, data.estimate);
+                const matsCountText = document.getElementById('client-review-materials-count-text');
+                if (matsCountText && Number.isInteger(data.material_count)) matsCountText.textContent = `${data.material_count} items`;
+            })
+            .catch(() => {
+                if (requestId === clientReviewEstimateRequest && statusEl) statusEl.textContent = 'The AI estimate could not be loaded. Raflora will price your design in the official quotation.';
             });
         }
 
-        function resetAnalysisPayload() {
-            if (analysisTokenInput) analysisTokenInput.value = '';
-            if (analysisTempPathInput) analysisTempPathInput.value = '';
-            if (analysisDataInput) analysisDataInput.value = '';
-            if (analysisNonceInput) analysisNonceInput.value = '';
-            window.RafloraAreaBreakdown?.render('client-area-breakdown', null);
-        }
+        function populateClientReview() {
+            // 1. Event Details
+            const eventSelect = document.querySelector('select[name="event_type"]');
+            const eventType = eventSelect?.value === 'other' ? (text('input[name="other_event_type"]') || 'Other') : (eventSelect?.selectedOptions[0]?.textContent.trim() || '-');
+            const date = text('input[name="event_date"]');
+            const start = formatTime(text('input[name="event_time"]'));
+            const end = formatTime(text('input[name="end_time"]'));
+            const setting = document.querySelector('input[name="venue_setting"]:checked');
+            const venue = text('input[name="venue"]') || '-';
+            const guests = text('input[name="guest_count"]') || 'Not specified';
+            const tables = text('input[name="table_count"]') || 'Not specified';
+            const notes = text('textarea[name="special_requests"]') || 'No additional notes.';
+            const formattedDate = date ? new Date(date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+            const formattedTime = start ? start + (end ? ' – ' + end : '') : 'Not specified';
+            const settingLabel = setting ? setting.closest('label')?.textContent.trim() || setting.value : 'Not specified';
 
-        function resetStatus() {
-            if (!statusBox) return;
-            statusBox.className = 'mt-3 text-sm rounded-lg px-3 py-2 font-medium hidden';
-            statusBox.innerHTML = '';
-        }
+            const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            setEl('client-review-event-type', eventType);
+            setEl('client-review-event-date', formattedDate);
+            setEl('client-review-event-time', formattedTime);
+            setEl('client-review-venue', venue);
+            setEl('client-review-venue-setting', settingLabel);
+            setEl('client-review-guest-count', guests);
+            setEl('client-review-table-count', tables);
+            setEl('client-review-notes', notes);
+            setEl('client-review-event-mobile-summary', `${eventType} · ${formattedDate}`);
 
-        function setStatus(type, html) {
-            if (!statusBox) return;
-            statusBox.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-800', 'border', 'border-emerald-200',
-                                       'bg-red-50', 'text-red-800', 'border-red-200',
-                                       'bg-amber-50', 'text-amber-800', 'border-amber-200');
-            if (type === 'success') {
-                statusBox.classList.add('bg-emerald-50', 'text-emerald-800', 'border', 'border-emerald-200');
-            } else if (type === 'error') {
-                statusBox.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200');
-            } else {
-                statusBox.classList.add('bg-amber-50', 'text-amber-800', 'border', 'border-amber-200');
+            // 2. Method
+            const isPreset = form?.querySelector('input[name="booking_type"]:checked')?.value === 'preset';
+            const methodText = isPreset ? 'Curated Package' : 'Smart AI Custom Design';
+            setEl('client-review-method-title', methodText);
+            setEl('client-review-method-mobile-summary', methodText);
+            setEl('client-review-summary-method', methodText);
+
+            // 3. Images / Package
+            const title = document.getElementById('client-review-design-title');
+            const status = document.getElementById('client-review-design-status');
+            const thumbnails = document.getElementById('client-review-multi-thumbnails');
+            const thumbnailsRow = document.getElementById('client-review-multi-images-row');
+            const packageWrapper = document.getElementById('client-review-package-inclusions-wrapper');
+            const packageItems = document.getElementById('client-review-package-items');
+            const briefRow = document.getElementById('client-review-design-brief-row');
+            const briefList = document.getElementById('client-review-brief');
+            const aiSection = document.getElementById('client-review-ai-materials-section');
+            const estimateStatus = document.getElementById('client-review-estimate-status');
+
+            if (thumbnails) thumbnails.replaceChildren();
+            if (packageItems) packageItems.replaceChildren();
+            if (briefList) briefList.replaceChildren();
+
+            if (isPreset) {
+                if (aiSection) aiSection.classList.add('hidden');
+                if (thumbnailsRow) thumbnailsRow.classList.add('hidden');
+                if (briefRow) briefRow.classList.add('hidden');
+                if (packageWrapper) packageWrapper.classList.remove('hidden');
+
+                let pkg = null;
+                try { pkg = JSON.parse(form.querySelector('input[name="package_id"]:checked')?.closest('.client-package-card')?.getAttribute('data-package') || 'null'); } catch (e) {}
+                const pkgTitle = pkg?.title || 'Curated package';
+                if (title) title.textContent = pkgTitle;
+                if (status) status.textContent = pkg?.description || 'Selected curated package';
+                setEl('client-review-media-mobile-summary', pkgTitle);
+                const price = pkg?.price ? '₱' + Number(pkg.price).toLocaleString('en-PH', { maximumFractionDigits: 0 }) : 'In your official quotation';
+                setEl('client-review-summary-price-label', 'Catalog price');
+                setEl('client-review-summary-price', price);
+
+                (Array.isArray(pkg?.included_items) ? pkg.included_items : []).forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = '✓ ' + item;
+                    packageItems?.appendChild(li);
+                });
+                window.RafloraAiEstimate?.render('client-review-ai-estimate', null);
+                window.RafloraAreaBreakdown?.render('client-review-area-breakdown', null);
+                estimateStatus?.classList.add('hidden');
+                return;
             }
-            statusBox.innerHTML = html;
-        }
 
-        function setSubmitState(disabled) {
-            if (!submitBtn) return;
-            submitBtn.disabled = disabled;
-            if (disabled) {
-                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            // Custom AI Design
+            if (packageWrapper) packageWrapper.classList.add('hidden');
+            if (aiSection) aiSection.classList.remove('hidden');
+
+            const all = clientPhotos.photos();
+            const ready = clientPhotos.readyPhotos();
+            const leftOut = all.length - ready.length;
+
+            if (title) title.textContent = 'Smart AI Custom Design';
+            const readySummary = ready.length + ' of ' + all.length + ' photo' + (all.length === 1 ? '' : 's') + ' analyzed and included'
+                + (leftOut > 0 ? ' · ' + leftOut + ' could not be analyzed and will be left out' : '') + '.';
+            if (status) status.textContent = readySummary;
+            setEl('client-review-media-mobile-summary', `${ready.length} photo${ready.length === 1 ? '' : 's'} analyzed`);
+            setEl('client-review-images-count-text', `${ready.length} image${ready.length === 1 ? '' : 's'}`);
+            setEl('client-review-summary-price-label', 'Price');
+            setEl('client-review-summary-price', 'In your official quotation');
+
+            if (ready.length > 0 && thumbnailsRow) {
+                thumbnailsRow.classList.remove('hidden');
+                ready.forEach(photo => {
+                    const number = all.indexOf(photo) + 1;
+                    const img = document.createElement('img');
+                    img.src = photo.thumbnailUrl || photo.previewUrl || '';
+                    img.alt = 'Inspiration photo ' + number;
+                    img.className = 'h-14 w-14 rounded-xl border border-slate-200 object-cover shadow-2xs';
+                    thumbnails?.appendChild(img);
+                });
+            } else if (thumbnailsRow) {
+                thumbnailsRow.classList.add('hidden');
+            }
+
+            const briefRows = designBrief()?.summaryRows() || [];
+            if (briefRows.length > 0 && briefRow) {
+                briefRow.classList.remove('hidden');
+                briefRows.forEach(([label, value]) => reviewItem(briefList, label, value));
+            } else if (briefRow) {
+                briefRow.classList.add('hidden');
+            }
+
+            // Load and render AI Estimate & Area Breakdown
+            const cachedData = clientPhotos.estimate();
+            if (cachedData && cachedData.estimate && cachedData.area_breakdown) {
+                window.latestEstimateData = cachedData.estimate || null;
+                window.latestBreakdownData = cachedData.area_breakdown || null;
+                window.RafloraAiEstimate?.render('client-review-ai-estimate', cachedData.estimate);
+                window.RafloraAreaBreakdown?.render('client-review-area-breakdown', cachedData.area_breakdown, cachedData.estimate);
+                const matsCountText = document.getElementById('client-review-materials-count-text');
+                if (matsCountText && Number.isInteger(cachedData.material_count)) matsCountText.textContent = `${cachedData.material_count} items`;
+                estimateStatus?.classList.add('hidden');
             } else {
-                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                const tokens = ready.map(p => p.token).filter(Boolean);
+                loadClientReviewEstimate(tokens);
             }
         }
 
-        function updateSubmitState() {
-            const bookingType = form?.querySelector('input[name="booking_type"]:checked')?.value;
-            const requiresAnalysis = bookingType !== 'preset';
-            const analysisReady = requiresAnalysis ? imageValid : Boolean(form?.querySelector('input[name="package_id"]:checked'));
-            const eventType = form?.querySelector('select[name="event_type"]')?.value;
-            const requiresScale = eventType && eventType !== 'other';
-            const guestCountInput = form?.querySelector('input[name="guest_count"]');
-            const tableCountInput = form?.querySelector('input[name="table_count"]');
-            const scaleFieldsReady = !requiresScale || (
-                (!guestCountInput?.value.trim() || guestCountInput?.validity.valid) &&
-                (!tableCountInput?.value.trim() || tableCountInput?.validity.valid)
-            );
-            setSubmitState(analysisPending || !form?.checkValidity() || !analysisReady || !scaleFieldsReady);
+        // ==========================================
+        // AREA DETAILS MODAL & ACCORDION CONTROLLERS
+        // ==========================================
+        let currentModalAreaKey = 'stage';
+        let modalOpenerEl = null;
+        let modalItems = [];
+        let modalShowAll = false;
+
+        window.toggleClientReviewCard = function(cardId) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+            const body = document.getElementById(cardId + '-body');
+            const chevron = card.querySelector('[data-accordion-chevron]');
+            if (!body) return;
+            const isHidden = body.classList.contains('hidden');
+            body.classList.toggle('hidden', !isHidden);
+            if (chevron) {
+                chevron.classList.toggle('rotate-180', isHidden);
+            }
+        };
+
+        window.openAreaDetailsModal = function(areaKey, openerEl) {
+            currentModalAreaKey = areaKey || 'stage';
+            modalOpenerEl = openerEl || document.activeElement;
+            modalShowAll = false;
+
+            const modal = document.getElementById('booking-area-details-modal');
+            if (!modal) return;
+
+            // Find area data from latest breakdown
+            const breakdown = window.latestBreakdownData;
+            const area = (breakdown && Array.isArray(breakdown.areas))
+                ? breakdown.areas.find(a => a.key === currentModalAreaKey)
+                : null;
+
+            const areaLabel = area?.label || (currentModalAreaKey === 'stage' ? 'Stage or backdrop' : (currentModalAreaKey === 'shared' ? 'Shared Materials' : currentModalAreaKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())));
+            const areaColor = area?.color || '#7c3aed';
+
+            // 1. Header
+            const titleEl = document.getElementById('area-modal-title');
+            if (titleEl) {
+                titleEl.textContent = areaLabel.toLowerCase().includes('details') ? areaLabel : `${areaLabel} details`;
+            }
+            const iconBox = document.getElementById('area-modal-icon-box');
+            if (iconBox) {
+                iconBox.style.backgroundColor = areaColor + '20';
+                iconBox.style.color = areaColor;
+            }
+
+            // 2. Client Note
+            syncModalNoteUI();
+
+            // 3. AI Price Estimate
+            const estimate = window.latestEstimateData;
+            const estGroup = (estimate && Array.isArray(estimate.groups))
+                ? estimate.groups.find(g => g.key === currentModalAreaKey)
+                : null;
+
+            const estPriceEl = document.getElementById('area-modal-estimate-price');
+            const partialBadge = document.getElementById('area-modal-partial-badge');
+            const estNoteEl = document.getElementById('area-modal-estimate-note');
+            const labourEl = document.getElementById('area-modal-labour-line');
+
+            if (estGroup && estGroup.display) {
+                if (estPriceEl) estPriceEl.textContent = estGroup.display;
+                if (partialBadge) partialBadge.classList.toggle('hidden', estGroup.status !== 'incomplete');
+                if (estNoteEl) estNoteEl.textContent = estGroup.note || 'Indicative estimate only (±15%). Labour and setup are not included. Final price is confirmed after Raflora staff review and material validation.';
+            } else {
+                if (estPriceEl) estPriceEl.textContent = area?.missing ? 'No estimate' : 'Price pending florist quotation';
+                if (partialBadge) partialBadge.classList.add('hidden');
+                if (estNoteEl) estNoteEl.textContent = 'The AI could not benchmark prices for these materials. Raflora confirms the authoritative price in your official quotation.';
+            }
+
+            if (labourEl) {
+                labourEl.textContent = (estimate && estimate.labour_included) ? 'Includes florist labour & setup' : 'Labour & setup not included';
+            }
+
+            // 4. Materials
+            modalItems = (area && Array.isArray(area.items)) ? area.items : [];
+            const totalCount = modalItems.length;
+            const isMissing = Boolean(area?.missing || totalCount === 0);
+
+            const matCountEl = document.getElementById('area-modal-mat-count');
+            if (matCountEl) matCountEl.textContent = `${totalCount} item${totalCount === 1 ? '' : 's'}`;
+
+            const detectedCount = modalItems.filter(i => i.is_detected).length;
+            const suggestedCount = modalItems.filter(i => !i.is_detected).length;
+
+            const detectedBadge = document.getElementById('area-modal-detected-badge');
+            if (detectedBadge) detectedBadge.textContent = `${detectedCount} Detected`;
+            const suggestedBadge = document.getElementById('area-modal-suggested-badge');
+            if (suggestedBadge) suggestedBadge.textContent = `${suggestedCount} Suggested`;
+
+            const missingNotice = document.getElementById('area-modal-missing-notice');
+            const matContainer = document.getElementById('area-modal-materials-container');
+            const toggleMoreBtn = document.getElementById('area-modal-toggle-more-btn');
+
+            if (isMissing) {
+                if (missingNotice) missingNotice.classList.remove('hidden');
+                if (matContainer) matContainer.classList.add('hidden');
+                if (toggleMoreBtn) toggleMoreBtn.classList.add('hidden');
+            } else {
+                if (missingNotice) missingNotice.classList.add('hidden');
+                if (matContainer) matContainer.classList.remove('hidden');
+                renderModalMaterials();
+            }
+
+            // Open modal
+            modal.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            const closeBtn = modal.querySelector('[data-action="close-modal"]');
+            if (closeBtn) closeBtn.focus();
+        };
+
+        window.closeAreaDetailsModal = function() {
+            const modal = document.getElementById('booking-area-details-modal');
+            if (modal) modal.classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
+            if (modalOpenerEl && typeof modalOpenerEl.focus === 'function') {
+                modalOpenerEl.focus();
+                modalOpenerEl = null;
+            }
+        };
+
+        function syncModalNoteUI() {
+            const input = document.querySelector(`input[name="decor_area_notes[${currentModalAreaKey}]"]`);
+            const briefState = window.RafloraDesignBrief?.get('design-brief')?.getState() || {};
+            const savedNote = input ? input.value : (briefState.decor_area_notes?.[currentModalAreaKey] || '');
+
+            const displayEl = document.getElementById('area-modal-note-display');
+            const editorEl = document.getElementById('area-modal-note-editor');
+            const textarea = document.getElementById('area-modal-note-input');
+            const charCount = document.getElementById('area-modal-note-char-count');
+
+            if (displayEl) {
+                if (savedNote && savedNote.trim()) {
+                    displayEl.textContent = savedNote.trim();
+                    displayEl.classList.remove('italic', 'text-slate-400');
+                    displayEl.classList.add('text-slate-800');
+                } else {
+                    displayEl.textContent = 'No specific instructions added yet for this area.';
+                    displayEl.classList.add('italic', 'text-slate-400');
+                    displayEl.classList.remove('text-slate-800');
+                }
+            }
+
+            if (editorEl) editorEl.classList.add('hidden');
+            if (displayEl) displayEl.classList.remove('hidden');
+            if (textarea) textarea.value = savedNote || '';
+            if (charCount) charCount.textContent = `${(savedNote || '').length} / 500 characters`;
         }
 
-        form?.addEventListener('input', updateSubmitState);
-        form?.addEventListener('change', updateSubmitState);
-        updateSubmitState();
+        function renderModalMaterials() {
+            const tbody = document.getElementById('area-modal-table-body');
+            const cardsList = document.getElementById('area-modal-cards-list');
+            const toggleMoreBtn = document.getElementById('area-modal-toggle-more-btn');
+            const toggleMoreText = document.getElementById('area-modal-toggle-more-text');
+            const toggleMoreIcon = document.getElementById('area-modal-toggle-more-icon');
 
+            if (!tbody || !cardsList) return;
+            tbody.innerHTML = '';
+            cardsList.innerHTML = '';
+
+            const itemsToShow = modalShowAll ? modalItems : modalItems.slice(0, 5);
+
+            itemsToShow.forEach((item, idx) => {
+                const indexNum = idx + 1;
+                const name = item.name || item.item_name || 'Floral Material';
+                const qty = item.quantity !== null && item.quantity !== undefined ? item.quantity : '—';
+                const unit = item.unit_type || 'pcs';
+                const basis = item.quantity_basis || '';
+                const isDetected = Boolean(item.is_detected);
+
+                // Table row (Desktop)
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/70 transition-colors';
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">${indexNum}</td>
+                    <td class="py-2.5 px-3">
+                        <div class="font-semibold text-slate-800">${escapeHtml(name)}</div>
+                        ${basis ? `<div class="text-[10px] text-slate-400 mt-0.5 leading-snug">${escapeHtml(basis)}</div>` : ''}
+                    </td>
+                    <td class="py-2.5 px-3 text-center font-bold text-slate-900 font-mono">${qty}</td>
+                    <td class="py-2.5 px-3 text-slate-500">${escapeHtml(unit)}</td>
+                    <td class="py-2.5 px-3 text-right text-slate-400 font-mono">—</td>
+                    <td class="py-2.5 px-3 text-center">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isDetected ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                            ${isDetected ? 'Detected' : 'Suggested'}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Card row (Mobile)
+                const card = document.createElement('div');
+                card.className = 'p-3 flex items-start justify-between gap-2.5';
+                card.innerHTML = `
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-slate-800 text-xs">${escapeHtml(name)}</div>
+                        ${basis ? `<div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(basis)}</div>` : ''}
+                        <div class="text-[11px] text-slate-500 font-semibold mt-1">
+                            ${qty} ${escapeHtml(unit)}
+                        </div>
+                    </div>
+                    <div class="shrink-0 flex flex-col items-end gap-1">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isDetected ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                            ${isDetected ? 'Detected' : 'Suggested'}
+                        </span>
+                    </div>
+                `;
+                cardsList.appendChild(card);
+            });
+
+            if (toggleMoreBtn) {
+                if (modalItems.length > 5) {
+                    toggleMoreBtn.classList.remove('hidden');
+                    if (modalShowAll) {
+                        if (toggleMoreText) toggleMoreText.textContent = 'Show less';
+                        if (toggleMoreIcon) toggleMoreIcon.classList.add('rotate-180');
+                    } else {
+                        const rem = modalItems.length - 5;
+                        if (toggleMoreText) toggleMoreText.textContent = `Show ${rem} more material${rem === 1 ? '' : 's'}`;
+                        if (toggleMoreIcon) toggleMoreIcon.classList.remove('rotate-180');
+                    }
+                } else {
+                    toggleMoreBtn.classList.add('hidden');
+                }
+            }
+        }
+
+        // Interoperability with RafloraStageBackdropModal
+        window.RafloraStageBackdropModal = {
+            open: function(id, opener) { window.openAreaDetailsModal('stage', opener); },
+            close: function() { window.closeAreaDetailsModal(); }
+        };
+
+        // ---------------------------------------------------------------- Submission
         form?.addEventListener('submit', function (e) {
             if (form.dataset.submitting === 'true') {
                 e.preventDefault();
+                return false;
+            }
+            // Something changed after the review was shown: back to the step that needs attention.
+            const issue = step2Issue();
+            if (issue) {
+                e.preventDefault();
+                showBookingStep(2);
+                step2Error.textContent = issue;
+                step2Error.classList.remove('hidden');
+                step2Error.focus();
                 return false;
             }
             form.dataset.submitting = 'true';
@@ -535,7 +1262,7 @@
                 submitBtn.disabled = true;
                 submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
                 submitBtn.innerHTML = `
-                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
@@ -544,12 +1271,11 @@
         });
 
         window.addEventListener('pageshow', function () {
-            if (form) {
-                form.dataset.submitting = 'false';
-            }
+            if (form) form.dataset.submitting = 'false';
             if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
                 submitBtn.innerHTML = 'Submit Booking Request <span aria-hidden="true">→</span>';
-                updateSubmitState();
             }
         });
 
@@ -579,205 +1305,10 @@
             carousel.addEventListener('click', (e) => { if (isDragging) { e.preventDefault(); e.stopPropagation(); } });
         }
 
-        function renderClientPreview(file) {
-            if (!contentTarget) return;
-            const reader = new FileReader();
-            reader.onload = function(ev) {
-                contentTarget.innerHTML = `
-                    <div class="relative pointer-events-none text-center">
-                        <img src="${ev.target.result}" class="max-h-48 rounded-lg object-contain mx-auto mb-2" />
-                        <p class="text-sm text-amber-600 font-medium animate-pulse">Analyzing design elements with AI...</p>
-                    </div>`;
-            };
-            reader.onerror = renderClientError;
-            reader.readAsDataURL(file);
-        }
-
-        let currentClientFile = null;
-
-        function renderClientError(message = null) {
-            if (fileInput) fileInput.value = '';
-            if (!contentTarget) return;
-            const fallbackMessage = 'Please choose a clearer floral or event photo.';
-            const detailText = message || fallbackMessage;
-            contentTarget.innerHTML = `
-                <div class="flex flex-col items-center pointer-events-none">
-                    <div class="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center mb-3">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </div>
-                    <p class="text-sm font-bold text-slate-800">This image could not be analyzed.</p>
-                    <p class="text-xs text-slate-500 mt-1">${detailText}</p>
-                </div>`;
-        }
-
-        function renderClientQuotaError(message = null) {
-            if (!contentTarget) return;
-            const detailText = message || "Your image was uploaded successfully, but Raflora's AI service is currently busy. Please try again shortly.";
-            contentTarget.innerHTML = `
-                <div class="flex flex-col items-center p-3 text-center">
-                    <div class="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center mb-2">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                        </svg>
-                    </div>
-                    <p class="text-sm font-bold text-amber-900">AI analysis temporarily unavailable</p>
-                    <p class="text-xs text-amber-800 mt-1 max-w-sm">${detailText}</p>
-                    <button type="button" onclick="event.stopPropagation(); retryClientAnalysis();" class="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition">
-                        <span>↻ Retry Analysis</span>
-                    </button>
-                </div>`;
-        }
-
-        window.retryClientAnalysis = function() {
-            if (!currentClientFile || analysisPending) return;
-            renderClientPreview(currentClientFile);
-            analyzeClientImage(currentClientFile);
-        };
-
-        function analyzeClientImage(file) {
-            if (!file) return;
-            if (analysisPending) return;
-
-            currentClientFile = file;
-            designBrief?.resetAnalyzed();
-            window.RafloraAreaBreakdown?.render('client-area-breakdown', null);
-            setStatus('warning', '<span class="inline-flex items-center gap-2"><svg class="inline w-4 h-4 mr-1 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>Analyzing design elements with AI...</span>');
-            analysisPending = true;
-            imageValid = false;
-            updateSubmitState();
-
-            const formData = new FormData();
-            const eventType = document.querySelector('select[name="event_type"]')?.value || '';
-            const guestCount = document.querySelector('input[name="guest_count"]')?.value || '';
-            const tableCount = document.querySelector('input[name="table_count"]')?.value || '';
-            let specialRequests = document.querySelector('textarea[name="special_requests"]')?.value || '';
-            const otherEventType = document.querySelector('input[name="other_event_type"]')?.value || '';
-            if (eventType === 'other' && otherEventType) {
-                specialRequests = `${specialRequests}\nOther request type: ${otherEventType}`.trim();
-            }
-            formData.append('inspiration_image', file);
-            formData.append('event_type', eventType);
-            formData.append('event_date', document.querySelector('input[name="event_date"]')?.value || '');
-            formData.append('event_time', document.querySelector('input[name="event_time"]')?.value || '');
-            formData.append('end_time', document.querySelector('input[name="end_time"]')?.value || '');
-            formData.append('venue', document.querySelector('input[name="venue"]')?.value || '');
-            formData.append('venue_setting', document.querySelector('input[name="venue_setting"]:checked')?.value || '');
-            formData.append('special_requests', specialRequests);
-            if (guestCount) formData.append('guest_count', guestCount);
-            if (tableCount) formData.append('table_count', tableCount);
-            designBrief?.appendTo(formData);
-            formData.append('_token', csrfToken);
-
-            fetch(analyzeUrl, {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: formData,
-            })
-            .then(async res => {
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    const err = new Error(data.message || `AI analysis failed`);
-                    err.data = data;
-                    err.status = res.status;
-                    throw err;
-                }
-                return data;
-            })
-            .then(data => {
-                if (data.success) {
-                    imageValid = true;
-                    analysisPending = false;
-                    updateSubmitState();
-                    if (analysisTokenInput) analysisTokenInput.value = data.analysis_token || '';
-                    if (analysisTempPathInput) analysisTempPathInput.value = data.analysis_temp_path || '';
-                    if (analysisDataInput) analysisDataInput.value = data.analysis_data || '';
-                    if (analysisNonceInput) analysisNonceInput.value = data.analysis_nonce || '';
-                    designBrief?.markAnalyzed();
-                    window.RafloraAreaBreakdown?.render('client-area-breakdown', data.analysis?.area_breakdown);
-                    setStatus('success', '✓ Image analyzed successfully. Material suggestions prepared for staff quotation review.');
-                } else {
-                    imageValid = false;
-                    analysisPending = false;
-                    updateSubmitState();
-                    resetAnalysisPayload();
-                    const isQuota = Boolean(data.is_quota_error || data.error_type === 'service' || data.error_type === 'rate_limit');
-                    if (isQuota) {
-                        renderClientQuotaError(data.message);
-                        setStatus('warning', 'Raflora\'s AI service is currently busy. Please click "Retry Analysis" shortly.');
-                    } else {
-                        renderClientError(data.message || 'Please choose a clearer floral or event photo.');
-                        setStatus('error', '✗ ' + (data.message || 'Image rejected.'));
-                    }
-                }
-            })
-            .catch(err => {
-                imageValid = false;
-                analysisPending = false;
-                updateSubmitState();
-                resetAnalysisPayload();
-                const errData = err.data || {};
-                const isQuota = Boolean(errData.is_quota_error || errData.error_type === 'service' || errData.error_type === 'rate_limit' || err.status === 429 || err.status === 503);
-                if (isQuota) {
-                    renderClientQuotaError(errData.message);
-                    setStatus('warning', 'Raflora\'s AI service is currently busy. Please click "Retry Analysis" shortly.');
-                } else if (errData.error_type === 'connection' || err.message?.includes('connection')) {
-                    renderClientError('AI analysis could not be completed because of a connection problem. Please check your internet connection and try again.');
-                    setStatus('error', '✗ AI analysis could not be completed because of a connection problem. Please check your internet connection and try again.');
-                } else {
-                    renderClientError(err.message || 'Please choose a clearer floral or event photo.');
-                    setStatus('error', '✗ ' + (err.message || 'Image rejected.'));
-                }
-            });
-        }
-
-        if (fileInput) {
-            fileInput.addEventListener('change', function(e) {
-                resetAnalysisPayload(); resetStatus();
-                const file = e.target.files?.[0];
-                if (!file) return;
-                renderClientPreview(file);
-                analyzeClientImage(file);
-            });
-        }
-
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                const bookingTypeInput = form.querySelector('input[name="booking_type"]:checked');
-                const isAiMode = !bookingTypeInput || bookingTypeInput.value === 'custom_ai';
-                if (isAiMode && !imageValid) {
-                    e.preventDefault();
-                    setStatus('error', '✗ Please select and wait for image analysis to complete.');
-                    return false;
-                }
-                if (!isAiMode && !form.querySelector('input[name="package_id"]:checked')) {
-                    e.preventDefault();
-                    form.dataset.submitting = 'false';
-                    if (submitBtn) submitBtn.innerHTML = 'Submit Booking Request <span aria-hidden="true">→</span>';
-                    updateSubmitState();
-                    setStatus('error', 'Please select a curated package before submitting.');
-                    document.getElementById('section-preset')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    return false;
-                }
-            });
-        }
-
-        // Design brief edited after the photo was analyzed: run the analysis again with the new brief.
-        document.getElementById('design-brief')?.addEventListener('design-brief:reanalyze', () => {
-            if (currentClientFile) {
-                window.retryClientAnalysis();
-            } else {
-                designBrief?.setStaleMessage('Please upload your inspiration photo again so the AI can use your updated brief.');
-            }
-        });
-        document.addEventListener('client-booking-mode-changed', () => designBrief?.resetAnalyzed());
-
         const urlParams = new URLSearchParams(window.location.search);
         const oldBookingType = @json(old('booking_type', request('package_id') ? 'preset' : null));
         if (oldBookingType === 'preset' || urlParams.has('package_id')) {
             window.switchMode('preset');
-            const radioPreset = document.querySelector('input[name="booking_type"][value="preset"]');
-            if (radioPreset) radioPreset.checked = true;
-            updateSubmitState();
         }
 
         // Package selection UI refresh & event type sync
@@ -801,33 +1332,21 @@
             packageCards.forEach(card => {
                 const radio = card.querySelector('.package-radio');
                 const badge = card.querySelector('.package-badge');
-                if (radio && radio.checked) {
-                    card.classList.add('ring-2', 'ring-emerald-600', 'border-emerald-600', 'shadow-lg', 'bg-emerald-50/20');
-                    card.classList.remove('border-slate-200');
-                    if (badge) badge.classList.remove('hidden');
-                } else {
-                    card.classList.remove('ring-2', 'ring-emerald-600', 'border-emerald-600', 'shadow-lg', 'bg-emerald-50/20');
-                    card.classList.add('border-slate-200');
-                    if (badge) badge.classList.add('hidden');
-                }
+                const on = Boolean(radio && radio.checked);
+                ['ring-2', 'ring-emerald-600', 'border-emerald-600', 'shadow-lg', 'bg-emerald-50/20'].forEach(cls => card.classList.toggle(cls, on));
+                card.classList.toggle('border-slate-200', !on);
+                badge?.classList.toggle('hidden', !on);
+                badge?.classList.toggle('flex', on);
             });
         }
 
         // Guest and table counts stay visible for every event type: they anchor the AI's quantities.
         function handleEventTypeChange() {
-            if (!eventTypeSelect) return;
-            const val = eventTypeSelect.value.toLowerCase();
-
-            if (otherEventTypeContainer && otherEventTypeInput) {
-                if (val === 'other') {
-                    otherEventTypeContainer.classList.remove('hidden');
-                    otherEventTypeInput.required = true;
-                } else {
-                    otherEventTypeContainer.classList.add('hidden');
-                    otherEventTypeInput.required = false;
-                    otherEventTypeInput.value = '';
-                }
-            }
+            if (!eventTypeSelect || !otherEventTypeContainer || !otherEventTypeInput) return;
+            const isOther = eventTypeSelect.value.toLowerCase() === 'other';
+            otherEventTypeContainer.classList.toggle('hidden', !isOther);
+            otherEventTypeInput.required = isOther;
+            if (!isOther) otherEventTypeInput.value = '';
         }
 
         if (eventTypeSelect) {
@@ -835,18 +1354,17 @@
             handleEventTypeChange();
         }
 
+        const packageFromCard = (card) => {
+            try { return JSON.parse(card?.getAttribute('data-package') || 'null'); } catch (err) { return null; }
+        };
+
         packageRadios.forEach(radio => {
             radio.addEventListener('change', function() {
                 refreshPackageSelection();
+                document.getElementById('client-step2-error')?.classList.add('hidden');
                 if (radio.checked) {
-                    const card = radio.closest('.client-package-card');
-                    if (!card) return;
-                    try {
-                        const pkg = JSON.parse(card.getAttribute('data-package'));
-                        if (pkg?.event_type) setPackageEventType(pkg.event_type);
-                    } catch (err) {
-                        console.error('[Client] JSON parse error on radio change:', err);
-                    }
+                    const pkg = packageFromCard(radio.closest('.client-package-card'));
+                    if (pkg?.event_type) setPackageEventType(pkg.event_type);
                 }
             });
         });
@@ -865,84 +1383,151 @@
 
         // Initial state sync on page load
         refreshPackageSelection();
-        const initialCheckedPackage = document.querySelector('.client-package-card .package-radio:checked');
-        if (initialCheckedPackage) {
-            const card = initialCheckedPackage.closest('.client-package-card');
-            if (card) {
-                try {
-                    const pkg = JSON.parse(card.getAttribute('data-package'));
-                    if (pkg?.event_type) setPackageEventType(pkg.event_type);
-                } catch (err) {
-                    console.error('[Client] JSON parse error on initial package:', err);
-                }
-            }
-        }
+        const initialPackage = packageFromCard(document.querySelector('.client-package-card .package-radio:checked')?.closest('.client-package-card'));
+        if (initialPackage?.event_type) setPackageEventType(initialPackage.event_type);
 
         // View Package Button Click Handlers
         packageViewButtons.forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                const card = e.currentTarget.closest('.client-package-card');
-                if (!card) return;
-                try {
-                    const rawData = card.getAttribute('data-package');
-                    const pkg = JSON.parse(rawData);
-                    window.openPackageModal(pkg);
-                } catch (err) {
-                    console.error('[Client] JSON parse error on View Package click:', err);
-                }
+                const pkg = packageFromCard(e.currentTarget.closest('.client-package-card'));
+                if (pkg) window.openPackageModal(pkg, e.currentTarget);
             });
         });
 
-        // Global Modal Helpers
+        // Package details dialog (Admin-entered text is inserted as text, never as HTML)
+        let packageModalOpener = null;
         window.closePackageModal = function() {
             document.body.classList.remove('overflow-hidden');
             const modal = document.getElementById('packageModal');
             if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); modal.style.display = 'none'; }
+            packageModalOpener?.focus();
+            packageModalOpener = null;
         };
 
-        window.openPackageModal = function(pkg) {
+        window.openPackageModal = function(pkg, opener) {
             const modal = document.getElementById('packageModal');
             if (!modal) return;
+            packageModalOpener = opener || null;
             document.body.classList.add('overflow-hidden');
             modal.classList.remove('hidden'); modal.classList.add('flex'); modal.style.display = 'flex';
-            
+
             document.getElementById('packageModalTitle').textContent = pkg.title || '';
             document.getElementById('packageModalDescription').textContent = pkg.description || '';
             document.getElementById('packageModalPrice').textContent = pkg.price ? ('₱' + Number(pkg.price).toLocaleString('en-PH', {minimumFractionDigits:2})) : '';
-            
-            const img = document.getElementById('packageModalImage');
-            if (img) {
-                img.innerHTML = pkg.image_url 
-                    ? `<img src="${pkg.image_url}" class="w-full h-56 object-cover rounded-md">`
-                    : `<div class="w-full h-56 flex items-center justify-center bg-slate-100 text-slate-400">No Image Available</div>`;
+
+            const imageBox = document.getElementById('packageModalImage');
+            if (imageBox) {
+                imageBox.replaceChildren();
+                if (pkg.image_url) {
+                    const img = document.createElement('img');
+                    img.src = pkg.image_url;
+                    img.alt = pkg.title || 'Package photo';
+                    img.className = 'w-full h-56 object-cover rounded-md';
+                    imageBox.appendChild(img);
+                } else {
+                    const empty = document.createElement('div');
+                    empty.className = 'w-full h-56 flex items-center justify-center bg-slate-100 text-slate-400';
+                    empty.textContent = 'No Image Available';
+                    imageBox.appendChild(empty);
+                }
             }
 
             const list = document.getElementById('packageModalInclusions');
             if (list) {
-                list.innerHTML = '';
-                if (Array.isArray(pkg.included_items)) {
-                    pkg.included_items.forEach(item => {
-                        const li = document.createElement('li');
-                        li.className = 'flex items-start gap-2';
-                        li.innerHTML = `<span class="text-emerald-600 font-bold">✓</span><span>${item}</span>`;
-                        list.appendChild(li);
-                    });
-                }
+                list.replaceChildren();
+                (Array.isArray(pkg.included_items) ? pkg.included_items : []).forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-start gap-2';
+                    const mark = document.createElement('span');
+                    mark.className = 'text-emerald-600 font-bold';
+                    mark.textContent = '✓';
+                    const label = document.createElement('span');
+                    label.textContent = item;
+                    li.append(mark, label);
+                    list.appendChild(li);
+                });
             }
             document.getElementById('packageModalSelectBtn').dataset.packageId = pkg.id;
+            modal.querySelector('[aria-label="Close"]')?.focus();
         };
+
+        // Area Details Modal Event Listeners
+        document.getElementById('area-modal-edit-note-btn')?.addEventListener('click', function() {
+            document.getElementById('area-modal-note-editor')?.classList.remove('hidden');
+            document.getElementById('area-modal-note-display')?.classList.add('hidden');
+            const textarea = document.getElementById('area-modal-note-input');
+            if (textarea) textarea.focus();
+        });
+
+        document.getElementById('area-modal-cancel-note-btn')?.addEventListener('click', function() {
+            syncModalNoteUI();
+        });
+
+        document.getElementById('area-modal-save-note-btn')?.addEventListener('click', function() {
+            const noteInput = document.getElementById('area-modal-note-input');
+            const newNote = noteInput ? noteInput.value.trim().slice(0, 500) : '';
+            
+            let hiddenInput = document.querySelector(`input[name="decor_area_notes[${currentModalAreaKey}]"]`);
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = `decor_area_notes[${currentModalAreaKey}]`;
+                document.getElementById('client-booking-form')?.appendChild(hiddenInput);
+            }
+            hiddenInput.value = newNote;
+
+            const briefEl = document.getElementById('design-brief');
+            if (briefEl) {
+                const briefInput = briefEl.querySelector(`[data-area-note-input="${currentModalAreaKey}"]`);
+                if (briefInput) briefInput.value = newNote;
+                briefEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            syncModalNoteUI();
+        });
+
+        document.getElementById('area-modal-note-input')?.addEventListener('input', function() {
+            const charCount = document.getElementById('area-modal-note-char-count');
+            if (charCount) charCount.textContent = `${this.value.length} / 500 characters`;
+        });
+
+        document.getElementById('area-modal-toggle-more-btn')?.addEventListener('click', function() {
+            modalShowAll = !modalShowAll;
+            renderModalMaterials();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const packageModal = document.getElementById('packageModal');
+            if (e.key === 'Escape' && packageModal && !packageModal.classList.contains('hidden')) {
+                window.closePackageModal();
+                return;
+            }
+            const areaModal = document.getElementById('booking-area-details-modal');
+            if (e.key === 'Escape' && areaModal && !areaModal.classList.contains('hidden')) {
+                window.closeAreaDetailsModal();
+            }
+        });
+
+        document.getElementById('booking-area-details-modal')?.addEventListener('click', function(e) {
+            if (e.target === this || e.target.closest('[data-action="close-modal"]')) {
+                window.closeAreaDetailsModal();
+            }
+        });
 
         window.selectPackageFromModal = function(id) {
             if (!id) return;
-            const radio = document.querySelector(`input[name="package_id"][value="${id}"]`);
+            const radio = document.querySelector(`input[name="package_id"][value="${CSS.escape(String(id))}"]`);
             if (radio) {
                 radio.checked = true;
                 radio.dispatchEvent(new Event('change', { bubbles: true }));
             }
             window.closePackageModal();
         }
+
+        if (analysisError) switchMode('ai');
+        showBookingStep(currentStep);
     });
 </script>
 
@@ -975,5 +1560,205 @@
             <button type="button" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition text-sm" onclick="closePackageModal()">Close</button>
             <button id="packageModalSelectBtn" type="button" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition text-sm" onclick="selectPackageFromModal(this.dataset.packageId)">Select This Package</button>
         </div>
+    </div>
+</div>
+
+<!-- Reusable Area Details Modal (Center on Desktop, Bottom Sheet Drawer on Mobile) -->
+<div id="booking-area-details-modal"
+     class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300 hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="area-modal-title"
+     aria-describedby="area-modal-desc"
+     tabindex="-1">
+
+    <div class="relative w-full sm:max-w-2xl max-h-[88vh] sm:max-h-[90vh] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-slide-up sm:animate-fade-in"
+         data-dialog-panel>
+
+        <!-- Mobile Drag / Pull Handle -->
+        <div class="sm:hidden pt-2.5 pb-1 flex justify-center cursor-pointer" onclick="closeAreaDetailsModal()">
+            <div class="w-12 h-1.5 bg-slate-300 rounded-full"></div>
+        </div>
+
+        <!-- Header -->
+        <header class="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 shrink-0">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div id="area-modal-icon-box" class="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h3 id="area-modal-title" class="text-base sm:text-lg font-bold text-[#0B1E43] font-serif tracking-tight truncate">
+                            Stage or backdrop details
+                        </h3>
+                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800">
+                            AI SUGGESTION
+                        </span>
+                    </div>
+                    <p id="area-modal-desc" class="text-xs text-slate-500 mt-0.5 truncate">
+                        This design is based on your inspiration photos. Materials and quantities are AI-generated estimates and may vary.
+                    </p>
+                </div>
+            </div>
+
+            <button type="button"
+                    onclick="closeAreaDetailsModal()"
+                    data-action="close-modal"
+                    class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors focus:ring-2 focus:ring-emerald-500 outline-none"
+                    aria-label="Close area details">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </header>
+
+        <!-- Scrollable Body -->
+        <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+
+            <!-- 1. Client Note for This Area -->
+            <section class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 shadow-2xs space-y-2">
+                <div class="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200/70">
+                    <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <h4 class="text-xs font-bold uppercase tracking-wide text-slate-700">Client Note for This Area</h4>
+                    </div>
+                    <button type="button"
+                            id="area-modal-edit-note-btn"
+                            class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 hover:underline">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        Edit note
+                    </button>
+                </div>
+
+                <!-- Read Note View -->
+                <div id="area-modal-note-display" class="text-slate-800 leading-relaxed">
+                    No specific instructions added yet for this area.
+                </div>
+
+                <!-- In-Place Note Editor -->
+                <div id="area-modal-note-editor" class="hidden space-y-2 pt-1 border-t border-slate-200/60">
+                    <label for="area-modal-note-input" class="block text-[11px] font-semibold text-slate-700">
+                        Notes for Raflora florists (max 500 characters):
+                    </label>
+                    <textarea id="area-modal-note-input"
+                              maxlength="500"
+                              rows="3"
+                              class="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none bg-white text-slate-800 leading-relaxed shadow-2xs"
+                              placeholder="e.g. Keep the center of the backdrop open so the couple remains visible. Prefer soft ivory drapes with blush and white florals."></textarea>
+                    
+                    <div class="flex items-center justify-between text-[11px] text-slate-500">
+                        <span id="area-modal-note-char-count">0 / 500 characters</span>
+                        <div class="flex items-center gap-2">
+                            <button type="button"
+                                    id="area-modal-cancel-note-btn"
+                                    class="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-lg transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    id="area-modal-save-note-btn"
+                                    class="px-3 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-2xs">
+                                Save Note
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. AI Indicative Price Estimate Card -->
+            <section class="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 sm:p-4 shadow-2xs space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-violet-600" aria-hidden="true"></span>
+                        <h4 class="text-xs font-bold uppercase tracking-wide text-violet-950">AI Indicative Price Estimate</h4>
+                    </div>
+                    <span class="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800 shadow-2xs">
+                        INDICATIVE - NOT AN OFFICIAL QUOTATION
+                    </span>
+                </div>
+
+                <div class="flex items-baseline justify-between gap-4 pt-0.5">
+                    <div class="flex items-center gap-2">
+                        <span id="area-modal-estimate-price" class="text-lg sm:text-2xl font-extrabold text-[#0B1E43] font-mono tabular-nums tracking-tight">
+                            Price pending florist quotation
+                        </span>
+                        <span id="area-modal-partial-badge" class="hidden rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800 align-middle">
+                            Partial Estimate
+                        </span>
+                    </div>
+                    <p id="area-modal-labour-line" class="text-[11px] text-slate-500 text-right shrink-0">
+                        Labour &amp; setup not included
+                    </p>
+                </div>
+
+                <p id="area-modal-estimate-note" class="text-[11px] leading-relaxed text-slate-600 border-t border-violet-100/90 pt-1.5">
+                    Indicative estimate only (±15%). Labour and setup are not included. Final price is confirmed after Raflora staff review and material validation.
+                </p>
+            </section>
+
+            <!-- 3. AI Material Suggestions -->
+            <section class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-bold uppercase tracking-wide text-slate-700">
+                        AI Material Suggestions (<span id="area-modal-mat-count">0 items</span>)
+                    </h4>
+                    <div id="area-modal-count-badges" class="flex items-center gap-1.5 text-[11px]">
+                        <span id="area-modal-detected-badge" class="text-emerald-700 font-semibold">0 Detected</span>
+                        <span class="text-slate-300">·</span>
+                        <span id="area-modal-suggested-badge" class="text-amber-700 font-semibold">0 Suggested</span>
+                    </div>
+                </div>
+
+                <!-- Missing Area Notice -->
+                <div id="area-modal-missing-notice" class="hidden p-3.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/70 text-center">
+                    <p class="text-xs font-medium text-amber-900">
+                        No materials were suggested for this area. Raflora florists will plan it during quotation review.
+                    </p>
+                </div>
+
+                <!-- Materials List Table (Desktop) / Cards (Mobile) -->
+                <div id="area-modal-materials-container" class="space-y-2">
+                    <div class="hidden sm:block overflow-x-auto rounded-xl border border-slate-200">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-400">
+                                <tr>
+                                    <th class="py-2.5 px-3">#</th>
+                                    <th class="py-2.5 px-3">Material Name &amp; Basis</th>
+                                    <th class="py-2.5 px-3 text-center">Qty</th>
+                                    <th class="py-2.5 px-3">Unit</th>
+                                    <th class="py-2.5 px-3 text-right">Price</th>
+                                    <th class="py-2.5 px-3 text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="area-modal-table-body" class="divide-y divide-slate-100 bg-white"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Mobile Cards List -->
+                    <div id="area-modal-cards-list" class="sm:hidden space-y-2 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white overflow-hidden"></div>
+
+                    <!-- Toggle More Materials Button -->
+                    <div class="pt-1 flex justify-center">
+                        <button type="button"
+                                id="area-modal-toggle-more-btn"
+                                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-2xs transition">
+                            <span id="area-modal-toggle-more-text">Show more materials</span>
+                            <svg id="area-modal-toggle-more-icon" class="w-3.5 h-3.5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Footer -->
+        <footer class="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-100 bg-slate-50/80 text-[11px] text-slate-500 shrink-0">
+            <span class="truncate">
+                AI decision support. Official pricing confirmed in Raflora quotation.
+            </span>
+            <button type="button"
+                    onclick="closeAreaDetailsModal()"
+                    data-action="close-modal"
+                    class="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 font-bold text-slate-700 text-xs transition cursor-pointer">
+                Close
+            </button>
+        </footer>
     </div>
 </div>

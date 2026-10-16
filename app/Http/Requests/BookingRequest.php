@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Support\EventDesignBrief;
+use App\Support\InspirationPhotos;
 use Illuminate\Foundation\Http\FormRequest;
 
 class BookingRequest extends FormRequest
@@ -33,7 +34,8 @@ class BookingRequest extends FormRequest
             'venue_latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:venue_longitude'],
             'venue_longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:venue_latitude'],
             'special_requests' => ['nullable', 'string', 'max:2000'],
-            'inspiration_image' => ['nullable', 'image', 'max:5120'],
+            'inspiration_image' => ['nullable', 'image', 'mimes:' . implode(',', InspirationPhotos::MIMES), 'max:' . InspirationPhotos::MAX_KILOBYTES],
+            'analysis_tokens' => ['nullable'],
             'analysis_token' => ['nullable', 'string'],
             'analysis_temp_path' => ['nullable', 'string'],
             'analysis_data' => ['nullable', 'json'],
@@ -64,7 +66,8 @@ class BookingRequest extends FormRequest
             'venue_longitude' => 'The pinned venue location is invalid. Please pin the venue on the map again.',
             'special_requests.max' => 'Special requests may not exceed 2000 characters.',
             'inspiration_image.image' => 'The inspiration file must be an image.',
-            'inspiration_image.max' => 'The inspiration image may not exceed 4MB.',
+            'inspiration_image.max' => 'The inspiration image may not exceed 5MB.',
+            'inspiration_image.mimes' => 'The inspiration image must be a JPG, PNG or WEBP photo.',
         ] + EventDesignBrief::messages();
     }
 }

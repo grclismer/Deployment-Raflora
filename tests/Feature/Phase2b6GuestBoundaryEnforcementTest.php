@@ -113,7 +113,7 @@ class Phase2b6GuestBoundaryEnforcementTest extends TestCase
         $response = $this->get(route('guest.booking.analysis', ['token' => $guestToken]));
         $response->assertOk();
         $response->assertSee('Claim &amp; Manage Your Booking Request', false);
-        $response->assertSee('Create Account');
+        $response->assertSee('Create a free account &amp; Claim', false);
         $response->assertSee('Log In / Register to Review &amp; Accept Quotation', false);
     }
 

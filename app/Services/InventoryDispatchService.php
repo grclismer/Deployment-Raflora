@@ -60,13 +60,9 @@ class InventoryDispatchService
                 $item = $lockedItems->get($itemId);
 
                 // 2. Validate Reservation and Outstanding Quantity
-                // Outstanding quantity = Total reserved for this booking - already dispatched for this booking
-                $bookingTxs = $item->inventoryTransactions()->where('booking_id', $booking->id)->get();
-                $lock = $bookingTxs->where('transaction_type', 'booking_lock')->sum(fn($tx) => abs((float) $tx->quantity_change));
-                $release = $bookingTxs->where('transaction_type', 'booking_release')->sum('quantity_change');
-                $netDispatch = abs($bookingTxs->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])->sum('quantity_change'));
-                
-                $outstandingReservation = $lock - $release - $netDispatch;
+                // Outstanding = still held for this booking: locks - releases - net dispatch
+                // (InventoryItem::reservedForBooking, the same rule as reserved_stock).
+                $outstandingReservation = $item->reservedForBooking($booking->id);
 
                 if (round($quantityToDispatch, 4) > round($outstandingReservation, 4)) {
                     throw new \LogicException("Cannot dispatch {$quantityToDispatch} units of item {$itemId}. Outstanding reservation is only {$outstandingReservation}.");
@@ -245,20 +241,8 @@ class InventoryDispatchService
                     continue;
                 }
 
-                $txs = InventoryTransaction::where('booking_id', $booking->id)
-                    ->where('inventory_item_id', $itemId)
-                    ->get();
-
-                $lockedQty = (float) $txs->where('transaction_type', 'booking_lock')
-                    ->sum(fn ($tx) => abs((float) $tx->quantity_change));
-
-                $releasedQty = (float) $txs->where('transaction_type', 'booking_release')
-                    ->sum(fn ($tx) => abs((float) $tx->quantity_change));
-
-                $netDispatch = abs((float) $txs->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-                    ->sum('quantity_change'));
-
-                $releaseQty = $lockedQty - $releasedQty - $netDispatch;
+                // What is still held and was never dispatched (InventoryItem::reservedForBooking).
+                $releaseQty = $item->reservedForBooking($booking->id);
 
                 if (round($releaseQty, 4) <= 0) {
                     continue;

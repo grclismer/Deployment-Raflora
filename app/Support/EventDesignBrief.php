@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Setting;
 use Illuminate\Validation\Rule;
 
 /**
@@ -66,7 +67,7 @@ final class EventDesignBrief
 
     /** Form field names that make up the brief (stored together in the design_brief column). */
     public const FIELDS = [
-        'photo_usage', 'decor_areas', 'theme', 'theme_other', 'color_palette',
+        'photo_usage', 'decor_areas', 'decor_area_notes', 'theme', 'theme_other', 'color_palette',
         'preferred_flowers', 'avoid_flowers', 'flower_material', 'budget_range',
     ];
 
@@ -81,6 +82,8 @@ final class EventDesignBrief
             'photo_usage' => ['nullable', Rule::in(array_keys(self::PHOTO_USAGE))],
             'decor_areas' => ['nullable', 'array', 'max:' . count(self::DECOR_AREAS)],
             'decor_areas.*' => ['string', Rule::in(array_keys(self::DECOR_AREAS))],
+            'decor_area_notes' => ['nullable', 'array'],
+            'decor_area_notes.*' => ['nullable', 'string', 'max:500'],
             'theme' => ['nullable', Rule::in(array_keys(self::THEMES))],
             'theme_other' => ['nullable', 'string', 'max:60'],
             'color_palette' => ['nullable', 'array', 'max:' . self::MAX_COLORS],
@@ -99,6 +102,7 @@ final class EventDesignBrief
             'venue_setting.in' => 'Please choose indoor, outdoor, or both.',
             'photo_usage.in' => 'Please choose how we should use your photo.',
             'decor_areas.*.in' => 'Please choose areas to decorate from the list.',
+            'decor_area_notes.*.max' => 'Area preference notes may not exceed 500 characters.',
             'theme.in' => 'Please choose a theme from the list.',
             'theme_other.max' => 'The theme description may not exceed 60 characters.',
             'color_palette.max' => 'Choose up to ' . self::MAX_COLORS . ' colors.',
@@ -120,6 +124,16 @@ final class EventDesignBrief
 
         $areas = array_values(array_intersect(array_keys(self::DECOR_AREAS), (array) ($input['decor_areas'] ?? [])));
 
+        $areaNotes = [];
+        foreach ((array) ($input['decor_area_notes'] ?? []) as $areaKey => $noteText) {
+            if (in_array((string) $areaKey, $areas, true)) {
+                $cleanNote = mb_substr(trim((string) $noteText), 0, 500);
+                if ($cleanNote !== '') {
+                    $areaNotes[(string) $areaKey] = $cleanNote;
+                }
+            }
+        }
+
         $colors = [];
         foreach ((array) ($input['color_palette'] ?? []) as $color) {
             $color = mb_substr(trim((string) $color), 0, 40);
@@ -133,6 +147,7 @@ final class EventDesignBrief
         $brief = array_filter([
             'photo_usage' => $option('photo_usage', self::PHOTO_USAGE),
             'decor_areas' => $areas,
+            'decor_area_notes' => $areaNotes,
             'theme' => $theme,
             'theme_other' => $theme === 'other' ? $text('theme_other', 60) : '',
             'color_palette' => array_slice($colors, 0, self::MAX_COLORS),
@@ -143,6 +158,25 @@ final class EventDesignBrief
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
 
         return $brief === [] ? null : $brief;
+    }
+
+    /**
+     * The brief one photo is analyzed with: only the picked areas this photo is for, so the AI
+     * plans those areas and no others. Every other detail is unchanged. Without photo areas
+     * (no areas picked) the brief is returned as is.
+     */
+    public static function forPhoto(?array $brief, array $photoAreas): ?array
+    {
+        if ($brief === null || $photoAreas === []) {
+            return $brief;
+        }
+
+        $brief['decor_areas'] = array_values(array_intersect(array_keys(self::DECOR_AREAS), $photoAreas));
+        if (isset($brief['decor_area_notes']) && is_array($brief['decor_area_notes'])) {
+            $brief['decor_area_notes'] = array_intersect_key($brief['decor_area_notes'], array_flip($brief['decor_areas']));
+        }
+
+        return $brief;
     }
 
     public static function venueSettingFromInput(array $input): ?string
@@ -168,9 +202,17 @@ final class EventDesignBrief
             $theme = 'Other: ' . $brief['theme_other'];
         }
 
+        $areaPreferences = [];
+        foreach ($brief['decor_areas'] ?? [] as $area) {
+            if (!empty($brief['decor_area_notes'][$area])) {
+                $areaPreferences[] = (self::DECOR_AREAS[$area] ?? $area) . ': "' . $brief['decor_area_notes'][$area] . '"';
+            }
+        }
+
         return array_filter([
             'Use of photo' => isset($brief['photo_usage']) ? (self::PHOTO_USAGE[$brief['photo_usage']]['label'] ?? null) : null,
             'Areas to decorate' => implode(', ', array_map(fn ($area) => self::DECOR_AREAS[$area] ?? $area, $brief['decor_areas'] ?? [])),
+            'Area preferences' => $areaPreferences !== [] ? implode('; ', $areaPreferences) : null,
             'Theme' => $theme,
             'Color palette' => implode(', ', $brief['color_palette'] ?? []),
             'Preferred flowers' => $brief['preferred_flowers'] ?? null,
@@ -252,7 +294,8 @@ final class EventDesignBrief
         }
 
         if (!empty($brief['budget_range'])) {
-            $rules[] = 'Budget never changes prices or quantities. Keep `unit_cost_php` as plain market prices and keep quantities at what the design needs. The client budget is for the final quoted price, which is about 3x your raw material total. If 3x the raw total would exceed the budget, use `suggested_alternative` and `alternative_reason` for cheaper substitutes and describe a scaled-down option (which quantities could be reduced) in `note`.';
+            $markup = rtrim(rtrim(number_format(Setting::aiEstimateMarkup() ?? Setting::DEFAULT_AI_ESTIMATE_MARKUP, 2, '.', ''), '0'), '.') . 'x';
+            $rules[] = "Budget never changes prices or quantities. Keep `unit_cost_php` as plain market prices and keep quantities at what the design needs. The client budget is for the final quoted price, which is about {$markup} your raw material total. If {$markup} the raw total would exceed the budget, use `suggested_alternative` and `alternative_reason` for cheaper substitutes and describe a scaled-down option (which quantities could be reduced) in `note`.";
         }
 
         if ($rules === []) {

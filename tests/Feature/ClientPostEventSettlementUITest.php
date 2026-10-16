@@ -9,6 +9,7 @@ use App\Models\Client;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
+use App\Models\Quotation;
 use App\Models\ReturnItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,7 +58,7 @@ class ClientPostEventSettlementUITest extends TestCase
 
     private function createBooking(float $price, string $status = 'confirmed'): Booking
     {
-        return Booking::create([
+        $booking = Booking::create([
             'client_id' => $this->client->id,
             'event_type' => 'wedding',
             'event_date' => now()->addDays(5),
@@ -66,6 +67,17 @@ class ClientPostEventSettlementUITest extends TestCase
             'total_quoted' => $price,
             'status' => $status,
         ]);
+
+        // Every status used here follows the client's acceptance of an issued quotation,
+        // which is where the client's price comes from.
+        Quotation::create([
+            'booking_id' => $booking->id,
+            'status' => Quotation::STATUS_ACCEPTED,
+            'version' => 1,
+            'final_quoted_price' => $price,
+        ]);
+
+        return $booking;
     }
 
     private function addVerifiedPayment(Booking $booking, float $amount, string $option = 'downpayment'): Payment

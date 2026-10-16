@@ -38,11 +38,14 @@ class BookingAnalysisLightboxTest extends TestCase
         $this->assertStringContainsString("window.addEventListener('DOMContentLoaded'", $html);
         $this->assertStringContainsString("data-image-lightbox-trigger", $html);
         $this->assertStringContainsString("data-annotated-image-stage", $html);
-        $this->assertStringContainsString("data-lightbox-content", $html);
-        $this->assertStringContainsString('max-height: calc(90vh - 2rem)', $html);
-        $this->assertStringContainsString("imageLightboxModal", $html);
-        $this->assertStringContainsString("requestAnimationFrame(() =>", $html);
-        $this->assertStringContainsString("addEventListener('load', repositionModalAnnotations", $html);
+        // One shared viewer enlarges the photo and its boxes as one unit, with the legend, zoom and pan.
+        $this->assertStringContainsString('id="raflora-annotation-viewer"', $html);
+        $this->assertStringContainsString('aria-modal="true"', $html);
+        $this->assertStringContainsString('window.RafloraAnnotationViewer = { open: open, close: close }', $html);
+        $this->assertStringContainsString('window.RafloraAnnotationViewer.open({', $html);
+        $this->assertStringContainsString('data-viewer-legend', $html);
+        $this->assertStringContainsString('data-viewer-zoom-in', $html);
+        $this->assertStringNotContainsString('imageLightboxModal', $html);
         // Boxes are percent rectangles over the photo, so only the stage shape is refitted.
         $this->assertStringContainsString("window.fitAnnotatedImageStage", $html);
         $this->assertStringContainsString("window.highlightAnnotationLine", $html);
@@ -77,11 +80,14 @@ class BookingAnalysisLightboxTest extends TestCase
         $this->assertStringContainsString("window.addEventListener('DOMContentLoaded'", $html);
         $this->assertStringContainsString("data-image-lightbox-trigger", $html);
         $this->assertStringContainsString("data-annotated-image-stage", $html);
-        $this->assertStringContainsString("data-lightbox-content", $html);
-        $this->assertStringContainsString('max-height: calc(90vh - 2rem)', $html);
-        $this->assertStringContainsString("imageLightboxModal", $html);
-        $this->assertStringContainsString("requestAnimationFrame(() =>", $html);
-        $this->assertStringContainsString("addEventListener('load', repositionModalAnnotations", $html);
+        // One shared viewer enlarges the photo and its boxes as one unit, with the legend, zoom and pan.
+        $this->assertStringContainsString('id="raflora-annotation-viewer"', $html);
+        $this->assertStringContainsString('aria-modal="true"', $html);
+        $this->assertStringContainsString('window.RafloraAnnotationViewer = { open: open, close: close }', $html);
+        $this->assertStringContainsString('window.RafloraAnnotationViewer.open({', $html);
+        $this->assertStringContainsString('data-viewer-legend', $html);
+        $this->assertStringContainsString('data-viewer-zoom-in', $html);
+        $this->assertStringNotContainsString('imageLightboxModal', $html);
         // Boxes are percent rectangles over the photo, so only the stage shape is refitted.
         $this->assertStringContainsString("window.fitAnnotatedImageStage", $html);
         $this->assertStringContainsString("window.highlightAnnotationLine", $html);

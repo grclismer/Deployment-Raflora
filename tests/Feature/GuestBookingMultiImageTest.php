@@ -51,22 +51,22 @@ class GuestBookingMultiImageTest extends TestCase
         $this->assertStringContainsString('id="uploaded-images-grid"', $html);
         $this->assertStringContainsString('id="uploaded-count-badge"', $html);
 
-        // 3. Truthful Progress Tracking Card
+        // 3. Truthful Indeterminate Progress Tracking Card
         $this->assertStringContainsString('id="ai-progress-card"', $html);
         $this->assertStringContainsString('id="progress-card-title"', $html);
         $this->assertStringContainsString('id="progress-img-thumb"', $html);
-        $this->assertStringContainsString('id="progress-step-1"', $html);
-        $this->assertStringContainsString('id="progress-step-2"', $html);
-        $this->assertStringContainsString('id="progress-step-3"', $html);
-        $this->assertStringContainsString('id="progress-step-4"', $html);
-        $this->assertStringContainsString('Image uploaded', $html);
-        $this->assertStringContainsString('Validating image', $html);
-        $this->assertStringContainsString('Identifying floral materials...', $html);
-        $this->assertStringContainsString('Preparing results', $html);
+        $this->assertStringContainsString('id="progress-indeterminate-bar"', $html);
+        $this->assertStringContainsString('Analyzing your inspiration image. Gemini is identifying floral materials and preparing suggestions. This may take a moment.', $html);
+        $this->assertStringNotContainsString('id="progress-step-1"', $html);
+        $this->assertStringNotContainsString('Identifying floral materials...', $html);
 
         // 4. 3-Column AI Analysis Viewer
         $this->assertStringContainsString('id="ai-material-preview-card"', $html);
-        $this->assertStringContainsString('id="viewer-img-title"', $html);
+        // The photo number shows once (beside the arrows); the header shows the photo's areas.
+        $this->assertStringNotContainsString('id="viewer-img-title"', $html);
+        $this->assertStringContainsString('id="viewer-photo-areas"', $html);
+        $this->assertStringContainsString('id="viewer-enlarge-btn"', $html);
+        $this->assertStringContainsString('id="raflora-annotation-viewer"', $html);
         $this->assertStringContainsString('id="img-nav-current"', $html);
         $this->assertStringContainsString('id="img-nav-total"', $html);
         $this->assertStringContainsString('id="btn-img-prev"', $html);
@@ -93,14 +93,17 @@ class GuestBookingMultiImageTest extends TestCase
         $this->assertStringContainsString('id="mat-name"', $html);
         $this->assertStringContainsString('id="mat-qty"', $html);
         $this->assertStringContainsString('id="mat-unit"', $html);
-        $this->assertStringContainsString('id="mat-unit-cost"', $html);
         $this->assertStringContainsString('id="mat-area"', $html);
         $this->assertStringContainsString('id="mat-seasonal-box"', $html);
         $this->assertStringContainsString('id="mat-alt-box"', $html);
 
-        // Column 3: Initial estimate & All materials quick jump list
-        $this->assertStringContainsString('id="mat-grand-total"', $html);
-        $this->assertStringContainsString('AI-Assisted Initial Estimate', $html);
+        // No AI price or estimate: prices come only with the official quotation
+        $this->assertStringNotContainsString('id="mat-unit-cost"', $html);
+        $this->assertStringNotContainsString('id="mat-grand-total"', $html);
+        $this->assertStringNotContainsString('AI-Assisted Initial Estimate', $html);
+        $this->assertStringContainsString('shares the price in your official quotation', $html);
+
+        // Column 3: All materials quick jump list
         $this->assertStringContainsString('id="mat-quick-list"', $html);
         $this->assertStringContainsString('id="mat-quick-count"', $html);
 
@@ -434,14 +437,21 @@ class GuestBookingMultiImageTest extends TestCase
 
         $html = $res->getContent();
 
-        // Multi-image navigator present
-        $this->assertStringContainsString('Image <span id="tracking-img-current">1</span> of 2', $html);
-        $this->assertStringContainsString('tracking-active-image', $html);
-        $this->assertStringContainsString('tracking-thumb-btn', $html);
+        // Multi-photo gallery: every photo, one counter, thumbnails and the enlarged viewer
+        $this->assertStringContainsString('Photo <span data-gallery-current>1</span> of 2', $html);
+        $this->assertSame(2, substr_count($html, 'data-gallery-thumb="'));
+        $this->assertStringContainsString('id="raflora-annotation-viewer"', $html);
 
-        // Disclaimers present
-        $this->assertStringContainsString('AI-Assisted Initial Estimate', $html);
-        $this->assertStringContainsString('It is NOT the official quotation', $html);
+        // One indicative overall AI range (no areas picked), distinct from the official quotation:
+        // ₱2,800 of AI materials × 3 → ₱7,140 – ₱9,660
+        $this->assertStringContainsString('Indicative · not an official quotation', $html);
+        $this->assertStringContainsString('₱7,140 – ₱9,660', $html);
+
+        // No AI estimate before a quotation: neither the ₱2,800 total nor per-item AI costs reach the page
+        $this->assertStringNotContainsString('AI-Assisted Initial Estimate', $html);
+        $this->assertStringContainsString('Price provided in your official quotation', $html);
+        $this->assertStringNotContainsString('2,800', $html);
+        $this->assertStringNotContainsString('estimated_unit_cost_php', $html);
         $this->assertStringContainsString('Peonies', $html);
         $this->assertStringContainsString('Eucalyptus', $html);
     }
@@ -504,17 +514,19 @@ class GuestBookingMultiImageTest extends TestCase
         $this->assertStringContainsString('id="tracking-material-tabs"', $html);
         $this->assertStringContainsString('tracking-mat-tab', $html);
         $this->assertStringContainsString('All Materials', $html);
-        $this->assertStringContainsString('Image 1', $html);
-        $this->assertStringContainsString('Image 2', $html);
+        $this->assertStringContainsString('Photo 1 (1)', $html);
+        $this->assertStringContainsString('Photo 2 (1)', $html);
 
-        // 2. Image level badges on individual materials
-        $this->assertStringContainsString('Inspiration Image 1', $html);
-        $this->assertStringContainsString('Inspiration Image 2', $html);
+        // 2. Photo-level badges on individual materials
+        $this->assertStringContainsString('Inspiration Photo 1', $html);
+        $this->assertStringContainsString('Inspiration Photo 2', $html);
 
         // 3. Visual identity: Custom AI, not package
         $this->assertStringContainsString('Your Design Request', $html);
         $this->assertStringContainsString('Smart AI Custom Design', $html);
-        $this->assertStringContainsString('2 inspiration images', $html);
+        // The photo count shows once, in the gallery.
+        $this->assertStringContainsString('Photo <span data-gallery-current>1</span> of 2', $html);
+        $this->assertStringNotContainsString('2 inspiration images', $html);
     }
 
     public function test_curated_package_booking_displays_package_identity_and_catalog_price(): void

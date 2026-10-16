@@ -43,7 +43,8 @@ class Phase3_1b3GuestBookingContinuityTest extends TestCase
         $viewResponse = $this->get(route('guest.bookings.show', ['token' => $token]));
         $viewResponse->assertOk();
         $viewResponse->assertSee('Claim &amp; Manage Your Booking Request', false);
-        $viewResponse->assertSee('Already have an account? Log In &amp; Claim', false);
+        // The visible "Log In & Claim" button carries the "Already have an account?" context for screen readers.
+        $viewResponse->assertSeeText('Already have an account? Log In & Claim');
         $viewResponse->assertSee(route('register', ['guest_token' => $token, 'email' => 'alice@example.com']));
 
         // 2. Guest opens registration page with guest_token

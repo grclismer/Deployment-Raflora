@@ -55,7 +55,11 @@
                         </div>
                         <div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs">
                             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Quoted Total</p>
-                            <p class="mt-1 text-base font-semibold text-slate-900">₱{{ number_format((float) ($booking->total_obligation ?? 0), 2) }}</p>
+                            @if($booking->shared_quote_total !== null)
+                                <p class="mt-1 text-base font-semibold text-slate-900">₱{{ number_format($booking->shared_quote_total, 2) }}</p>
+                            @else
+                                <p class="mt-1 text-base font-semibold text-slate-500">Not yet quoted</p>
+                            @endif
                         </div>
                     </div>
 

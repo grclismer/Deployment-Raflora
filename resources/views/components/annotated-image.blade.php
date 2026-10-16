@@ -34,7 +34,7 @@
         ];
     }
 @endphp
-<div class="relative w-full max-w-full overflow-hidden bg-white" data-annotated-image-stage @if($maxHeight) data-max-height="{{ $maxHeight }}" @endif @if($stageStyle) style="{{ $stageStyle }}" @endif>
+<div class="relative w-full max-w-full overflow-hidden bg-white" data-annotated-image-stage @if($maxHeight) data-max-height="{{ $maxHeight }}" @endif @if(!empty($viewerTitle)) data-viewer-title="{{ $viewerTitle }}" @endif @if($stageStyle) style="{{ $stageStyle }}" @endif>
     <img src="{{ $previewImage }}" alt="Inspiration Image" class="block h-auto w-full object-contain transition duration-200" />
 
     @foreach($marked as $item)
@@ -64,9 +64,9 @@
         @endif
     @endforeach
 
-    <button type="button" class="pointer-events-auto absolute bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-sm font-semibold text-slate-700 shadow-lg transition hover:bg-white" data-image-lightbox-trigger data-image-src="{{ $previewImage }}" aria-label="View full inspiration image">
-        <span>View full image</span>
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 3h8l5 5v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 0v5h8M15 13l-6 6m0-6l6 6"/></svg>
+    <button type="button" class="pointer-events-auto absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-lg transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 sm:text-sm" data-image-lightbox-trigger data-image-src="{{ $previewImage }}" aria-label="Enlarge the annotated inspiration photo">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <span>Enlarge</span>
     </button>
 </div>
 
@@ -92,23 +92,9 @@
 </div>
 @endif
 
-@once
-<style>
-    [data-lightbox-content] [data-annotated-image-stage] {
-        width: fit-content !important;
-        max-width: 100%;
-        max-height: calc(90vh - 2rem);
-        aspect-ratio: auto !important;
-    }
+<x-annotation-viewer />
 
-    [data-lightbox-content] [data-annotated-image-stage] > img {
-        width: auto;
-        max-width: 100%;
-        height: auto;
-        max-height: calc(90vh - 2rem);
-        object-fit: contain;
-    }
-</style>
+@once
 <script>
     // Give the stage the photo's displayed shape (browsers apply EXIF turns), so percentage boxes
     // sit on the same pixels the AI boxed, including after the photo is swapped for another one.
@@ -167,6 +153,20 @@
             const refit = () => window.fitAnnotatedImageStage(stage);
             image.addEventListener('load', refit);
             if (image.complete) refit();
+        });
+
+        // "Enlarge": the photo, its boxes and the legend entries for the shown photo, in the viewer.
+        document.addEventListener('click', (event) => {
+            const enlarge = event.target.closest('[data-image-lightbox-trigger]');
+            if (!enlarge) return;
+            const stage = enlarge.closest('[data-annotated-image-stage]');
+            if (!stage || !window.RafloraAnnotationViewer) return;
+            event.preventDefault();
+            window.RafloraAnnotationViewer.open({
+                stage,
+                legend: (stage.parentElement || document).querySelector('[data-annotation-legend]'),
+                title: stage.dataset.viewerTitle || 'Inspiration photo',
+            });
         });
 
         let pinned = null;

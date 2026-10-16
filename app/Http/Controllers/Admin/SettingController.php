@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SettingController extends Controller
@@ -32,12 +33,26 @@ class SettingController extends Controller
             abort(403, 'Unauthorized. Administrator access required.');
         }
 
+        $labourMax = $request->input('ai_labour_mode') === 'percentage' ? Setting::MAX_AI_LABOUR_PERCENTAGE : Setting::MAX_AI_LABOUR_FIXED;
         $validated = $request->validate([
             'downpayment_percentage' => 'nullable|numeric|min:0|max:100',
             'long_term_booking_threshold_days' => 'nullable|integer|min:1|max:730',
             'price_reconfirmation_threshold_days' => 'nullable|integer|min:1|max:365',
+            'ai_estimate_markup' => ['nullable', 'numeric', 'decimal:0,2', 'min:' . Setting::MIN_AI_ESTIMATE_MARKUP, 'max:' . Setting::MAX_AI_ESTIMATE_MARKUP],
+            'ai_labour_mode' => ['nullable', Rule::in(array_keys(Setting::AI_LABOUR_MODES))],
+            'ai_labour_value' => ['nullable', 'required_with:ai_labour_mode', 'numeric', 'decimal:0,2', 'min:0', 'max:' . $labourMax],
             'change_reason' => 'nullable|string|max:500',
             'confirmed' => 'nullable|boolean',
+        ], [
+            'ai_estimate_markup.min' => 'The AI estimate markup must be at least ' . Setting::MIN_AI_ESTIMATE_MARKUP . '×.',
+            'ai_estimate_markup.max' => 'The AI estimate markup may not exceed ' . Setting::MAX_AI_ESTIMATE_MARKUP . '×.',
+            'ai_estimate_markup.decimal' => 'The AI estimate markup may have at most two decimal places.',
+            'ai_labour_mode.in' => 'Choose a fixed amount or a percentage for labour & setup.',
+            'ai_labour_value.required_with' => 'Enter the labour & setup amount or percentage.',
+            'ai_labour_value.max' => $request->input('ai_labour_mode') === 'percentage'
+                ? 'The labour & setup percentage may not exceed 100%.'
+                : 'The labour & setup amount is too large.',
+            'ai_labour_value.decimal' => 'The labour & setup value may have at most two decimal places.',
         ]);
 
         $currDownpayment = (float) Setting::getSetting(Setting::KEY_DOWNPAYMENT_PERCENTAGE, Setting::DEFAULT_DOWNPAYMENT_PERCENTAGE);
@@ -139,6 +154,55 @@ class SettingController extends Controller
                     ]
                 );
                 $changesMade[] = 'Price reconfirmation threshold';
+            }
+        }
+
+        if (isset($validated['ai_estimate_markup'])) {
+            $currMarkup = Setting::aiEstimateMarkup();
+            $newMarkup = round((float) $validated['ai_estimate_markup'], 2);
+            if ($newMarkup !== $currMarkup) {
+                Setting::setSetting(Setting::KEY_AI_ESTIMATE_MARKUP, $newMarkup, 'float');
+                AuditLog::record(
+                    auth()->id(),
+                    'setting_updated',
+                    'AI estimate markup updated from ' . ($currMarkup ?? 'an invalid value') . "× to {$newMarkup}×. Issued quotations are not affected. " . ($reason ? "Reason: {$reason}" : ''),
+                    'admin_security',
+                    [
+                        'setting' => Setting::KEY_AI_ESTIMATE_MARKUP,
+                        'old_value' => $currMarkup,
+                        'new_value' => $newMarkup,
+                        'reason' => $reason ?: null,
+                    ]
+                );
+                $changesMade[] = 'AI estimate markup';
+            }
+        }
+
+        if (isset($validated['ai_labour_mode'])) {
+            $currLabour = Setting::aiLabourAllowance();
+            $newLabour = ['mode' => $validated['ai_labour_mode'], 'value' => round((float) $validated['ai_labour_value'], 2)];
+            if ($newLabour !== $currLabour) {
+                Setting::setSetting(Setting::KEY_AI_LABOUR_MODE, $newLabour['mode'], 'string');
+                Setting::setSetting(Setting::KEY_AI_LABOUR_VALUE, $newLabour['value'], 'float');
+                $describe = fn (array $labour) => match ($labour['mode']) {
+                    null => 'not set',
+                    'invalid' => 'an invalid value',
+                    'percentage' => $labour['value'] . '% of AI material cost',
+                    default => '₱' . number_format((float) $labour['value'], 2) . ' fixed',
+                };
+                AuditLog::record(
+                    auth()->id(),
+                    'setting_updated',
+                    'AI estimate labour & setup updated from ' . $describe($currLabour) . ' to ' . $describe($newLabour) . '. Issued quotations are not affected. ' . ($reason ? "Reason: {$reason}" : ''),
+                    'admin_security',
+                    [
+                        'setting' => Setting::KEY_AI_LABOUR_MODE,
+                        'old_value' => $currLabour,
+                        'new_value' => $newLabour,
+                        'reason' => $reason ?: null,
+                    ]
+                );
+                $changesMade[] = 'AI estimate labour & setup';
             }
         }
 

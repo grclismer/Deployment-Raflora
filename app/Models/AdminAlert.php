@@ -8,6 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AdminAlert extends Model
 {
     /**
+     * Alert types that carry a request Admin must approve or reject. For these, is_read records
+     * the decision itself, so they are never closed by "mark read" or "dismiss all".
+     */
+    public const DECISION_TYPES = ['physical_count_variance'];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -31,6 +37,14 @@ class AdminAlert extends Model
         return [
             'is_read' => 'boolean',
         ];
+    }
+
+    /**
+     * Whether this alert waits for an approve/reject decision rather than an acknowledgement.
+     */
+    public function requiresDecision(): bool
+    {
+        return in_array($this->type, self::DECISION_TYPES, true);
     }
 
     /**

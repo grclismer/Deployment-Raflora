@@ -8,6 +8,7 @@ use App\Models\BookingItem;
 use App\Models\Client;
 use App\Models\InventoryItem;
 use App\Models\Payment;
+use App\Models\Quotation;
 use App\Models\ReturnItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,7 +41,7 @@ class Phase3_1b8ClientDataAndStatusAlignmentTest extends TestCase
 
     private function createBooking(float $price, string $status = 'confirmed'): Booking
     {
-        return Booking::create([
+        $booking = Booking::create([
             'client_id' => $this->client->id,
             'event_type' => 'wedding',
             'event_date' => now()->addDays(14),
@@ -48,6 +49,17 @@ class Phase3_1b8ClientDataAndStatusAlignmentTest extends TestCase
             'total_quoted' => $price,
             'status' => $status,
         ]);
+
+        // Every status used here comes after Admin issued a quotation (accepted from 'approved' on),
+        // which is where the client's price comes from.
+        Quotation::create([
+            'booking_id' => $booking->id,
+            'status' => $status === 'quotation_sent' ? Quotation::STATUS_ISSUED : Quotation::STATUS_ACCEPTED,
+            'version' => 1,
+            'final_quoted_price' => $price,
+        ]);
+
+        return $booking;
     }
 
     private function addPayment(Booking $booking, float $amount, string $status, string $option = 'downpayment'): Payment

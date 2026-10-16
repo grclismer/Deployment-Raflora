@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use App\Mail\BookingStatusChanged;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,9 @@ class BookingController extends Controller
 {
     public function index(Request $request): View
     {
+        // The booking page's "Back to Bookings" returns to this exact list (search, filters, page).
+        $request->session()->put('admin.bookings.list_url', $request->fullUrl());
+
         $validStatuses = [
             'all',
             'approved',
@@ -221,69 +225,13 @@ class BookingController extends Controller
         ]);
     }
 
+    /**
+     * Open the booking's return record from what was dispatched (ReturnRecordService). Lines that
+     * were never dispatched, or are not linked to inventory, are not returnable and are left out.
+     */
     protected function ensureReturnRecordForBooking(Booking $booking): void
     {
-        if ($booking->returns()->exists()) {
-            return;
-        }
-        // Build a list of booking items (including unmatched proposal lines)
-        $bookingItems = $booking->bookingItems()->with('inventoryItem')->get();
-
-        // Collect only hardware (non-perishable) items or items that appear to be hardware by keyword
-        $hardwareItems = collect();
-        foreach ($bookingItems as $bItem) {
-            if ($bItem->inventoryItem) {
-                if (!$bItem->inventoryItem->is_perishable) {
-                    $hardwareItems->push($bItem->inventoryItem);
-                }
-                continue;
-            }
-
-            // No linked inventory item: attempt to infer from the item name
-                $name = $bItem->item_name ?? '';
-                $isPerishable = self::inferIsPerishableFromName($name);
-            if (!$isPerishable) {
-                // Create a lightweight inventory row so return_items can reference it
-                $inv = InventoryItem::firstOrCreate([
-                    'name' => $name,
-                ], [
-                    'category' => 'misc',
-                    'is_perishable' => false,
-                    'current_stock' => 0,
-                    'unit_cost' => (float) ($bItem->quoted_unit_price ?? 0),
-                    'min_stock' => 0,
-                    'unit' => 'piece',
-                ]);
-
-                $hardwareItems->push($inv);
-            }
-        }
-
-        if ($hardwareItems->isEmpty()) {
-            return;
-        }
-
-        DB::transaction(function () use ($booking, $hardwareItems) {
-            $return = AssetReturn::create([
-                'booking_id' => $booking->id,
-                'status' => 'Pending',
-                'total_damage_charge' => 0,
-            ]);
-
-            foreach ($hardwareItems as $item) {
-                ReturnItem::create([
-                    'return_id' => $return->id,
-                    'inventory_item_id' => $item->id,
-                    'quantity_returned' => 0,
-                    'quantity_good' => 0,
-                    'quantity_damaged' => 0,
-                    'quantity_lost' => 0,
-                    'condition' => 'pending',
-                    'final_amount' => 0,
-                    'damage_charge' => 0,
-                ]);
-            }
-        });
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
     }
 
     public function show(Booking $booking): View
@@ -615,6 +563,12 @@ class BookingController extends Controller
         ];
 
         if ($validated['action'] === 'approve') {
+            // Money the client may have sent is looked at before the booking closes (a payment
+            // can only be verified once the cancellation is denied).
+            if ($this->hasPaymentAwaitingVerification($booking)) {
+                return redirect()->back()->with('error', 'The client submitted a payment reference that is still waiting for verification. Reject it, or deny the cancellation and verify it, before approving the cancellation.');
+            }
+
             return DB::transaction(function () use ($booking, $validated, $priorStatus) {
                 if (!empty($validated['admin_note'])) {
                     \App\Models\BookingMessage::create([
@@ -766,10 +720,11 @@ class BookingController extends Controller
             ->latest('updated_at')
             ->get();
 
+        // Read-only: booking lines are linked to inventory only by Admin's explicit actions.
         foreach ($activeBookings as $booking) {
-            $this->reconcileBookingInventoryLinks($booking);
-            $booking->load('bookingItems.inventoryItem');
             $shortageItems = [];
+            // Units already dispatched to this booking, per item, still to be set against its lines.
+            $dispatchedLeft = [];
             foreach ($booking->bookingItems as $bookingItem) {
                 $required = (float) ($bookingItem->quantity ?? 0);
                 if ($required <= 0) {
@@ -777,6 +732,14 @@ class BookingController extends Controller
                 }
 
                 $item = $bookingItem->inventoryItem;
+                if ($item) {
+                    // Dispatched units have left current_stock and are at the event, so only the
+                    // rest of the line is still needed from stock.
+                    $dispatchedLeft[$item->id] ??= $item->dispatchedForBooking($booking->id);
+                    $alreadyDispatched = min($required, $dispatchedLeft[$item->id]);
+                    $dispatchedLeft[$item->id] -= $alreadyDispatched;
+                    $required -= $alreadyDispatched;
+                }
                 if (!$item) {
                     $shortageItems[] = [
                         'inventory_item_id' => null,
@@ -794,7 +757,9 @@ class BookingController extends Controller
                     continue;
                 }
 
-                $reservedByOtherBookings = max(0.0, (float) ($item->reserved_stock ?? 0) - $required);
+                // Stock held for other bookings: everything held minus what this booking itself
+                // holds (InventoryItem::reservedForBooking), never minus what it merely needs.
+                $reservedByOtherBookings = max(0.0, (float) $item->reserved_stock - $item->reservedForBooking($booking->id));
                 $available = max(0.0, (float) $item->current_stock - $reservedByOtherBookings);
                 $isShortage = $available < $required;
                 if ($isShortage) {
@@ -1109,18 +1074,22 @@ class BookingController extends Controller
         ];
     }
 
-    protected function buildPriceAdjustmentSummary(float $previousTotal, ?float $newTotal): array
+    /**
+     * The client-facing price line for a newly issued quotation, measured against the quotation
+     * the client had (null on a first issue), never against unissued working prices.
+     */
+    protected function buildPriceAdjustmentSummary(?float $previousSharedTotal, float $issuedTotal): array
     {
-        if ($newTotal === null || !is_numeric($newTotal)) {
-            return [];
+        if ($previousSharedTotal === null) {
+            return ['• Quoted total: ₱' . number_format($issuedTotal, 2)];
         }
 
-        if (abs($newTotal - $previousTotal) <= 0.01) {
+        if (abs($issuedTotal - $previousSharedTotal) <= 0.01) {
             return [];
         }
 
         return [
-            '• Quote updated: ₱' . number_format($previousTotal, 2) . ' → ₱' . number_format($newTotal, 2),
+            '• Quote updated: ₱' . number_format($previousSharedTotal, 2) . ' → ₱' . number_format($issuedTotal, 2),
         ];
     }
 
@@ -1210,7 +1179,7 @@ class BookingController extends Controller
 
     protected function buildBookingReviewView(Booking $booking, bool $isEditMode = false): View
     {
-        $this->reconcileBookingInventoryLinks($booking);
+        // Read-only: unlinked lines are shown as such; linking happens on Admin's explicit actions.
         $booking->load(['client', 'aiAnalyses', 'payments', 'returns.returnItems', 'bookingItems.inventoryItem', 'quotations', 'staffChecklistItems.completedBy', 'assignedStaff']);
         $analysis = $booking->aiAnalyses()->latest('analyzed_at')->first();
         $payment = $booking->payments()->latest()->first();
@@ -1336,12 +1305,19 @@ class BookingController extends Controller
         ]);
     }
 
+    /**
+     * Link unlinked booking lines to the catalog item with the same name, when exactly one
+     * catalog item has that name. Runs only as part of Admin sending the quotation; a name shared
+     * by several catalog items is left for Admin to link explicitly.
+     */
     protected function reconcileBookingInventoryLinks(Booking $booking): void
     {
         $inventoryByName = InventoryItem::query()
             ->get(['id', 'name'])
             ->filter(fn (InventoryItem $item): bool => trim((string) $item->name) !== '')
-            ->keyBy(fn (InventoryItem $item): string => $this->normalizeInventoryName($item->name));
+            ->groupBy(fn (InventoryItem $item): string => $this->normalizeInventoryName($item->name))
+            ->filter(fn ($items): bool => $items->count() === 1)
+            ->map(fn ($items) => $items->first());
 
         if ($inventoryByName->isEmpty()) {
             return;
@@ -1360,7 +1336,21 @@ class BookingController extends Controller
 
     protected function normalizeInventoryName(?string $name): string
     {
-        return strtolower(trim(preg_replace('/[^a-z0-9]+/', ' ', (string) $name) ?? ''));
+        // Lower-case first: the pattern keeps only a-z and 0-9, so capitals must not be stripped.
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $name)) ?? '');
+    }
+
+    /**
+     * Refuse to add a catalog item whose name already exists (ignoring case and surrounding
+     * spaces); Admin links the line to that item instead. Null when the name is free.
+     */
+    protected function duplicateCatalogNameError(string $name): ?string
+    {
+        $existing = InventoryItem::named($name)->first();
+
+        return $existing
+            ? "An inventory item named \"{$existing->name}\" already exists. Link the material to it instead of adding a duplicate."
+            : null;
     }
 
     protected function adjustInventoryForBookingStatus(Booking $booking, ?string $oldStatus, ?string $newStatus): void
@@ -1705,7 +1695,9 @@ class BookingController extends Controller
         }
 
         return match ($to) {
-            'declined', 'cancelled', 'rejected' => null,
+            'declined', 'cancelled', 'rejected' => $this->hasPaymentAwaitingVerification($booking)
+                ? 'The client submitted a payment reference that is still waiting for verification. Verify or reject it before closing this booking.'
+                : null,
             'downpayment_received', 'confirmed', 'fully_paid' => $booking->total_paid > 0
                 ? null
                 : 'A booking can only be confirmed after a payment has been verified. Verify the client\'s submitted payment instead.',
@@ -1807,9 +1799,22 @@ class BookingController extends Controller
             'category' => ['nullable', 'string', 'max:255'],
             'unit' => ['nullable', 'string', 'max:50'],
             'is_perishable' => ['nullable', 'boolean'],
+            'booking_item_id' => ['nullable', 'integer'],
+            'quantity' => ['nullable', 'numeric', 'min:0.01'],
+            'unit_price' => ['nullable', 'numeric', 'min:0'],
+            'unit_cost' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $bookingItem = $this->resolveAiSuggestedBookingItem($request, $booking, $bookingItem);
+
+        // A named material that is not on this booking is an invalid request, not a new item.
+        if (!$bookingItem && ($request->filled('booking_item_id') || $request->filled('ai_item_name'))) {
+            return redirect()->back()->with('error', 'That material is not part of this booking.');
+        }
+
+        if ($duplicateError = $this->duplicateCatalogNameError((string) $request->input('catalog_name'))) {
+            return redirect()->back()->with('error', $duplicateError);
+        }
 
         if (!$bookingItem) {
             Log::warning('promoteAiItem: could not locate AI suggested booking item', ['request' => $request->all(), 'booking_id' => $booking->id]);
@@ -1951,7 +1956,50 @@ class BookingController extends Controller
         })->values();
     }
 
+    /**
+     * Booking form actions that issue a quotation version.
+     */
+    private const QUOTATION_ISSUING_ACTIONS = ['send_quotation', 'reissue_quotation', 'reconfirm_price_revised'];
+
     public function update(Request $request, Booking $booking): RedirectResponse
+    {
+        // Issuing a quotation is one operation: when it is refused or fails, none of its writes
+        // are kept, so the booking, its materials and any accepted quotation stay as they were.
+        if (in_array($request->input('action'), self::QUOTATION_ISSUING_ACTIONS, true)) {
+            return DB::transaction(fn (): RedirectResponse => $this->applyBookingUpdate($request, $booking));
+        }
+
+        return $this->applyBookingUpdate($request, $booking);
+    }
+
+    /**
+     * Stop the booking update with an error message. Thrown rather than returned so that, inside
+     * a quotation transaction (update()), every write made so far is rolled back.
+     */
+    protected function refuseBookingUpdate(string $message): never
+    {
+        throw new HttpResponseException(redirect()->back()->with('error', $message));
+    }
+
+    /**
+     * The final price the Admin typed into "Final Quoted Total (Override)", or null to issue the
+     * calculated total. The quote editor keeps that box in step with its own running total and
+     * posts final_price_overridden=0 until the Admin types a price; that running total can count
+     * rows that are not on the quotation (unconfirmed AI suggestions), so it never becomes the
+     * price by itself.
+     */
+    protected function adminOverridePrice(Request $request): ?float
+    {
+        if ((string) $request->input('final_price_overridden') === '0' || !$request->filled('final_quoted_price')) {
+            return null;
+        }
+
+        $price = (float) $request->input('final_quoted_price');
+
+        return $price > 0 ? $price : null;
+    }
+
+    protected function applyBookingUpdate(Request $request, Booking $booking): RedirectResponse
     {
         if ($request->filled('resolve_ai_item') || $request->filled('ai_item_name')) {
             $bookingItem = null;
@@ -1976,6 +2024,10 @@ class BookingController extends Controller
                 }
 
                 if ($request->filled('promote_inventory_name')) {
+                    if ($duplicateError = $this->duplicateCatalogNameError((string) $request->input('promote_inventory_name'))) {
+                        return redirect()->back()->with('error', $duplicateError);
+                    }
+
                     $inventoryItem = InventoryItem::create([
                         'name' => trim($request->input('promote_inventory_name')),
                         'category' => $request->input('promote_inventory_category', 'misc'),
@@ -2010,11 +2062,25 @@ class BookingController extends Controller
             'admin_notes' => ['nullable', 'string', 'max:2000'],
             'multiplier' => ['nullable', 'numeric', 'min:1'],
             'final_quoted_price' => ['nullable', 'numeric', 'min:0'],
+            'final_price_overridden' => ['nullable', 'in:0,1'],
             'preparation_start_date' => ['nullable', 'date', 'before_or_equal:event_date'],
             'preparation_status' => ['nullable', 'string', 'in:scheduled,in_preparation,ready,completed'],
         ]);
 
-        $previousQuoteTotal = (float) ($booking->final_quoted_price ?? $booking->total_quoted ?? 0);
+        // Batch promotion adds catalog items: refuse a duplicate name before anything is written.
+        if ($request->input('action') === 'promote_selected') {
+            foreach ((array) $request->input('items', []) as $it) {
+                $catalogName = is_array($it) ? trim((string) ($it['promote_catalog_name'] ?? '')) : '';
+                if ($catalogName !== '' && ($duplicateError = $this->duplicateCatalogNameError($catalogName))) {
+                    return redirect()->back()->with('error', $duplicateError);
+                }
+            }
+        }
+
+        // The price the client has already been shown; working prices are never compared against.
+        $sharedQuotation = $booking->sharedQuotation();
+        $previousSharedPrice = $sharedQuotation ? (float) $sharedQuotation->final_quoted_price : null;
+        $issuedQuotation = null;
 
         $oldStatus = $booking->status;
         $action = $request->input('action', 'save');
@@ -2045,8 +2111,11 @@ class BookingController extends Controller
         if ($action === 'mark_event_completed' && $normalizedOldStatus !== 'event_in_progress') {
             return redirect()->back()->with('error', 'Only an event in progress can be marked as completed.');
         }
-        if ($action === 'log_final_payment' && !in_array($normalizedOldStatus, ['event_in_progress', 'event_completed', 'pending_return', 'pending_resolution'], true)) {
+        if ($action === 'log_final_payment' && !in_array($normalizedOldStatus, self::FINAL_PAYMENT_STATUSES, true)) {
             return redirect()->back()->with('error', 'A final payment can only be logged once the event is in progress or completed.');
+        }
+        if ($action === 'log_final_payment' && $this->hasPaymentAwaitingVerification($booking)) {
+            return redirect()->back()->with('error', 'The client submitted a payment reference that is still waiting for verification. Verify or reject it before logging a final payment.');
         }
         if ($action === 'send_quotation') {
             $this->reconcileBookingInventoryLinks($booking);
@@ -2070,7 +2139,7 @@ class BookingController extends Controller
                 ->values();
 
             if ($unconfirmedAiItems->isNotEmpty()) {
-                return redirect()->back()->with('error', 'Confirm every material requirement before sending the quotation.');
+                $this->refuseBookingUpdate('Confirm every material requirement before sending the quotation.');
             }
         }
         $booking->event_type = $data['event_type'];
@@ -2087,13 +2156,13 @@ class BookingController extends Controller
             $booking->preparation_status = $request->input('preparation_status');
         }
 
+        // The price itself is set by QuotationIssuanceService from the quotable items, or from a
+        // price the Admin typed (adminOverridePrice()), so the booking always matches the quotation.
+        $overridePrice = $this->adminOverridePrice($request);
+
         if ($action === 'send_quotation') {
             if (isset($data['multiplier'])) {
                 $booking->multiplier = $data['multiplier'];
-            }
-            if (isset($data['final_quoted_price'])) {
-                $booking->final_quoted_price = $data['final_quoted_price'];
-                $booking->total_quoted = $data['final_quoted_price'];
             }
         }
 
@@ -2123,7 +2192,7 @@ class BookingController extends Controller
                 if (!empty($it['booking_item_id'])) {
                     $existingBookingItem = $booking->bookingItems()->find($it['booking_item_id']);
                     if (!$existingBookingItem) {
-                        return redirect()->back()->with('error', 'The submitted booking material does not belong to this booking.');
+                        $this->refuseBookingUpdate('The submitted booking material does not belong to this booking.');
                     }
 
                     $isAiSuggested = (bool) $existingBookingItem->is_ai_suggested;
@@ -2145,11 +2214,11 @@ class BookingController extends Controller
 
                             if ($originalInventoryItem) {
                                 if (!$replacementInventoryItem || !$originalInventoryItem->substitutes()->whereKey($replacementInventoryItem->id)->exists()) {
-                                    return redirect()->back()->with('error', 'The selected substitute is not designated for this material.');
+                                    $this->refuseBookingUpdate('The selected substitute is not designated for this material.');
                                 }
                             } else {
                                 if (!$replacementInventoryItem) {
-                                    return redirect()->back()->with('error', 'The selected inventory item is invalid.');
+                                    $this->refuseBookingUpdate('The selected inventory item is invalid.');
                                 }
                             }
 
@@ -2174,12 +2243,12 @@ class BookingController extends Controller
 
                         if ($action === 'send_quotation') {
                             if ($unavailable) {
-                                $bookingItem->procurement_status = 'unmatched';
+                                $bookingItem->procurement_status = \App\Services\QuotationPricingService::REMOVED_FROM_QUOTATION;
                                 $updated = true;
                             } elseif ($qty !== null && $qty <= 0) {
                                 $bookingItem->procurement_status = 'out_of_stock';
                                 $updated = true;
-                            } elseif ($bookingItem->procurement_status === 'unmatched' || $bookingItem->procurement_status === 'out_of_stock') {
+                            } elseif ($bookingItem->procurement_status === \App\Services\QuotationPricingService::REMOVED_FROM_QUOTATION || $bookingItem->procurement_status === 'out_of_stock') {
                                 $bookingItem->procurement_status = 'pending';
                                 $updated = true;
                             }
@@ -2269,7 +2338,7 @@ class BookingController extends Controller
                             'quantity' => $qty !== null ? max(0, $qty) : 0,
                             'quoted_unit_price' => $unitPrice !== null ? $unitPrice : 0,
                             'is_ai_suggested' => $isAiSuggested,
-                            'procurement_status' => 'unmatched',
+                            'procurement_status' => \App\Services\QuotationPricingService::REMOVED_FROM_QUOTATION,
                         ]);
                         continue;
                     }
@@ -2288,18 +2357,9 @@ class BookingController extends Controller
                     $inventoryItem = InventoryItem::where('name', $name)->first();
                 }
 
-                if (!$inventoryItem && $name !== '') {
-                    $inventoryItem = InventoryItem::create([
-                        'name' => $name,
-                        'category' => 'misc',
-                        'is_perishable' => false,
-                        'current_stock' => 0,
-                        'unit_cost' => $unitPrice !== null ? $unitPrice : 0,
-                        'min_stock' => 0,
-                        'unit' => 'piece',
-                    ]);
-                }
-
+                // A line without a catalog item stays unlinked (and unconfirmed) for Admin to link or
+                // promote explicitly; free text never creates a catalog item. 'unmatched' is not used
+                // here because it marks a line removed from the quotation.
                 if ($action === 'send_quotation') {
                     $bookingItem = BookingItem::create([
                         'booking_id' => $booking->id,
@@ -2308,7 +2368,7 @@ class BookingController extends Controller
                         'quantity' => $qty !== null ? max(0, $qty) : 0,
                         'quoted_unit_price' => $unitPrice !== null ? $unitPrice : 0,
                         'is_ai_suggested' => $isAiSuggested,
-                        'procurement_status' => ($qty !== null && $qty <= 0) ? 'out_of_stock' : ($inventoryItem ? 'pending' : 'unmatched'),
+                        'procurement_status' => ($qty !== null && $qty <= 0) ? 'out_of_stock' : 'pending',
                     ]);
                 } else {
                     // Do not create new items if not sending quotation
@@ -2399,28 +2459,10 @@ class BookingController extends Controller
                 $newRawMaterialsSum += ($finalQty * $finalUnitCost);
             }
             $booking->raw_materials_sum = $newRawMaterialsSum;
-
-            if ($action === 'send_quotation') {
-                if (!$request->filled('final_quoted_price')) {
-                    app(\App\Services\QuotationPricingService::class)->calculateTotals($booking, false);
-                }
-
-                if (array_key_exists('final_quoted_price', $data)) {
-                    $booking->final_quoted_price = $data['final_quoted_price'] !== null ? (float) $data['final_quoted_price'] : null;
-                    if ($booking->final_quoted_price !== null) {
-                        $booking->total_quoted = $booking->final_quoted_price;
-                    }
-                }
-            }
         }
 
-        $newPriceTotal = $booking->final_quoted_price;
-
-        $generatedAdjustmentNote = $this->appendGeneratedAdjustmentNote(
-            $adminNote,
-            $items,
-            $this->buildPriceAdjustmentSummary($previousQuoteTotal, $newPriceTotal)
-        );
+        // Price lines are added below only if this save issues a quotation.
+        $generatedAdjustmentNote = $this->appendGeneratedAdjustmentNote($adminNote, $items);
 
         if (array_key_exists('admin_notes', $data) || array_key_exists('admin_note', $data)) {
             $booking->admin_notes = $generatedAdjustmentNote !== '' ? $generatedAdjustmentNote : null;
@@ -2437,11 +2479,10 @@ class BookingController extends Controller
             $customValidUntil = $request->filled('valid_until') ? (string) $request->input('valid_until') : null;
 
             try {
-                app(\App\Services\QuotationIssuanceService::class)->issue($booking, Auth::id(), $customValidUntil);
+                $issuedQuotation = app(\App\Services\QuotationIssuanceService::class)->issue($booking, Auth::id(), $customValidUntil, overridePrice: $overridePrice);
             } catch (\RuntimeException $e) {
-                $booking->status = $oldStatus;
-                $booking->save();
-                return redirect()->back()->with('error', $e->getMessage());
+                // Rolls back this request's item, price and status changes (update()).
+                $this->refuseBookingUpdate($e->getMessage());
             }
 
             // Issuing the official quotation implies Raflora Review and material validation are complete.
@@ -2553,11 +2594,10 @@ class BookingController extends Controller
             $customValidUntil = $request->filled('valid_until') ? (string) $request->input('valid_until') : null;
 
             try {
-                app(\App\Services\QuotationIssuanceService::class)->issue($booking, Auth::id(), $customValidUntil);
+                $issuedQuotation = app(\App\Services\QuotationIssuanceService::class)->issue($booking, Auth::id(), $customValidUntil, overridePrice: $overridePrice);
             } catch (\RuntimeException $e) {
-                $booking->status = $oldStatus;
-                $booking->save();
-                return redirect()->back()->with('error', $e->getMessage());
+                // Rolls back this request's changes; an accepted quotation stays untouched (update()).
+                $this->refuseBookingUpdate($e->getMessage());
             }
 
             // Admin re-issues the quotation with refreshed pricing window
@@ -2605,11 +2645,10 @@ class BookingController extends Controller
             $customValidUntil = $request->filled('valid_until') ? (string) $request->input('valid_until') : null;
 
             try {
-                $newQuote = app(\App\Services\QuotationIssuanceService::class)->reconfirmWithRevision($booking, Auth::id(), $customValidUntil);
+                $newQuote = app(\App\Services\QuotationIssuanceService::class)->reconfirmWithRevision($booking, Auth::id(), $customValidUntil, $overridePrice);
             } catch (\RuntimeException $e) {
-                $booking->status = $oldStatus;
-                $booking->save();
-                return redirect()->back()->with('error', $e->getMessage());
+                // Rolls back this request's changes (update()).
+                $this->refuseBookingUpdate($e->getMessage());
             }
 
             $booking->setNormalizedStatus('quotation_sent');
@@ -2625,6 +2664,18 @@ class BookingController extends Controller
             $notificationStatus = 'admin_approved';
         } elseif ($data['status'] === 'declined' && $booking->wasChanged('status')) {
             $notificationStatus = 'declined';
+        }
+
+        if ($issuedQuotation) {
+            $generatedAdjustmentNote = $this->appendGeneratedAdjustmentNote(
+                $adminNote,
+                $items,
+                $this->buildPriceAdjustmentSummary($previousSharedPrice, (float) $issuedQuotation->final_quoted_price)
+            );
+
+            if (array_key_exists('admin_notes', $data) || array_key_exists('admin_note', $data)) {
+                $booking->admin_notes = $generatedAdjustmentNote !== '' ? $generatedAdjustmentNote : null;
+            }
         }
 
         if ($booking->status !== $oldStatus
@@ -2720,24 +2771,6 @@ class BookingController extends Controller
             $this->logAuditEvent('booking', 'quote_updated', $booking, 'Quotation updated to ' . $booking->final_quoted_price ?: $booking->total_quoted, Auth::id());
         }
 
-        if ($action === 'send_quotation') {
-            // Ensure explicit final quoted override from the request is preserved
-            if (array_key_exists('final_quoted_price', $data)) {
-                $booking->final_quoted_price = $data['final_quoted_price'] !== null ? (float) $data['final_quoted_price'] : null;
-                if ($booking->final_quoted_price !== null) {
-                    $booking->total_quoted = $booking->final_quoted_price;
-                }
-            }
-
-            // Directly persist manual override from the raw request to guarantee persistence
-            if ($request->has('final_quoted_price')) {
-                $booking->final_quoted_price = $request->input('final_quoted_price') !== null ? (float) $request->input('final_quoted_price') : null;
-                if ($booking->final_quoted_price !== null) {
-                    $booking->total_quoted = $booking->final_quoted_price;
-                }
-            }
-        }
-
         $booking->save();
 
         if (!empty($reviewRecordedByIssuance)) {
@@ -2774,12 +2807,16 @@ class BookingController extends Controller
         }
 
         if ($notificationStatus && $booking->client && filter_var($booking->client->email, FILTER_VALIDATE_EMAIL)) {
-            try {
-                Mail::to($booking->client->email)->send(new BookingStatusChanged($booking, null, $notificationStatus));
-            } catch (\Throwable $e) {
-                // If mail fails, still keep the booking update.
-                logger()->error('Booking status notification failed: ' . $e->getMessage());
-            }
+            // Sent once the quotation transaction commits (immediately outside one), so a client is
+            // never emailed about a quotation that was rolled back.
+            DB::afterCommit(function () use ($booking, $notificationStatus): void {
+                try {
+                    Mail::to($booking->client->email)->send(new BookingStatusChanged($booking, null, $notificationStatus));
+                } catch (\Throwable $e) {
+                    // If mail fails, still keep the booking update.
+                    logger()->error('Booking status notification failed: ' . $e->getMessage());
+                }
+            });
         }
 
         return redirect()->route('admin.bookings.show', ['booking' => $booking->id])
@@ -3044,51 +3081,25 @@ class BookingController extends Controller
 
         DB::transaction(function () use ($payment, $booking) {
             $lockedBooking = \App\Models\Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
-            
+
             $oldPayment = $payment->toArray();
             $oldBookingStatus = $lockedBooking->status;
 
             $payment->status = 'rejected';
             $payment->save();
 
-            $hasReturns = $lockedBooking->returns()->exists();
-            $hasDispatches = $lockedBooking->hasDispatchedReusableMaterials();
-            $isPostEvent = $hasReturns || $hasDispatches || in_array($oldBookingStatus, ['event_completed', 'pending_return', 'pending_resolution'], true);
+            $revertStatus = $this->statusAfterRejectedPayment($lockedBooking, $payment, $oldBookingStatus);
 
-            if ($isPostEvent) {
-                $hasPendingResolution = $lockedBooking->returns()
-                    ->whereHas('returnItems', function ($q) {
-                        $q->where('charge_decision', 'pending')
-                            ->where(function ($sub) {
-                                $sub->whereIn('condition', ['damaged', 'lost', 'mixed'])
-                                    ->orWhere('quantity_damaged', '>', 0)
-                                    ->orWhere('quantity_lost', '>', 0);
-                            });
-                    })->exists();
-
-                $hasCompletedReturn = $lockedBooking->returns()->where('status', 'Completed')->exists();
-
-                if ($hasPendingResolution) {
-                    $revertStatus = 'pending_resolution';
-                } elseif ($hasCompletedReturn) {
-                    $revertStatus = 'event_completed';
-                } else {
-                    $revertStatus = 'pending_return';
-                }
-            } else {
-                $hasPriorVerifiedPayments = $lockedBooking->payments()
-                    ->whereIn('status', Booking::VERIFIED_PAYMENT_STATUSES)
-                    ->where('id', '!=', $payment->id)
-                    ->exists();
-
-                if ($hasPriorVerifiedPayments) {
-                    $revertStatus = 'downpayment_received';
-                } else {
-                    $revertStatus = 'admin_approved';
-                }
+            // Only a booking that was waiting for this payment goes back to the payment step. A
+            // cancellation request keeps waiting for Admin's decision (its saved prior stage moves
+            // instead), and a closed booking stays closed.
+            if (in_array($oldBookingStatus, self::AWAITING_PAYMENT_STATUSES, true)) {
+                $lockedBooking->setNormalizedStatus($revertStatus)->save();
+            } elseif ($oldBookingStatus === 'cancellation_requested'
+                && in_array(Booking::normalizeStatus($lockedBooking->pre_cancellation_status), self::AWAITING_PAYMENT_STATUSES, true)) {
+                $lockedBooking->pre_cancellation_status = $revertStatus;
+                $lockedBooking->save();
             }
-
-            $lockedBooking->setNormalizedStatus($revertStatus)->save();
 
             $this->logAuditEvent(
                 'booking',
@@ -3100,9 +3111,78 @@ class BookingController extends Controller
                 ['payment' => $payment->toArray(), 'booking_status' => $lockedBooking->status],
                 'payment_rejected'
             );
+
+            $canResubmit = in_array($lockedBooking->status, ['admin_approved', 'event_completed', 'pending_resolution'], true);
+            $this->createClientNotificationForBooking(
+                $lockedBooking,
+                'Payment Not Verified',
+                'Raflora could not verify your payment reference ' . $payment->reference_number . '. '
+                    . ($canResubmit
+                        ? 'Please check your receipt and submit a corrected reference from your booking page.'
+                        : 'If you already sent this payment, please contact Raflora.'),
+                'payment_update'
+            );
         });
 
-        return back()->with('success', 'Payment has been rejected. The client can now submit a new payment reference.');
+        return back()->with('success', 'Payment has been rejected and the client has been notified.');
+    }
+
+    /**
+     * Booking statuses in which a submitted payment is what the booking is waiting for.
+     */
+    private const AWAITING_PAYMENT_STATUSES = ['payment_submitted', 'payment_pending', 'event_completed', 'pending_return', 'pending_resolution'];
+
+    /**
+     * Whether a client payment reference is still waiting for Admin to verify or reject it.
+     */
+    protected function hasPaymentAwaitingVerification(Booking $booking): bool
+    {
+        return $booking->payments()->where('status', 'pending')->exists();
+    }
+
+    /**
+     * The payment stage a booking returns to once its submitted payment is rejected.
+     */
+    protected function statusAfterRejectedPayment(Booking $lockedBooking, Payment $payment, ?string $oldBookingStatus): string
+    {
+        $hasReturns = $lockedBooking->returns()->exists();
+        $hasDispatches = $lockedBooking->hasDispatchedReusableMaterials();
+        $isPostEvent = $hasReturns || $hasDispatches || in_array($oldBookingStatus, ['event_completed', 'pending_return', 'pending_resolution'], true);
+
+        if ($isPostEvent) {
+            $hasPendingResolution = $lockedBooking->returns()
+                ->whereHas('returnItems', function ($q) {
+                    $q->where('charge_decision', 'pending')
+                        ->where(function ($sub) {
+                            $sub->whereIn('condition', ['damaged', 'lost', 'mixed'])
+                                ->orWhere('quantity_damaged', '>', 0)
+                                ->orWhere('quantity_lost', '>', 0);
+                        });
+                })->exists();
+
+            $hasCompletedReturn = $lockedBooking->returns()->where('status', 'Completed')->exists();
+
+            if ($hasPendingResolution) {
+                $revertStatus = 'pending_resolution';
+            } elseif ($hasCompletedReturn) {
+                $revertStatus = 'event_completed';
+            } else {
+                $revertStatus = 'pending_return';
+            }
+        } else {
+            $hasPriorVerifiedPayments = $lockedBooking->payments()
+                ->whereIn('status', Booking::VERIFIED_PAYMENT_STATUSES)
+                ->where('id', '!=', $payment->id)
+                ->exists();
+
+            if ($hasPriorVerifiedPayments) {
+                $revertStatus = 'downpayment_received';
+            } else {
+                $revertStatus = 'admin_approved';
+            }
+        }
+
+        return $revertStatus;
     }
 
     /**
@@ -3111,19 +3191,36 @@ class BookingController extends Controller
     public function finalPayment(Request $request, Booking $booking): RedirectResponse
     {
         $validated = $request->validate([
-            'amount_received' => ['required', 'numeric', 'min:0'],
+            'amount_received' => ['required', 'numeric', 'gt:0'],
             'payment_type' => ['required', 'string', 'in:gcash,bank_transfer,cash'],
         ]);
 
-        $finalTotal = (float) $booking->total_obligation;
-        $amountReceived = (float) $validated['amount_received'];
+        $amountReceived = round((float) $validated['amount_received'], 2);
 
-        DB::transaction(function () use ($booking, $amountReceived, $validated) {
+        $error = DB::transaction(function () use ($booking, $amountReceived, $validated): ?string {
             $lockedBooking = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+
+            // Same rules as the "Log Final Payment" button: only once the event has started, only
+            // the outstanding balance, and never alongside a client payment still being checked.
+            if (!in_array($lockedBooking->status, self::FINAL_PAYMENT_STATUSES, true)) {
+                return 'A final payment can only be logged once the event is in progress or completed.';
+            }
+
+            if ($this->hasPaymentAwaitingVerification($lockedBooking)) {
+                return 'The client submitted a payment reference that is still waiting for verification. Verify or reject it before logging a final payment.';
+            }
 
             $totalObligation = (float) $lockedBooking->total_obligation;
             $priorPaid = (float) $lockedBooking->total_paid;
             $remainingBefore = max(0.0, $totalObligation - $priorPaid);
+
+            if ($remainingBefore <= 0.0) {
+                return 'This booking has no outstanding balance.';
+            }
+
+            if ($amountReceived > round($remainingBefore, 2)) {
+                return 'The amount is more than the remaining balance of ₱' . number_format($remainingBefore, 2) . '.';
+            }
 
             $newRemaining = max(0.0, $remainingBefore - $amountReceived);
             $isFullyPaid = ($newRemaining <= 0.0);
@@ -3187,10 +3284,21 @@ class BookingController extends Controller
                     $this->logAuditEvent('booking', 'final_payment_status_applied', $lockedBooking, 'Booking kept as event completed with balance pending after return audit completed', Auth::id(), ['booking_status' => $oldStatus], ['booking_status' => $lockedBooking->status], 'status_updated');
                 }
             }
+
+            return null;
         });
+
+        if ($error !== null) {
+            return redirect()->back()->with('error', $error);
+        }
 
         return redirect()->back()->with('success', 'Final payment processed successfully.');
     }
+
+    /**
+     * Booking statuses in which Admin may log a final payment (the event has started).
+     */
+    private const FINAL_PAYMENT_STATUSES = ['event_in_progress', 'event_completed', 'pending_return', 'pending_resolution'];
 
     /**
      * Decline a booking request.
@@ -3207,16 +3315,33 @@ class BookingController extends Controller
             return redirect()->back()->with('error', 'This booking can no longer be declined (' . $booking->status_display_label . ').');
         }
 
-        if (in_array($booking->status, ['downpayment_received', 'confirmed'], true)) {
-            $this->releaseInventoryForBooking($booking);
+        // Money the client may have sent is looked at before the booking closes. The row lock keeps
+        // a payment submitted at the same moment from slipping in between the check and the save.
+        $declined = DB::transaction(function () use ($booking, $data): bool {
+            $booking = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            if ($this->hasPaymentAwaitingVerification($booking)) {
+                return false;
+            }
+
+            if (in_array($booking->status, ['downpayment_received', 'confirmed'], true)) {
+                $this->releaseInventoryForBooking($booking);
+            }
+
+            $booking->setNormalizedStatus('declined');
+            if (!empty($data['admin_note'])) {
+                $booking->cancellation_reason = $data['admin_note'];
+            }
+            $booking->handled_by = Auth::id();
+            $booking->save();
+
+            return true;
+        });
+
+        if (!$declined) {
+            return redirect()->back()->with('error', 'The client submitted a payment reference that is still waiting for verification. Verify or reject it before declining this booking.');
         }
 
-        $booking->setNormalizedStatus('declined');
-        if (!empty($data['admin_note'])) {
-            $booking->cancellation_reason = $data['admin_note'];
-        }
-        $booking->handled_by = Auth::id();
-        $booking->save();
+        $booking->refresh();
 
         $declineMessage = trim((string) ($data['admin_note'] ?? 'The booking request was declined. Please review the details for next steps.'));
 
@@ -3386,6 +3511,11 @@ class BookingController extends Controller
 
         if ($alert->type !== 'physical_count_variance') {
             return back()->with('error', 'Invalid adjustment alert.');
+        }
+
+        // Same rule as approval: a request is decided once.
+        if ($alert->is_read) {
+            return back()->with('warning', 'This adjustment has already been reviewed.');
         }
 
         $alert->update(['is_read' => true]);

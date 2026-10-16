@@ -11,11 +11,18 @@ use Illuminate\View\View;
 
 class ClientNotificationController extends Controller
 {
+    /** The inbox shows the most recent updates; older ones stay on each booking's Updates page. */
+    public const RECENT_LIMIT = 100;
+
     public function index(): View
     {
-        $notifications = ClientNotification::where('user_id', Auth::id())
+        $mine = ClientNotification::where('user_id', Auth::id());
+        $totalCount = (clone $mine)->count();
+        $unreadCount = (clone $mine)->where('is_read', false)->count();
+        $notifications = $mine
             ->with('booking')
             ->latest()
+            ->take(self::RECENT_LIMIT)
             ->get();
 
         $notificationData = $notifications->map(function (ClientNotification $notification) {
@@ -62,7 +69,8 @@ class ClientNotificationController extends Controller
         return view('client.notifications', [
             'notifications' => $notifications,
             'notificationData' => $notificationData,
-            'unreadCount' => $notifications->where('is_read', false)->count(),
+            'unreadCount' => $unreadCount,
+            'olderCount' => max(0, $totalCount - $notifications->count()),
         ]);
     }
 

@@ -28,18 +28,23 @@ class QuotationIssuanceService
      *    client-facing price — only Admin-approved quoted_unit_price is.
      *  - Package bookings use the existing final_quoted_price without
      *    recalculating through the raw-materials engine.
+     *  - The quotation's price and item snapshot come from the same quotable
+     *    material lines (QuotationPricingService::quotableItems()).
+     *  - An Admin override price, when given, is the quotation's final price; the
+     *    booking takes the issued figures so balances and payments follow the quotation.
      *
      * @param  Booking  $booking
      * @param  int      $issuedByUserId     The admin user who is issuing.
      * @param  string|null $validUntil      Optional validity date; defaults to 7 days from today.
+     * @param  float|null  $overridePrice   The final price the Admin set by hand; null uses the calculated total.
      * @return Quotation  The newly-created, immutable quotation record.
      *
      * @throws \RuntimeException  if validation fails (unreviewed items, no items, already accepted, etc.)
      * @throws \Throwable         on any DB / unexpected error (triggers rollback)
      */
-    public function issue(Booking $booking, int $issuedByUserId, ?string $validUntil = null, bool $isPriceReconfirmation = false): Quotation
+    public function issue(Booking $booking, int $issuedByUserId, ?string $validUntil = null, bool $isPriceReconfirmation = false, ?float $overridePrice = null): Quotation
     {
-        return DB::transaction(function () use ($booking, $issuedByUserId, $validUntil, $isPriceReconfirmation): Quotation {
+        return DB::transaction(function () use ($booking, $issuedByUserId, $validUntil, $isPriceReconfirmation, $overridePrice): Quotation {
             $downpaymentPct = (float) \App\Models\Setting::getSetting('downpayment_percentage', 50.0);
 
             // ------------------------------------------------------------------
@@ -60,11 +65,10 @@ class QuotationIssuanceService
             }
 
             // ------------------------------------------------------------------
-            // 1. Load confirmed booking items
+            // 1. Load the quotable booking items (confirmed, with a quantity, not removed)
             // ------------------------------------------------------------------
             $booking->load('bookingItems');
-            $confirmedItems = $booking->bookingItems
-                ->filter(fn (BookingItem $item): bool => !is_null($item->confirmed_at) && $item->quantity > 0);
+            $confirmedItems = $this->pricingService->quotableItems($booking);
 
             if ($confirmedItems->isEmpty()) {
                 throw new \RuntimeException('Cannot issue a quotation: no confirmed materials exist for this booking.');
@@ -90,17 +94,29 @@ class QuotationIssuanceService
             }
 
             // ------------------------------------------------------------------
-            // 3. Recalculate pricing via the centralized pricing service
+            // 3. Price the same items via the centralized pricing service
             // ------------------------------------------------------------------
-            $this->pricingService->calculateTotals($booking, false); // update in-memory, not saved yet
+            $totals = $this->pricingService->quotationTotals($booking, $confirmedItems);
+            $rawSum = $totals['raw_materials_sum'];
+            $multiplier = $totals['multiplier'];
+            $laborAmount = $totals['labor_amount'];
+            $finalPrice = $overridePrice !== null ? round($overridePrice, 2) : $totals['total'];
+
+            // The booking carries the issued figures, so balances and payments follow this
+            // quotation rather than an earlier working price (saved with step 8).
+            if (empty($booking->package_id)) {
+                $booking->raw_materials_sum = $rawSum;
+                $booking->multiplier = $multiplier;
+            }
+            $booking->final_quoted_price = $finalPrice;
+            $booking->total_quoted = $finalPrice;
 
             // ------------------------------------------------------------------
             // 4. Build the items snapshot (Admin-approved prices only, no AI metadata)
             // ------------------------------------------------------------------
-            $itemsSnapshot = $confirmedItems->map(function (BookingItem $item) use ($booking): array {
+            $itemsSnapshot = $confirmedItems->map(function (BookingItem $item) use ($multiplier): array {
                 $qty   = (float) $item->quantity;
                 $price = (float) $item->quoted_unit_price;
-                $multiplier = (float) ($booking->multiplier ?? 3.0);
                 $sellingUnitPrice = $price * $multiplier;
                 
                 return [
@@ -112,18 +128,6 @@ class QuotationIssuanceService
                     'selling_amount'     => round($qty * $sellingUnitPrice, 2),
                 ];
             })->values()->toArray();
-
-            // ------------------------------------------------------------------
-            // 5. Calculate labor amount for snapshot storage
-            // ------------------------------------------------------------------
-            $rawSum    = (float) $booking->raw_materials_sum;
-            $multiplier = (float) ($booking->multiplier ?? 3.0);
-            $laborAmount = 0.0;
-            if ($booking->labor_method === 'percentage') {
-                $laborAmount = $rawSum * ((float) $booking->labor_rate / 100);
-            } elseif ($booking->labor_method === 'fixed') {
-                $laborAmount = (float) $booking->labor_rate;
-            }
 
             // ------------------------------------------------------------------
             // 6. Determine next version number
@@ -181,8 +185,8 @@ class QuotationIssuanceService
                 'multiplier'             => $multiplier,
                 'labor_method'           => $booking->labor_method,
                 'labor_rate'             => $booking->labor_rate,
-                'labor_amount'           => round($laborAmount, 2),
-                'final_quoted_price'     => (float) $booking->final_quoted_price,
+                'labor_amount'           => $laborAmount,
+                'final_quoted_price'     => $finalPrice,
                 'downpayment_percentage' => round(max(0, min(100, $downpaymentPct)), 2),
                 'valid_until'            => $resolvedValidUntil,
                 'items_snapshot'         => $itemsSnapshot,
@@ -237,8 +241,8 @@ class QuotationIssuanceService
     /**
      * Issue a revised quotation version specifically during long-term price reconfirmation.
      */
-    public function reconfirmWithRevision(Booking $booking, int $issuedByUserId, ?string $validUntil = null): Quotation
+    public function reconfirmWithRevision(Booking $booking, int $issuedByUserId, ?string $validUntil = null, ?float $overridePrice = null): Quotation
     {
-        return $this->issue($booking, $issuedByUserId, $validUntil, true);
+        return $this->issue($booking, $issuedByUserId, $validUntil, true, $overridePrice);
     }
 }

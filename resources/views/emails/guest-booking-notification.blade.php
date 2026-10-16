@@ -65,9 +65,9 @@
 
                         <!-- ─── Quotation Overview table ─── -->
                         @php
-                            $totalAmount = $booking->final_quoted_price > 0
-                                ? $booking->final_quoted_price
-                                : ($booking->total_quoted ?? 0);
+                            // Only an issued quotation's price is shared, never a working or AI figure.
+                            $sharedQuotation = $booking instanceof \App\Models\Booking ? $booking->sharedQuotation() : null;
+                            $totalAmount = $sharedQuotation ? (float) $sharedQuotation->final_quoted_price : 0;
                         @endphp
                         @if($totalAmount > 0)
                         <h3 style="font-size:15px;color:#374151;margin:0 0 10px 0;font-weight:600;">Quotation Overview</h3>
@@ -81,7 +81,7 @@
                                 <td align="right" style="padding:12px 14px;font-size:14px;color:#374151;border-bottom:1px solid #f3f4f6;">&#8369;{{ number_format($totalAmount, 2) }}</td>
                             </tr>
                             <tr style="background-color:#faf5ff;">
-                                <td style="padding:12px 14px;font-size:15px;font-weight:700;color:#581c87;">Total Estimate</td>
+                                <td style="padding:12px 14px;font-size:15px;font-weight:700;color:#581c87;">Quoted Total</td>
                                 <td align="right" style="padding:12px 14px;font-size:15px;font-weight:700;color:#581c87;">&#8369;{{ number_format($totalAmount, 2) }}</td>
                             </tr>
                         </table>

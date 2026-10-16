@@ -396,8 +396,9 @@ class AdminReturnTrackingAccountabilityTest extends TestCase
         $this->assertStringContainsString($this->staff->name, $staffAssignedLog->details);
         $this->assertStringContainsString($this->inspector->name, $inspAssignedLog->details);
 
-        // 2. Approval event
+        // 2. Approval event (a reported loss awaiting Admin's decision)
         $return->update(['approval_status' => 'pending']);
+        $return->returnItems()->first()->update(['quantity_lost' => 1, 'condition' => 'lost', 'charge_decision' => 'pending']);
         $this->actingAs($this->admin)->put(route('admin.return-tracking.approve', $return), [
             'decision' => 'approved',
             'reason' => 'Loss verified by venue management',

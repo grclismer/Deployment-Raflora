@@ -157,6 +157,11 @@
                         </section>
                     @endforeach
                     <p id="clientNotifFilterEmpty" class="hidden px-6 py-12 text-center text-sm text-slate-500">Nothing here — try another filter.</p>
+                    @if(($olderCount ?? 0) > 0)
+                        <p class="border-t border-slate-100 px-6 py-3 text-center text-xs text-slate-500" data-older-notifications>
+                            Showing your {{ $notifications->count() }} most recent updates. {{ $olderCount }} older {{ $olderCount === 1 ? 'update is' : 'updates are' }} still on each booking's Updates page.
+                        </p>
+                    @endif
                 @endif
             </div>
         </div>

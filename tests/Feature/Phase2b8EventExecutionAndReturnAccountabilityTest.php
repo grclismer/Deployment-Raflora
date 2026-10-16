@@ -238,7 +238,8 @@ class Phase2b8EventExecutionAndReturnAccountabilityTest extends TestCase
             'verified_by' => $this->admin->id,
         ]);
 
-        // Access manage view which creates an empty return
+        // Admin starts the zero-hardware audit (viewing no longer creates it)
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $manageResponse = $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
         $manageResponse->assertOk();
 

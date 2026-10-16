@@ -30,7 +30,7 @@ class EventController extends Controller
 
         $assignedBooking = $query->whereKey($booking->id)->firstOrFail();
         $workspace->ensureChecklist($assignedBooking);
-        $this->ensureReturnRecord($assignedBooking);
+        // Viewing never opens the return record; recording a return does (submitReturn()).
         $assignedBooking->load(['staffChecklistItems', 'returns.returnItems.inventoryItem']);
         
         $dispatchedQuantities = $this->dispatchedQuantities($assignedBooking);
@@ -312,46 +312,7 @@ class EventController extends Controller
             return $booking->returns()->latest()->first();
         }
 
-        $returnRecord = $booking->returns()->latest()->first();
-        if ($returnRecord) {
-            return $returnRecord;
-        }
-
-        $dispatchedItems = \App\Models\InventoryTransaction::with('inventoryItem')
-            ->where('booking_id', $booking->id)
-            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-            ->get()
-            ->filter(fn ($tx) => $tx->inventoryItem && !$tx->inventoryItem->is_perishable)
-            ->groupBy('inventory_item_id')
-            ->filter(fn ($txs) => abs((float) $txs->sum('quantity_change')) > 0);
-
-        if ($dispatchedItems->isEmpty()) {
-            return null;
-        }
-
-        return DB::transaction(function () use ($booking, $dispatchedItems): AssetReturn {
-            $returnRecord = AssetReturn::create([
-                'booking_id' => $booking->id,
-                'status' => 'Pending',
-                'total_damage_charge' => 0,
-            ]);
-
-            foreach ($dispatchedItems as $inventoryItemId => $txs) {
-                ReturnItem::create([
-                    'return_id' => $returnRecord->id,
-                    'inventory_item_id' => $inventoryItemId,
-                    'quantity_returned' => 0,
-                    'quantity_good' => 0,
-                    'quantity_damaged' => 0,
-                    'quantity_lost' => 0,
-                    'condition' => 'pending',
-                    'damage_charge' => 0,
-                    'notes' => null,
-                ]);
-            }
-
-            return $returnRecord->load('returnItems.inventoryItem');
-        });
+        return app(\App\Services\ReturnRecordService::class)->openFor($booking)?->load('returnItems.inventoryItem');
     }
 
     private function dispatchedQuantities(Booking $booking): array

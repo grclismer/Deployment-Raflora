@@ -67,12 +67,14 @@ class ReadmeBookingWorkflowFlowTest extends TestCase
         $response = $this->get(route('guest.bookings.show', ['token' => $rawToken]));
 
         $response->assertOk();
-        $response->assertSee('Stage 2 of 14 · Awaiting Claim');
+        // Guests see the guest and client stages only; Staff operational stages stay hidden.
+        $response->assertSee('Stage 2 of 8 · Awaiting Claim');
         $response->assertSee('data-workflow-stage="request_submitted" data-workflow-state="complete"', false);
         $response->assertSee('data-workflow-stage="awaiting_claim" data-workflow-state="current"', false);
         $response->assertSee('Guest Workflow');
         $response->assertSee('Client Workflow');
-        $response->assertSee('Staff Workflow');
+        $response->assertDontSee('Staff Workflow');
+        $response->assertDontSee('data-workflow-stage="dispatch"', false);
     }
 
     public function test_permanent_guest_booking_with_expired_quotation_can_still_be_claimed(): void
@@ -415,7 +417,7 @@ class ReadmeBookingWorkflowFlowTest extends TestCase
             'reason' => 'Admin Dispatch',
             'performed_by' => $this->admin->id,
         ]);
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 

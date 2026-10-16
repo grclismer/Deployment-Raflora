@@ -110,7 +110,11 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     {
         [$booking, $item] = $this->createDispatchedFixture(4, 'event_completed');
 
-        // Opening index auto-initializes return
+        // Viewing the list creates nothing (audit F11); Admin starts the audit explicitly.
+        $this->actingAs($this->admin)->get(route('admin.return-tracking'))->assertOk();
+        $this->assertSame(0, $booking->fresh()->returns()->count());
+
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $response = $this->actingAs($this->admin)->get(route('admin.return-tracking'));
         $response->assertOk();
         $response->assertSee((string) $booking->id);
@@ -120,8 +124,8 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
         $return = $booking->fresh()->returns()->first();
         $this->assertSame('Pending', $return->status);
 
-        // Repeated index visit does not duplicate return records
-        $this->actingAs($this->admin)->get(route('admin.return-tracking'))->assertOk();
+        // Starting again does not duplicate return records
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $this->assertSame(1, $booking->fresh()->returns()->count());
 
         // Manage route returns existing return
@@ -137,6 +141,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     {
         [$booking, $item] = $this->createDispatchedFixture(6, 'event_completed');
 
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $response = $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
         $response->assertOk();
         $response->assertSee('6'); // Dispatched expected quantity
@@ -149,7 +154,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     public function test_returned_quantity_validation_works(): void
     {
         [$booking, $item] = $this->createDispatchedFixture(5, 'event_completed');
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -187,7 +192,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
         [$booking, $item] = $this->createDispatchedFixture(5, 'event_completed');
         $initialStock = (float) $item->fresh()->current_stock; // 5
 
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -221,7 +226,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
         [$booking, $item] = $this->createDispatchedFixture(4, 'event_completed');
         $initialStock = (float) $item->fresh()->current_stock; // 6
 
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -255,7 +260,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
         [$booking, $item] = $this->createDispatchedFixture(5, 'event_completed');
         $initialStock = (float) $item->fresh()->current_stock; // 5
 
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -301,7 +306,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
         [$booking, $item] = $this->createDispatchedFixture(3, 'event_completed');
         $initialStock = (float) $item->fresh()->current_stock;
 
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 
@@ -332,7 +337,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     public function test_final_booking_state_is_blocked_from_closure_while_return_is_unresolved(): void
     {
         [$booking, $item] = $this->createDispatchedFixture(4, 'event_completed');
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
 
         $this->assertSame('Pending', $return->status);
@@ -377,8 +382,9 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
             'performed_by' => $this->admin->id,
         ]);
 
-        // Auto-initialize both
-        $this->actingAs($this->admin)->get(route('admin.return-tracking'))->assertOk();
+        // Start both audits (viewing the list no longer creates them)
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $bookingA));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $bookingB));
 
         // 1. Search booking ID of A
         $resSearchA = $this->actingAs($this->admin)->get(route('admin.return-tracking', ['search' => (string) $bookingA->id]));
@@ -411,7 +417,7 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     public function test_unauthorized_users_cannot_process_returns(): void
     {
         [$booking, $item] = $this->createDispatchedFixture(3, 'event_completed');
-        $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking));
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
         $return = $booking->fresh()->returns()->first();
         $returnItem = $return->returnItems()->first();
 

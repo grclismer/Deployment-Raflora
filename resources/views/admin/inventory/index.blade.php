@@ -350,10 +350,10 @@
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">ITEM</th>
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">CATEGORY</th>
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Physical stock currently recorded in inventory">ON HAND</th>
-                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Quantity committed to valid bookings">RESERVED</th>
-                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Additional quantity required to fulfill current reserved event demand">TO PROCURE</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Quantity needed by upcoming confirmed booking lines (not yet held or dispatched)">BOOKED DEMAND</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Additional quantity required to fulfill booked event demand">TO PROCURE</th>
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right" title="Configured minimum stock threshold">MINIMUM</th>
-                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">STATUS</th>
+                        <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center" title="Stock left after booked demand compared with the minimum (the Dashboard uses on-hand stock)">STATUS</th>
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">ACTION</th>
                     </tr>
                 </thead>
@@ -398,7 +398,7 @@
                                 {{ (float) $item->current_stock }}
                             </td>
 
-                            <!-- RESERVED Column -->
+                            <!-- BOOKED DEMAND Column -->
                             <td class="px-5 py-3.5 text-right text-sm">
                                 @if($item->reserved_stock > 0)
                                     <span class="text-amber-600 font-bold">{{ (float) $item->reserved_stock }}</span>
@@ -553,9 +553,9 @@
                                                             <p class="text-[10px] text-slate-500 mt-0.5">Physical stock</p>
                                                         </div>
                                                         <div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5 text-center">
-                                                            <p class="text-[10px] font-bold text-slate-400 uppercase">RESERVED</p>
+                                                            <p class="text-[10px] font-bold text-slate-400 uppercase">BOOKED DEMAND</p>
                                                             <p class="text-xl font-extrabold text-amber-600 mt-1">{{ (float) $item->reserved_stock }}</p>
-                                                            <p class="text-[10px] text-slate-500 mt-0.5">For bookings</p>
+                                                            <p class="text-[10px] text-slate-500 mt-0.5">Upcoming bookings</p>
                                                         </div>
                                                         <div class="bg-slate-50 border border-slate-100 rounded-xl p-3.5 text-center">
                                                             <p class="text-[10px] font-bold text-slate-400 uppercase">TO PROCURE</p>
@@ -573,12 +573,12 @@
                                                     @if($item->to_procure > 0)
                                                         <div class="mt-3 p-3 bg-rose-50/80 rounded-xl border border-rose-200/80 text-xs text-rose-700 font-semibold flex items-center gap-2">
                                                             <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0"></i>
-                                                            <span>{{ (float) $item->to_procure }} {{ $item->unit }} still needed for current reserved event demand.</span>
+                                                            <span>{{ (float) $item->to_procure }} {{ $item->unit }} still needed for booked event demand.</span>
                                                         </div>
                                                     @else
                                                         <div class="mt-3 p-3 bg-emerald-50/80 rounded-xl border border-emerald-200/80 text-xs text-emerald-800 font-semibold flex items-center gap-2">
                                                             <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
-                                                            <span>Current reserved event demand is covered.</span>
+                                                            <span>Booked event demand is covered.</span>
                                                         </div>
                                                     @endif
                                                 </div>
@@ -593,10 +593,10 @@
                                                             <span class="font-semibold text-slate-800">On Hand:</span> Physical quantity currently in inventory.
                                                         </div>
                                                         <div>
-                                                            <span class="font-semibold text-slate-800">Reserved:</span> Quantity committed to valid event bookings.
+                                                            <span class="font-semibold text-slate-800">Booked Demand:</span> Quantity needed by upcoming confirmed booking lines (not yet held or dispatched).
                                                         </div>
                                                         <div>
-                                                            <span class="font-semibold text-slate-800">To Procure:</span> Additional quantity required to fulfill current reserved event demand.
+                                                            <span class="font-semibold text-slate-800">To Procure:</span> Additional quantity required to fulfill booked event demand.
                                                         </div>
                                                         <div>
                                                             <span class="font-semibold text-slate-800">Minimum:</span> Configured minimum inventory threshold.
@@ -604,7 +604,7 @@
                                                     </div>
                                                     @if($item->net_available < 0)
                                                         <div class="mt-2 pt-2 border-t border-slate-200 text-slate-600 text-[11px] flex items-center justify-between">
-                                                            <span>Net Available After Reservations:</span>
+                                                            <span>Net Available After Booked Demand:</span>
                                                             <span class="font-bold text-rose-600">{{ (float) $item->net_available }} {{ $item->unit }}</span>
                                                         </div>
                                                     @endif
@@ -704,7 +704,7 @@
                                                         <form
                                                             action="{{ route('admin.inventory.archive', $item) }}"
                                                             method="POST"
-                                                            onsubmit="return confirm('Archive {{ addslashes($item->name) }}?\n\nThis item will be removed from active inventory while its historical records are preserved.');"
+                                                            data-confirm="Archive {{ $item->name }}?" data-confirm-message="This item will be removed from active inventory while its historical records are preserved." data-confirm-label="Archive item" data-confirm-tone="archive"
                                                         >
                                                             @csrf
                                                             <button type="submit" class="w-full flex items-center justify-center gap-1.5 p-2.5 bg-rose-50/60 hover:bg-rose-100/70 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 transition cursor-pointer">
@@ -1160,7 +1160,7 @@
                             <span id="modalItemOnHand" class="font-extrabold text-slate-800 text-sm mt-0.5">0</span>
                         </div>
                         <div class="bg-white p-2 rounded-lg border border-slate-100">
-                            <span class="block text-[10px] font-bold text-slate-400 uppercase">Reserved for Bookings</span>
+                            <span class="block text-[10px] font-bold text-slate-400 uppercase">Booked Demand</span>
                             <span id="modalItemReserved" class="font-extrabold text-amber-600 text-sm mt-0.5">0</span>
                         </div>
                         <div class="bg-white p-2 rounded-lg border border-slate-100">

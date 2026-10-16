@@ -90,8 +90,8 @@ class MixedConditionMaterialReturnTest extends TestCase
             'performed_by' => $admin->id,
         ]);
 
-        // Initialize return record
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        // Open the return record, as ending the event does
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->firstOrFail();
         $returnItem = $return->returnItems()->firstOrFail();
 

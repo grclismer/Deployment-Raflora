@@ -74,7 +74,8 @@ class Phase6StaffOperationsStabilizationTest extends TestCase
 
     public function test_staff_recorded_return_is_credited_to_stock_once_when_admin_reconciles(): void
     {
-        // Staff opens the event (return record initializes) and records the physical return.
+        // The return record opens when the event ends; Staff then opens the event and records the return.
+        app(\App\Services\ReturnRecordService::class)->openFor($this->booking);
         $this->actingAs($this->staff)->get(route('staff.events.show', $this->booking))->assertOk();
         $return = $this->booking->returns()->firstOrFail();
         $returnItem = $return->returnItems()->firstOrFail();
@@ -100,6 +101,7 @@ class Phase6StaffOperationsStabilizationTest extends TestCase
 
     public function test_repeated_admin_reconciliation_does_not_double_credit_stock(): void
     {
+        app(\App\Services\ReturnRecordService::class)->openFor($this->booking);
         $this->actingAs($this->staff)->get(route('staff.events.show', $this->booking));
         $return = $this->booking->returns()->firstOrFail();
         $returnItem = $return->returnItems()->firstOrFail();
@@ -115,6 +117,7 @@ class Phase6StaffOperationsStabilizationTest extends TestCase
 
     public function test_staff_cannot_reopen_a_completed_return_audit(): void
     {
+        app(\App\Services\ReturnRecordService::class)->openFor($this->booking);
         $this->actingAs($this->staff)->get(route('staff.events.show', $this->booking));
         $return = $this->booking->returns()->firstOrFail();
         $returnItem = $return->returnItems()->firstOrFail();

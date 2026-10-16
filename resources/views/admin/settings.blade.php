@@ -8,7 +8,12 @@
         // Authoritative active tab selection: query param, validation errors, or session state
         $validTabs = ['profile', 'security', 'administration'];
         $requestedTab = request()->query('tab');
-        if (in_array($requestedTab, $validTabs)) {
+        // A failed Add Account keeps its errors in the createAccount bag; its old input (name, email)
+        // belongs to that dialog only and must not refill the Admin's own profile form.
+        $accountFormFailed = $isAdmin && $errors->createAccount->any();
+        if ($accountFormFailed) {
+            $activeTab = 'administration';
+        } elseif (in_array($requestedTab, $validTabs)) {
             $activeTab = $requestedTab;
         } elseif (session('impact_preview')) {
             $activeTab = 'administration';
@@ -176,7 +181,7 @@
                                         type="text"
                                         id="profile_name"
                                         name="name"
-                                        value="{{ old('name', $user->name) }}"
+                                        value="{{ $accountFormFailed ? $user->name : old('name', $user->name) }}"
                                         required
                                         maxlength="255"
                                         class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm text-slate-900 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 shadow-2xs"
@@ -607,7 +612,7 @@
                                             </td>
                                             <td class="px-3 py-2.5 text-right">
                                                 @if($device->is_usable)
-                                                    <form method="POST" action="{{ route('admin.settings.trusted-devices.revoke') }}" onsubmit="return confirm('Revoke trust for this device? You will need OTP verification on future logins.');" class="inline">
+                                                    <form method="POST" action="{{ route('admin.settings.trusted-devices.revoke') }}" data-confirm="Revoke trust for this device?" data-confirm-message="You will need OTP verification on future logins from that device." data-confirm-label="Revoke trust" data-confirm-tone="danger" class="inline">
                                                         @csrf
                                                         <input type="hidden" name="device_id" value="{{ $device->id }}">
                                                         <button type="submit" class="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline">
@@ -644,7 +649,7 @@
                                 </div>
                             </div>
                             @if($activeSessions->count() > 1)
-                                <form method="POST" action="{{ route('admin.settings.sessions.revoke-others') }}" onsubmit="return confirm('Are you sure you want to sign out of all other sessions? Your current session will remain active.');">
+                                <form method="POST" action="{{ route('admin.settings.sessions.revoke-others') }}" data-confirm="Sign out of all other sessions?" data-confirm-message="Your current session stays active." data-confirm-label="Sign out others" data-confirm-tone="danger">
                                     @csrf
                                     <button type="submit" class="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/60 px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-2xs">
                                         <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out Other Sessions
@@ -836,7 +841,7 @@
                                 <th scope="col" class="px-3 py-2.5">Name</th>
                                 <th scope="col" class="px-3 py-2.5">Email</th>
                                 <th scope="col" class="px-3 py-2.5">Role</th>
-                                <th scope="col" class="px-3 py-2.5">Status</th>
+                                <th scope="col" class="px-3 py-2.5">Verification</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -849,9 +854,16 @@
                                             {{ $account->role }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2.5 text-xs font-semibold text-emerald-700">
-                                        <i class="fa-solid fa-circle-check mr-1" aria-hidden="true"></i> Active
-                                    </td>
+                                    {{-- Only email verification is recorded; new Staff verify their email at first sign-in. --}}
+                                    @if($account->email_verified_at)
+                                        <td class="px-3 py-2.5 text-xs font-semibold text-emerald-700">
+                                            <i class="fa-solid fa-circle-check mr-1" aria-hidden="true"></i> Email verified
+                                        </td>
+                                    @else
+                                        <td class="px-3 py-2.5 text-xs font-semibold text-amber-700">
+                                            <i class="fa-solid fa-clock mr-1" aria-hidden="true"></i> Awaiting first sign-in verification
+                                        </td>
+                                    @endif
                                 </tr>
                             @empty
                                 <tr>
@@ -945,6 +957,73 @@
 
                     <button type="submit" class="w-full rounded-xl bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800 transition shadow-2xs">
                         <i class="fa-solid fa-sliders mr-1" aria-hidden="true"></i> Review &amp; Update Configuration
+                    </button>
+                </form>
+            </div>
+
+            {{-- AI estimate pricing: indicative ranges guests and clients see per area; never official quotations --}}
+            @php
+                $aiMarkup = \App\Models\Setting::aiEstimateMarkup();
+                $aiLabour = \App\Models\Setting::aiLabourAllowance();
+                $aiLabourMode = old('ai_labour_mode', in_array($aiLabour['mode'], ['fixed', 'percentage'], true) ? $aiLabour['mode'] : 'fixed');
+            @endphp
+            <div id="ai-estimate-settings" class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+                <div class="mb-3.5 flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                        <i class="fa-solid fa-wand-magic-sparkles text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900 sm:text-base">AI Estimate Pricing</h2>
+                        <p class="text-[11px] text-slate-500 sm:text-xs">Shapes the indicative price ranges guests and clients see per area. Official quotations keep their own markup and are never changed by these settings.</p>
+                    </div>
+                </div>
+
+                <form method="POST" action="{{ route('admin.settings.update') }}" class="space-y-3">
+                    @csrf
+                    <div>
+                        <div class="flex justify-between items-center">
+                            <label for="ai_estimate_markup" class="block text-xs font-semibold text-slate-700">AI markup (×)</label>
+                            <span class="text-[11px] text-rose-600 font-bold">Current: {{ $aiMarkup !== null ? $aiMarkup . '×' : 'Invalid — please set' }}</span>
+                        </div>
+                        <p class="mt-0.5 text-[10px] text-slate-400">Applied to the AI's raw material prices. Allowed {{ \App\Models\Setting::MIN_AI_ESTIMATE_MARKUP }}× to {{ \App\Models\Setting::MAX_AI_ESTIMATE_MARKUP }}×, two decimals.</p>
+                        <input type="number" id="ai_estimate_markup" name="ai_estimate_markup" value="{{ old('ai_estimate_markup', $aiMarkup ?? \App\Models\Setting::DEFAULT_AI_ESTIMATE_MARKUP) }}" step="0.01" min="{{ \App\Models\Setting::MIN_AI_ESTIMATE_MARKUP }}" max="{{ \App\Models\Setting::MAX_AI_ESTIMATE_MARKUP }}" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-slate-900 shadow-2xs">
+                        @error('ai_estimate_markup')<p class="mt-1 text-[11px] font-semibold text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+
+                    <fieldset class="border-t border-slate-100 pt-2.5">
+                        <div class="flex justify-between items-center">
+                            <legend class="block text-xs font-semibold text-slate-700">Labour &amp; setup</legend>
+                            <span class="text-[11px] text-rose-600 font-bold">Current: {{ match ($aiLabour['mode']) {
+                                null => 'Not set (excluded)',
+                                'invalid' => 'Invalid — please set',
+                                'percentage' => $aiLabour['value'] . '%',
+                                default => '₱' . number_format((float) $aiLabour['value'], 2),
+                            } }}</span>
+                        </div>
+                        <p class="mt-0.5 text-[10px] text-slate-400">Added once per booking estimate and shared across its areas. A percentage is taken of the AI material cost before markup, the same basis official quotations use.</p>
+                        <div class="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            @foreach(\App\Models\Setting::AI_LABOUR_MODES as $modeKey => $modeLabel)
+                                <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 has-[:checked]:border-rose-400 has-[:checked]:bg-rose-50/40">
+                                    <input type="radio" name="ai_labour_mode" value="{{ $modeKey }}" @checked($aiLabourMode === $modeKey) class="text-rose-600 focus:ring-rose-500">
+                                    {{ $modeLabel }}
+                                </label>
+                            @endforeach
+                        </div>
+                        <label for="ai_labour_value" class="mt-2 block text-xs font-semibold text-slate-700">Amount or percentage</label>
+                        <input type="number" id="ai_labour_value" name="ai_labour_value" value="{{ old('ai_labour_value', $aiLabour['value']) }}" step="0.01" min="0" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-slate-900 shadow-2xs">
+                        @error('ai_labour_mode')<p class="mt-1 text-[11px] font-semibold text-rose-600">{{ $message }}</p>@enderror
+                        @error('ai_labour_value')<p class="mt-1 text-[11px] font-semibold text-rose-600">{{ $message }}</p>@enderror
+                    </fieldset>
+
+                    <div class="border-t border-slate-100 pt-2.5">
+                        <label for="ai_change_reason" class="block text-xs font-semibold text-slate-700">Change Justification / Reason (Optional)</label>
+                        <input type="text" id="ai_change_reason" name="change_reason" maxlength="500" placeholder="e.g., Supplier prices rose this season" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-slate-900 shadow-2xs">
+                    </div>
+
+                    <p class="text-[10px] text-slate-500">Estimates are indicative: they change when these settings or the analysed photos change, and they never replace or alter an issued quotation.</p>
+
+                    <button type="submit" class="w-full rounded-xl bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800 transition shadow-2xs">
+                        <i class="fa-solid fa-floppy-disk mr-1" aria-hidden="true"></i> Save AI Estimate Pricing
                     </button>
                 </form>
             </div>
@@ -1116,7 +1195,8 @@
 
     <!-- Account Modal (Add Team Account) -->
     @if($isAdmin)
-        <div id="accountModal" class="fixed inset-0 z-50 hidden opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+        @php $accountErrors = $errors->createAccount; @endphp
+        <div id="accountModal" class="fixed inset-0 z-50 hidden opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle" @if($accountFormFailed) data-open-on-load="true" @endif>
             <div class="absolute inset-0 bg-slate-950/50" data-close-modal="accountModal"></div>
             <div class="relative mx-auto flex min-h-full max-w-lg items-center justify-center p-4">
                 <div class="w-full rounded-2xl bg-white p-5 shadow-2xl">
@@ -1129,34 +1209,48 @@
                     </div>
                     <form method="POST" action="{{ route('admin.account.accounts.store') }}" class="mt-4 space-y-3">
                         @csrf
+                        @if($accountFormFailed)
+                            <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800" role="alert">
+                                <strong class="font-bold">The account was not created. Please correct the following:</strong>
+                                <ul class="mt-0.5 list-disc pl-4 space-y-0.5">
+                                    @foreach($accountErrors->all() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
                         <div>
-                            <label class="text-xs font-semibold text-slate-700">Full name</label>
-                            <input type="text" name="name" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
+                            <label for="account_name" class="text-xs font-semibold text-slate-700">Full name</label>
+                            <input type="text" id="account_name" name="name" required value="{{ $accountFormFailed ? old('name') : '' }}" @if($accountErrors->has('name')) aria-invalid="true" aria-describedby="account_name_error" @endif class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
+                            @if($accountErrors->has('name'))<p id="account_name_error" class="mt-1 text-[11px] font-semibold text-rose-600">{{ $accountErrors->first('name') }}</p>@endif
                         </div>
                         <div>
-                            <label class="text-xs font-semibold text-slate-700">Email</label>
-                            <input type="email" name="email" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
+                            <label for="account_email" class="text-xs font-semibold text-slate-700">Email</label>
+                            <input type="email" id="account_email" name="email" required value="{{ $accountFormFailed ? old('email') : '' }}" @if($accountErrors->has('email')) aria-invalid="true" aria-describedby="account_email_error" @endif class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
+                            @if($accountErrors->has('email'))<p id="account_email_error" class="mt-1 text-[11px] font-semibold text-rose-600">{{ $accountErrors->first('email') }}</p>@endif
                         </div>
                         <div>
-                            <label class="text-xs font-semibold text-slate-700">Role</label>
-                            <select name="role" required class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
+                            <label for="account_role" class="text-xs font-semibold text-slate-700">Role</label>
+                            <select id="account_role" name="role" required @if($accountErrors->has('role')) aria-invalid="true" aria-describedby="account_role_error" @endif class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs sm:text-sm">
                                 {{-- Raflora supports a single Admin account; the panel creates Staff accounts only. --}}
                                 <option value="staff">Staff</option>
                             </select>
+                            @if($accountErrors->has('role'))<p id="account_role_error" class="mt-1 text-[11px] font-semibold text-rose-600">{{ $accountErrors->first('role') }}</p>@endif
                         </div>
                         <div>
-                            <label class="text-xs font-semibold text-slate-700">Temporary password</label>
+                            <label for="temp_password" class="text-xs font-semibold text-slate-700">Temporary password</label>
                             <div class="relative mt-1">
-                                <input type="password" id="temp_password" name="password" required minlength="8" class="w-full rounded-xl border border-slate-200 px-3 py-2 pr-9 text-xs sm:text-sm">
+                                <input type="password" id="temp_password" name="password" required minlength="8" @if($accountErrors->has('password')) aria-invalid="true" aria-describedby="account_password_error" @endif class="w-full rounded-xl border border-slate-200 px-3 py-2 pr-9 text-xs sm:text-sm">
                                 <div class="absolute inset-y-0 right-0 w-9 flex items-center justify-center text-slate-400">
                                     <button type="button" class="inline-flex items-center justify-center hover:text-slate-600 focus-visible:outline-none transition-colors w-full h-full" aria-label="Show password" onclick="togglePassword('temp_password')">
                                         <i class="fa-solid fa-eye-slash text-xs"></i>
                                     </button>
                                 </div>
                             </div>
+                            @if($accountErrors->has('password'))<p id="account_password_error" class="mt-1 text-[11px] font-semibold text-rose-600">{{ $accountErrors->first('password') }}</p>@endif
                         </div>
                         <div>
-                            <label class="text-xs font-semibold text-slate-700">Confirm password</label>
+                            <label for="temp_password_confirmation" class="text-xs font-semibold text-slate-700">Confirm password</label>
                             <div class="relative mt-1">
                                 <input type="password" id="temp_password_confirmation" name="password_confirmation" required minlength="8" class="w-full rounded-xl border border-slate-200 px-3 py-2 pr-9 text-xs sm:text-sm">
                                 <div class="absolute inset-y-0 right-0 w-9 flex items-center justify-center text-slate-400">
@@ -1435,6 +1529,13 @@
                 window.requestAnimationFrame(() => modal.classList.add('opacity-100'));
             }));
             document.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.closeModal)));
+            // A dialog whose submission failed validation reopens with its errors, focused on the first invalid field.
+            document.querySelectorAll('[role="dialog"][data-open-on-load]').forEach((modal) => {
+                modal.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+                window.requestAnimationFrame(() => modal.classList.add('opacity-100'));
+                (modal.querySelector('[aria-invalid="true"]') || modal.querySelector('input:not([type="hidden"])'))?.focus();
+            });
             document.addEventListener('keydown', (event) => { if (event.key === 'Escape') document.querySelectorAll('[role="dialog"]:not(.hidden)').forEach((modal) => closeModal(modal.id)); });
         };
 

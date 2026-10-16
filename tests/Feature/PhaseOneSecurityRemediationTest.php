@@ -181,19 +181,20 @@ class PhaseOneSecurityRemediationTest extends TestCase
     // SEC-03: Missing Rate Limiting on AI Endpoints
     // ==========================================
 
-    public function test_guest_analyze_temp_image_is_throttled_at_three_requests_per_minute(): void
+    public function test_guest_analyze_temp_image_is_throttled_at_five_requests_per_minute(): void
     {
+        // Five, like the client route: a guest may analyze up to InspirationPhotos::MAX_PHOTOS photos in a row.
         Storage::fake('public');
         $file = $this->validImageUpload();
 
-        for ($i = 1; $i <= 3; $i++) {
+        for ($i = 1; $i <= 5; $i++) {
             $response = $this->post(route('guest.bookings.analyze-temp-image'), [
                 'inspiration_image' => $file,
             ]);
             $this->assertNotSame(429, $response->getStatusCode(), "Request {$i} should not be throttled");
         }
 
-        // 4th request must be throttled
+        // 6th request must be throttled
         $response = $this->post(route('guest.bookings.analyze-temp-image'), [
             'inspiration_image' => $file,
         ]);

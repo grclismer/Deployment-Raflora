@@ -29,7 +29,7 @@ class Phase3_1b2ClientBookingProgressAndPaymentClarityTest extends TestCase
         $response = $this->actingAs($user)->get(route('bookings.analysis', $booking));
 
         $response->assertOk();
-        // README workflow stages present (Guest → Client → Staff)
+        // Client-facing workflow stages; the Staff operational stages appear only once the booking is confirmed
         $response->assertSee('Booking Progress');
         $response->assertSee('Request Submitted');
         $response->assertSee('Awaiting Claim');
@@ -39,11 +39,11 @@ class Phase3_1b2ClientBookingProgressAndPaymentClarityTest extends TestCase
         $response->assertSee('Approval');
         $response->assertSee('Payment');
         $response->assertSee('Confirmed');
-        $response->assertSee('Preparation & Reservation');
-        $response->assertSee('Completion');
+        $response->assertSee('Stage 3 of 8 · Raflora Review');
+        $response->assertDontSee('Preparation & Reservation');
+        $response->assertDontSee('data-workflow-phase="staff"', false);
 
-        // Current stage: Raflora Review
-        $response->assertSee('Pending');
+        // Current stage: Raflora Review, shown once as the status heading (no repeated status badge)
         $response->assertSee('data-workflow-stage="raflora_review" data-workflow-state="current"', false);
         $response->assertSee('Raflora is reviewing the event details and inspiration before validating materials.');
         $response->assertSee('Your booking request has been received.');

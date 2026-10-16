@@ -206,7 +206,7 @@ class Phase2AuthAndOwnershipStabilizationTest extends TestCase
             'role' => 'admin',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ])->assertSessionHasErrors('role');
+        ])->assertSessionHasErrors('role', null, 'createAccount');
         $this->assertDatabaseMissing('users', ['email' => 'second-admin@example.com']);
         $this->assertSame(1, User::where('role', 'admin')->count());
 

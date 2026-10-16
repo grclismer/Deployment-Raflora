@@ -40,8 +40,13 @@ Route::get('/gallery', fn () => view('gallery'))->name('gallery');
 Route::get('/about', fn () => view('about'))->name('about');
 
 //flagging invalid image in bookings
-Route::post('/bookings/validate-image', [BookingController::class, 'validateImageAjax'])->middleware('throttle:5,1')->name('bookings.validate-image');
-Route::post('/bookings/analyze-temp-image', [BookingController::class, 'analyzeTempImage'])->middleware('throttle:5,1')->name('bookings.analyze-temp-image');
+// Booking-flow limits each keep their own counter (third throttle argument): without it every
+// throttle:N,1 route shares one counter per IP or user, so estimate refreshes and venue searches
+// used up the photo-analysis and submission limits.
+Route::post('/bookings/validate-image', [BookingController::class, 'validateImageAjax'])->middleware('throttle:5,1,image-check')->name('bookings.validate-image');
+Route::post('/bookings/analyze-temp-image', [BookingController::class, 'analyzeTempImage'])->middleware('throttle:5,1,photo-analysis')->name('bookings.analyze-temp-image');
+// Combined per-area AI ranges for the photos analyzed in this session (guest and client forms; reads only the caller's own session).
+Route::post('/bookings/analysis-estimate', [\App\Http\Controllers\AiEstimateController::class, 'preview'])->middleware('throttle:30,1,ai-estimate')->name('bookings.analysis-estimate');
 
 // Dynamic Booking Route
 Route::get('/booking/start', function () {
@@ -55,13 +60,14 @@ Route::get('/booking/start', function () {
 Route::get('/packages', [\App\Http\Controllers\PackageController::class, 'index'])->name('packages.index');
 
 // Venue location finder (guest + client booking forms, Admin/Staff venue maps)
-Route::get('/location/search', [\App\Http\Controllers\LocationController::class, 'search'])->middleware('throttle:30,1')->name('location.search');
-Route::get('/location/reverse', [\App\Http\Controllers\LocationController::class, 'reverse'])->middleware('throttle:30,1')->name('location.reverse');
+Route::get('/location/search', [\App\Http\Controllers\LocationController::class, 'search'])->middleware('throttle:30,1,location')->name('location.search');
+Route::get('/location/reverse', [\App\Http\Controllers\LocationController::class, 'reverse'])->middleware('throttle:30,1,location')->name('location.reverse');
 
 // Guest Booking Routes
 Route::get('/guest/booking', [\App\Http\Controllers\GuestBookingController::class, 'create'])->name('guest.booking.create');
-Route::post('/guest/booking', [\App\Http\Controllers\GuestBookingController::class, 'store'])->middleware('throttle:3,1')->name('guest.booking.store');
-Route::post('/guest/bookings/analyze-temp-image', [\App\Http\Controllers\GuestBookingController::class, 'analyzeTempImage'])->middleware('throttle:3,1')->name('guest.bookings.analyze-temp-image');
+Route::post('/guest/booking', [\App\Http\Controllers\GuestBookingController::class, 'store'])->middleware('throttle:3,1,guest-booking')->name('guest.booking.store');
+// Up to InspirationPhotos::MAX_PHOTOS photos are analyzed one after another, so the limit allows them all within a minute.
+Route::post('/guest/bookings/analyze-temp-image', [\App\Http\Controllers\GuestBookingController::class, 'analyzeTempImage'])->middleware('throttle:5,1,photo-analysis')->name('guest.bookings.analyze-temp-image');
 Route::get('/guest/bookings/{token}', [\App\Http\Controllers\GuestBookingController::class, 'show'])->name('guest.bookings.show');
 Route::get('/guest/bookings/{token}/image/{imageIndex?}', [\App\Http\Controllers\GuestBookingController::class, 'showTemporaryImage'])->name('guest.bookings.image');
 Route::get('/guest/bookings/analysis-image/{token}', [\App\Http\Controllers\GuestBookingController::class, 'showAnalysisTempImage'])->name('guest.bookings.analysis-temp-image');
@@ -205,7 +211,7 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
     Route::get('/bookings/create', [BookingController::class, 'create'])->name('bookings.create');
 
     // Client Booking Store: Processes booking form submission and shows AI analysis
-    Route::post('/bookings/create', [BookingController::class, 'store'])->middleware('throttle:5,1')->name('bookings.store');
+    Route::post('/bookings/create', [BookingController::class, 'store'])->middleware('throttle:5,1,client-booking')->name('bookings.store');
 
     // Client Booking Show / Analysis: Displays the booking proposal and pricing summary
     Route::get('/bookings/{booking}/status', [BookingController::class, 'status'])->name('bookings.status');
@@ -357,7 +363,11 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     Route::get('/notifications', [AdminBookingController::class, 'notifications'])->name('admin.notifications');
 
     // Admin Alerts: Mark a single alert as read
+    // A request waiting for Admin's approve/reject decision is closed only by that decision.
     Route::post('/alerts/{alert}/read', function (\App\Models\AdminAlert $alert) {
+        if ($alert->requiresDecision() && !$alert->is_read) {
+            return back()->with('error', 'This stock count request needs a decision. Open it in Notifications and approve or reject it.');
+        }
         $alert->update(['is_read' => true]);
         return back()->with('success', 'Alert dismissed.');
     })->name('admin.alerts.read');
@@ -365,9 +375,16 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     Route::post('/notifications/resolve-shortage/{inventoryItem}', [\App\Http\Controllers\Admin\InventoryController::class, 'resolveShortage'])->name('admin.notifications.resolve-shortage');
 
     // Admin Alerts: Dismiss all alerts
+    // Requests waiting for an approve/reject decision stay open.
     Route::post('/alerts/read-all', function () {
-        \App\Models\AdminAlert::where('is_read', false)->update(['is_read' => true]);
-        return back()->with('success', 'All alerts dismissed.');
+        \App\Models\AdminAlert::where('is_read', false)
+            ->whereNotIn('type', \App\Models\AdminAlert::DECISION_TYPES)
+            ->update(['is_read' => true]);
+        $waiting = \App\Models\AdminAlert::where('is_read', false)->whereIn('type', \App\Models\AdminAlert::DECISION_TYPES)->count();
+
+        return back()->with('success', $waiting > 0
+            ? "Alerts dismissed. {$waiting} stock count request(s) still need your approve or reject decision."
+            : 'All alerts dismissed.');
     })->name('admin.alerts.read-all');
 
     // Admin Stock Adjustments (Decision A)
@@ -455,6 +472,7 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     // Admin Return Tracking
     Route::get('/return-tracking', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'index'])->name('admin.return-tracking');
     Route::get('/return-tracking/manage/{booking}', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'manage'])->name('admin.return-tracking.manage');
+    Route::post('/return-tracking/start/{booking}', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'start'])->name('admin.return-tracking.start');
     Route::get('/return-tracking/{return}', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'show'])->name('admin.return-tracking.show');
     Route::put('/return-tracking/{return}', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'update'])->name('admin.return-tracking.update');
     Route::put('/return-tracking/{return}/assign', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'assign'])->name('admin.return-tracking.assign');

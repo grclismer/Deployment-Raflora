@@ -447,7 +447,7 @@ class Step16GCoreWorkflowEndToEndVerificationTest extends TestCase
         ]);
 
         // Initialize Return
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $assetReturn = $booking->fresh()->returns()->firstOrFail();
         $returnItem = $assetReturn->returnItems()->firstOrFail();
 
@@ -1013,7 +1013,7 @@ class Step16GCoreWorkflowEndToEndVerificationTest extends TestCase
         ]);
 
         // Initialize return
-        app(\App\Http\Controllers\Admin\ReturnTrackingController::class)->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $return = $booking->fresh()->returns()->firstOrFail();
         $returnItem = $return->returnItems()->firstOrFail();
 

@@ -112,7 +112,9 @@ class InventoryItem extends Model
     }
 
     /**
-     * Check if inventory is low (below minimum stock) based on operational availability.
+     * Check if inventory is low (below minimum stock) based on operational availability: stock
+     * not held for confirmed bookings (net_available, the ledger) at or below the minimum.
+     * Admin screens use scopeBelowMinimum() (on hand) or the Inventory page's booked-demand view.
      */
     public function isLowStock(): bool
     {
@@ -137,31 +139,90 @@ class InventoryItem extends Model
         $totalReserved = 0.0;
 
         foreach ($transactions as $bookingId => $txs) {
-            $lock = $txs->where('transaction_type', 'booking_lock')->sum(fn($tx) => abs((float) $tx->quantity_change));
-            $release = $txs->where('transaction_type', 'booking_release')->sum('quantity_change');
-            
-            // Dispatch is recorded as negative, so taking the sum of dispatch and corrections gives net dispatch (as negative).
-            // But since lock is positive, release is positive (or wait, release is positive? booking_release should be a deduction from reservation but it doesn't affect physical stock)
-            // Let's check how release is recorded. usually booking_release is positive or negative?
-            // "release is subtracted". Let's just use the exact logic previously there.
-            $netDispatch = abs($txs->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])->sum('quantity_change'));
-
-            $netReservation = $lock - $release - $netDispatch;
-            
-            if (round($netReservation, 4) < 0) {
-                \Illuminate\Support\Facades\Log::error(sprintf(
-                    'Inconsistent ledger state for Item %d, Booking %d. Net reservation cannot be negative (Lock: %f, Release: %f, Dispatch: %f).',
-                    $this->id, $bookingId, $lock, $release, $netDispatch
-                ));
-                // An excess release or over-dispatch means the booking's physical obligation is exhausted.
-                // We floor it at 0 to prevent phantom reservations from double-deducting available stock.
-                $netReservation = 0.0;
-            }
-            
-            $totalReserved += $netReservation;
+            $totalReserved += $this->netReservationFromLedger($txs, (int) $bookingId);
         }
 
         return $totalReserved;
+    }
+
+    /**
+     * Stock still held for one booking: locks − releases − net dispatch (dispatched units have
+     * already left current_stock, so they are not held twice). The same rule as reserved_stock.
+     */
+    public function reservedForBooking(int $bookingId): float
+    {
+        return $this->netReservationFromLedger(
+            $this->inventoryTransactions()->where('booking_id', $bookingId)->get(),
+            $bookingId
+        );
+    }
+
+    private function netReservationFromLedger(\Illuminate\Support\Collection $txs, int $bookingId): float
+    {
+        $lock = $txs->where('transaction_type', 'booking_lock')->sum(fn ($tx) => abs((float) $tx->quantity_change));
+        // Releases are recorded as positive quantities.
+        $release = $txs->where('transaction_type', 'booking_release')->sum('quantity_change');
+        // Dispatches are negative and corrections positive, so their sum is the net dispatch (negative).
+        $netDispatch = abs($txs->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])->sum('quantity_change'));
+
+        $netReservation = $lock - $release - $netDispatch;
+
+        if (round($netReservation, 4) < 0) {
+            \Illuminate\Support\Facades\Log::error(sprintf(
+                'Inconsistent ledger state for Item %d, Booking %d. Net reservation cannot be negative (Lock: %f, Release: %f, Dispatch: %f).',
+                $this->id, $bookingId, $lock, $release, $netDispatch
+            ));
+            // An excess release or over-dispatch means the booking's physical obligation is exhausted.
+            // We floor it at 0 to prevent phantom reservations from double-deducting available stock.
+            return 0.0;
+        }
+
+        return (float) $netReservation;
+    }
+
+    /**
+     * Booked demand, shown as "Reserved" on the Inventory page and the basis of "To Procure":
+     * quantities on upcoming, still-active bookings that Admin confirmed (or that are not AI
+     * suggestions), including fresh flowers that are bought rather than held. This is a planning
+     * figure; stock actually held for confirmed bookings is reserved_stock (the ledger).
+     */
+    public function scopeWithBookedDemand($query)
+    {
+        return $query->withSum(['bookings as reserved_stock' => function ($q) {
+            $q->whereDate('bookings.event_date', '>=', \Carbon\Carbon::today())
+                ->whereNotIn('bookings.status', ['cancelled', 'completed', 'declined'])
+                ->where(fn ($inner) => $inner->whereNotNull('booking_items.confirmed_at')->orWhere('booking_items.is_ai_suggested', false));
+        }], 'booking_items.quantity');
+    }
+
+    /**
+     * Net quantity already dispatched to one booking (dispatches less corrections). Those units
+     * have left current_stock and are no longer part of reservedForBooking().
+     */
+    public function dispatchedForBooking(int $bookingId): float
+    {
+        return abs((float) $this->inventoryTransactions()
+            ->where('booking_id', $bookingId)
+            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
+            ->sum('quantity_change'));
+    }
+
+    /**
+     * On-hand low stock: physical stock at or below the configured minimum (reorder point),
+     * regardless of bookings. Used by the Dashboard and Reports. The Inventory page's status
+     * instead compares stock left after booked demand with the minimum (a planning view).
+     */
+    public function scopeBelowMinimum($query)
+    {
+        return $query->whereColumn('current_stock', '<=', 'min_stock');
+    }
+
+    /**
+     * Active catalog items whose name equals $name ignoring case and surrounding spaces.
+     */
+    public function scopeNamed($query, string $name)
+    {
+        return $query->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($name))]);
     }
 
     public function getAvailableStockAttribute(): float

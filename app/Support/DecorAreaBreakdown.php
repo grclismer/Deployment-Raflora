@@ -20,7 +20,7 @@ final class DecorAreaBreakdown
     /** `decor_area` value for supplies and materials used across several areas. */
     public const SHARED = 'shared';
 
-    public const SHARED_LABEL = 'Shared & general';
+    public const SHARED_LABEL = 'Shared Materials';
 
     /** Group for priced booking lines that no AI row covers. */
     public const RAFLORA = 'raflora';
@@ -291,6 +291,12 @@ final class DecorAreaBreakdown
         }
 
         return null;
+    }
+
+    /** The picked area (or "shared") a row belongs to, by the same rule the breakdown uses. */
+    public static function areaKey(array $row, array $requested): string
+    {
+        return self::areaFor($row, $requested);
     }
 
     private static function areaFor(array $row, array $requested): string

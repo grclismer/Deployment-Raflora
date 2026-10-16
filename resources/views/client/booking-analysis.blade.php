@@ -13,18 +13,25 @@
                                         ? $imageDimensions[0] . ' / ' . $imageDimensions[1]
                                         : null;
                     $analysisGroups   = app(\App\Services\GeminiVisionService::class)->normalizeAreaAnalysis(['suggested_materials' => $analysisMaterials]);
-                    $overlayItems     = collect($analysisGroups)->flatMap(fn($group) => $group['items'] ?? [])->values();
                     $hasAiAnalysis    = !empty($analysisGroups);
+                    // Every photo (owner-checked secure URLs) and each photo's own boxes, without AI prices.
+                    $storedAnalysis   = is_array($booking->ai_analysis_data) ? $booking->ai_analysis_data : null;
+                    $galleryPhotos    = array_map(fn (array $photo) => $photo + [
+                        'url' => route('secure.inspiration.show', ['bookingId' => $booking->id, 'image_index' => $photo['index']]),
+                    ], \App\Support\InspirationPhotos::galleryPhotos($storedAnalysis));
+                    $previewImage     = $previewImage ?? ($galleryPhotos[0]['url'] ?? null);
+                    $overlayRows      = \App\Services\GeminiVisionService::withoutPrices(['suggested_materials' => \App\Support\InspirationPhotos::overlayRows($storedAnalysis, $analysisMaterials)])['suggested_materials'];
+                    $overlayItems     = collect(app(\App\Services\GeminiVisionService::class)->normalizeAreaAnalysis(['suggested_materials' => $overlayRows]))->flatMap(fn($group) => $group['items'] ?? [])->values();
 
                     $latestPayment      = $booking->payments()->latest()->first();
                     $hasSubmittedPayment = $latestPayment && in_array($latestPayment->status, ['pending', 'verified', 'fully_paid', 'downpayment_received'], true);
                     $hasPendingPayment  = $booking->payments()->where('status', 'pending')->exists();
-                    $quoteTotal         = $booking->total_obligation;
-                    $quoteBase          = ((float) $booking->final_quoted_price) > 0 ? (float) $booking->final_quoted_price : ((float) ($booking->total_quoted ?? ($totalCost ?? 0)));
-                    $damageCharge       = max(0.0, (float) ($booking->total_obligation - $quoteBase));
-                    $displayedTotal     = $booking->total_obligation > 0 ? (float) $booking->total_obligation : (float) ($totalCost ?? 0);
+                    // Prices come only from the quotation Admin issued (null until then).
+                    $sharedQuotation    = $sharedQuotation ?? $booking->sharedQuotation();
+                    $displayedTotal     = $booking->shared_quote_total;
+                    $damageCharge       = $displayedTotal !== null ? (float) $booking->damage_charges : 0.0;
                     $paidAmount         = (float) $booking->total_paid;
-                    $remaining          = (float) $booking->remaining_balance;
+                    $remaining          = (float) ($booking->shared_remaining_balance ?? 0);
                     
                     $canShowPaymentForm = !$hasPendingPayment && (
                         $booking->status === 'admin_approved' || 
@@ -67,11 +74,7 @@
                             </div>
                         @endif
                         <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-3 mb-2">
-                                <span class="rf-badge rf-badge--neutral" aria-label="Booking status: {{ $booking->client_status_label }}">
-                                    {{ $booking->client_status_label }}
-                                </span>
-                            </div>
+                            {{-- The current status is shown once, in the status & action section below. --}}
                             <h1 id="booking-summary-heading" class="text-2xl font-semibold text-slate-800 leading-tight mb-2 truncate">
                                 {{ ucfirst($booking->event_type ?? 'Event') }}
                                 @if($booking->package)
@@ -98,8 +101,8 @@
                         </div>
                     </section>
 
-                {{-- 3. Booking Workflow (README: Guest → Client → Staff) --}}
-                <x-booking-workflow :workflow="$bookingWorkflow" heading="Booking Progress" id="client-booking-workflow" />
+                {{-- 3. Booking progress: client stages; event stages appear once the booking is confirmed --}}
+                <x-booking-workflow :workflow="$bookingWorkflow" audience="client" :show-current="false" heading="Booking Progress" description="Where your booking is in Raflora's process." id="client-booking-workflow" />
 
                 <div class="flex flex-col lg:flex-row gap-6 mb-8">
 
@@ -230,41 +233,6 @@
                                         </div>
                                     @endif
 
-                                    @if(in_array($booking->status, ['event_completed', 'pending_return', 'pending_resolution', 'completed'], true))
-                                        <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs">
-                                            <p class="font-bold uppercase tracking-wider text-slate-600 mb-2">Post-Event Workflow &amp; Status</p>
-                                            <ol class="space-y-1.5 list-decimal list-inside text-slate-700">
-                                                <li><strong class="font-semibold text-slate-800">Event Execution:</strong> Concluded</li>
-                                                <li>
-                                                    <strong class="font-semibold text-slate-800">Material Return &amp; Assessment:</strong>
-                                                    @if($booking->status === 'pending_return')
-                                                        <span class="text-amber-700 font-medium">Collection &amp; return in progress</span>
-                                                    @elseif($booking->status === 'pending_resolution')
-                                                        <span class="text-amber-700 font-medium">Inspection noted items requiring damage/loss resolution</span>
-                                                    @else
-                                                        <span class="text-emerald-700 font-medium">Materials inspected and reconciled</span>
-                                                    @endif
-                                                </li>
-                                                <li>
-                                                    <strong class="font-semibold text-slate-800">Final Settlement:</strong>
-                                                    @if($remaining > 0)
-                                                        <span class="text-amber-700 font-medium">Outstanding balance of ₱{{ number_format($remaining, 2) }} due</span>
-                                                    @else
-                                                        <span class="text-emerald-700 font-medium">Fully settled</span>
-                                                    @endif
-                                                </li>
-                                                <li>
-                                                    <strong class="font-semibold text-slate-800">Completion:</strong>
-                                                    @if($booking->status === 'completed')
-                                                        <span class="text-emerald-700 font-medium">Booking officially completed and closed</span>
-                                                    @else
-                                                        <span class="text-slate-500">Pending final settlement / closure</span>
-                                                    @endif
-                                                </li>
-                                            </ol>
-                                        </div>
-                                    @endif
-
                                     @php
                                         $effectiveValidUntil = $quotationValidUntil ?? ($activeQuotation?->valid_until ?? $booking->price_valid_until);
                                     @endphp
@@ -280,26 +248,32 @@
                                     @endif
                                 </div>
 
-                                {{-- Pricing Summary --}}
+                                {{-- Pricing Summary: the issued quotation only; before it, the public catalog price at most --}}
                                 @if(!$isTerminal)
                                 <div class="sm:text-right shrink-0 mt-2 sm:mt-0 bg-white sm:bg-transparent p-5 sm:p-0 rounded-xl sm:rounded-none border sm:border-0 border-emerald-100">
-                                    @if($booking->status === 'pending')
-                                        @if($booking->package_id)
-                                            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Package Price</p>
+                                    @if($displayedTotal === null)
+                                        @if($booking->package)
+                                            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Catalog Package Price</p>
+                                            <p class="text-3xl lg:text-4xl font-bold text-slate-900">₱{{ number_format((float) $booking->package->price, 2) }}</p>
+                                            <p class="text-sm text-slate-500 mt-2">Your official quotation confirms the final price.</p>
                                         @else
-                                            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Estimated Total</p>
+                                            <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Quotation</p>
+                                            <p class="text-lg font-semibold text-slate-700">Not yet issued</p>
+                                            <p class="text-sm text-slate-500 mt-2">Raflora shares the price in your official quotation.</p>
                                         @endif
-                                    @elseif($damageCharge > 0)
-                                        <p class="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1">Total Obligation</p>
                                     @else
-                                        <p class="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1">Quotation</p>
-                                    @endif
-                                    
-                                    <p class="text-3xl lg:text-4xl font-bold text-slate-900" aria-label="Amount: ₱{{ number_format($displayedTotal, 2) }}">
-                                        ₱{{ number_format($displayedTotal, 2) }}
-                                    </p>
-                                    @if($damageCharge > 0)
-                                        <p class="text-sm font-semibold text-rose-600 mt-1 mb-2">Includes ₱{{ number_format($damageCharge, 2) }} Damage/Loss Charges</p>
+                                        @if($damageCharge > 0)
+                                            <p class="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1">Total Obligation</p>
+                                        @else
+                                            <p class="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-1">Quotation</p>
+                                        @endif
+
+                                        <p class="text-3xl lg:text-4xl font-bold text-slate-900" aria-label="Amount: ₱{{ number_format($displayedTotal, 2) }}">
+                                            ₱{{ number_format($displayedTotal, 2) }}
+                                        </p>
+                                        @if($damageCharge > 0)
+                                            <p class="text-sm font-semibold text-rose-600 mt-1 mb-2">Includes ₱{{ number_format($damageCharge, 2) }} Damage/Loss Charges</p>
+                                        @endif
                                     @endif
                                     
                                     @if(!(isset($isExpired) && $isExpired) && $effectiveValidUntil && $booking->status !== 'pending')
@@ -646,7 +620,7 @@
                                                     $unitPrice = floatval($item['selling_unit_price']);
                                                 } else {
                                                     $internalCost = floatval($item['quoted_unit_price'] ?? 0);
-                                                    $multiplier = floatval($activeQuotation->multiplier ?? 3.0);
+                                                    $multiplier = floatval($sharedQuotation?->multiplier ?? 3.0);
                                                     $unitPrice = $internalCost * $multiplier;
                                                 }
                                             @endphp
@@ -656,21 +630,8 @@
                                             </div>
                                         @endforeach
                                     </div>
-                                @elseif(empty($quotationItems) && isset($items) && $items && $items->count() > 0)
-                                    <div class="space-y-1">
-                                        @foreach($items as $item)
-                                            @php
-                                                $qty = floatval($item->pivot->quantity ?? 0);
-                                                $internalCost = floatval($item->pivot->quoted_unit_price ?? 0);
-                                                $multiplier = floatval($booking->multiplier ?? 3.0);
-                                                $unitPrice = $internalCost * $multiplier;
-                                            @endphp
-                                            <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
-                                                <span class="text-sm font-medium text-slate-700 flex-1 min-w-[140px]">{{ $item->name }}</span>
-                                                <span class="text-sm text-slate-500 shrink-0 font-medium">{{ number_format($qty, 0) }} × ₱{{ number_format($unitPrice, 2) }}</span>
-                                            </div>
-                                        @endforeach
-                                    </div>
+                                @elseif(!$sharedQuotation)
+                                    <p class="text-sm text-slate-500">Item prices appear here once Raflora issues your official quotation.</p>
                                 @elseif($hasAiAnalysis)
                                     <p class="text-sm text-slate-500">Pricing is based on the reviewed event details. See AI Visual Analysis below for suggested material context.</p>
                                 @elseif($booking->package_id)
@@ -681,21 +642,18 @@
                             </section>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {{-- Inspiration Image (If exists) --}}
+                                {{-- Inspiration photos (every photo, the areas each is for, AI boxes, enlarged view) --}}
                                 @if($previewImage)
                                 <section aria-labelledby="concept-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                                     <h2 id="concept-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Inspiration Image &amp; AI Recommendation</h2>
-                                    <div class="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                        @include('components.annotated-image', [
-                                            'previewImage'    => $previewImage,
-                                            'maxHeight'       => 320,
-                                            'imageAspectRatio'=> $imageAspectRatio,
-                                            'imageWidth'      => $imageDimensions[0] ?? null,
-                                            'imageHeight'     => $imageDimensions[1] ?? null,
-                                            'overlayItems'    => $overlayItems,
-                                        ])
-                                    </div>
-                                    <p class="mt-3 text-xs text-slate-500">Inspiration image uploaded for this booking.</p>
+                                    <x-inspiration-gallery id="client-inspiration-gallery"
+                                        :photos="$galleryPhotos"
+                                        :preview-image="$previewImage"
+                                        :overlay-items="$overlayItems"
+                                        :max-height="320"
+                                        :image-aspect-ratio="$imageAspectRatio"
+                                        :image-width="$imageDimensions[0] ?? null"
+                                        :image-height="$imageDimensions[1] ?? null" />
                                 </section>
                                 @endif
 
@@ -749,6 +707,9 @@
                             <section aria-labelledby="ai-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                                 <h2 id="ai-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Visual Analysis (Decision Support)</h2>
                                 <p class="text-sm text-slate-500 mb-4">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
+
+                                {{-- Indicative AI ranges per area; the official quotation above is the price that applies --}}
+                                <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" class="mb-5" />
 
                                 <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-5" />
 
@@ -844,45 +805,6 @@
 
             window.setInterval(checkForBookingUpdates, 10000);
 
-            const modal = document.getElementById('imageLightboxModal');
-            const modalContent = document.querySelector('[data-lightbox-content]');
-            const annotatedStage = document.querySelector('[data-annotated-image-stage]');
-
-            const closeModal = () => {
-                if (!modal) return;
-                modal.classList.add('hidden');
-                document.body.classList.remove('overflow-hidden');
-            };
-
-            const openModal = (src) => {
-                if (!modal || !modalContent || !src) return;
-                if (annotatedStage) {
-                    const annotatedCopy = annotatedStage.cloneNode(true);
-                    annotatedCopy.querySelector('[data-image-lightbox-trigger]')?.remove();
-                    modalContent.replaceChildren(annotatedCopy);
-                }
-                modal.classList.remove('hidden');
-                document.body.classList.add('overflow-hidden');
-                const repositionModalAnnotations = () => window.positionAnnotatedImages?.(modalContent);
-                requestAnimationFrame(() => {
-                    repositionModalAnnotations();
-                    modalContent.querySelector('img')?.addEventListener('load', repositionModalAnnotations, { once: true });
-                });
-            };
-
-            document.querySelectorAll('[data-image-lightbox-trigger]').forEach((button) => {
-                button.addEventListener('click', (event) => {
-                    const src = event.currentTarget?.dataset?.imageSrc || button.getAttribute('data-image-src');
-                    openModal(src);
-                });
-            });
-
-            modal?.addEventListener('click', (event) => {
-                if (event.target === modal || event.target.closest('[data-close-image-lightbox]')) {
-                    closeModal();
-                }
-            });
-
             const changeModal = document.getElementById('changeModal');
             const cancellationModal = document.getElementById('cancellationModal');
 
@@ -897,9 +819,6 @@
 
             document.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape') {
-                    if (modal && !modal.classList.contains('hidden')) {
-                        closeModal();
-                    }
                     if (changeModal && !changeModal.classList.contains('hidden')) {
                         changeModal.classList.add('hidden');
                     }
@@ -911,17 +830,4 @@
         });
     </script>
 
-    <div id="imageLightboxModal" class="fixed inset-0 z-50 hidden">
-        <div class="absolute inset-0 bg-slate-950/80" data-close-image-lightbox></div>
-        <div class="relative z-10 flex min-h-full items-center justify-center p-4 sm:p-6">
-            <div class="relative w-full max-w-6xl rounded-2xl border border-white/10 bg-slate-900/80 p-3 shadow-2xl sm:p-4">
-                <button type="button" class="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-900/70 text-white transition hover:bg-slate-800" data-close-image-lightbox aria-label="Close image view">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-                <div class="flex max-h-[90vh] items-center justify-center overflow-auto rounded-xl bg-slate-950 p-2 sm:p-4" data-lightbox-content>
-                    <p class="text-sm text-white/70">Loading annotated image...</p>
-                </div>
-            </div>
-        </div>
-    </div>
 </x-app-layout>

@@ -35,6 +35,7 @@ class ReturnAuditIntegrityTest extends TestCase
             'performed_by' => $admin->id,
         ]);
 
+        $this->actingAs($admin)->post(route('admin.return-tracking.start', $booking));
         $response = $this->actingAs($admin)->get(route('admin.return-tracking.manage', $booking));
 
         $response->assertOk();
@@ -196,8 +197,7 @@ class ReturnAuditIntegrityTest extends TestCase
             'reason' => 'Admin Dispatch',
             'performed_by' => $admin->id,
         ]);
-        $return = app(\App\Http\Controllers\Admin\ReturnTrackingController::class)
-            ->manage($booking);
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $returnModel = $booking->fresh()->returns()->first();
 
         return [$admin, $booking->fresh(), $inventoryItem, $returnModel];

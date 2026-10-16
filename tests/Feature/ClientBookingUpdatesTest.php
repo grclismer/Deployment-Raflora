@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Booking;
 use App\Models\Client;
 use App\Models\ClientNotification;
+use App\Models\Quotation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -69,6 +70,12 @@ class ClientBookingUpdatesTest extends TestCase
             'venue' => 'Grand Ballroom',
             'final_quoted_price' => 54321.50,
             'status' => 'confirmed',
+        ]);
+        Quotation::create([
+            'booking_id' => $booking->id,
+            'status' => Quotation::STATUS_ACCEPTED,
+            'version' => 1,
+            'final_quoted_price' => 54321.50,
         ]);
 
         $response = $this->actingAs($user)->get(route('client.booking.updates', $booking));

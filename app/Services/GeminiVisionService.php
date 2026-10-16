@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use App\Support\DecorAreaBreakdown;
 use App\Support\EventDesignBrief;
 use App\Support\ImageOrientation;
@@ -15,7 +16,7 @@ class GeminiVisionService
      * Part of the analysis cache key, so results cached for an older prompt (for example one
      * box per row instead of one per cluster) are never served for the current one.
      */
-    public const PROMPT_VERSION = '2026-10-13-boxes';
+    public const PROMPT_VERSION = '2026-10-14-photo-areas';
 
     /** Box confidence at or above which a box is drawn as a confirmed location. */
     public const BOX_CONFIDENT = 0.8;
@@ -890,10 +891,12 @@ PROMPT;
         }
 
         $rawMaterialsTotal = round($rawMaterialsTotal, 2);
-        $estimatedGrandTotal = round($rawMaterialsTotal * 3.0, 2);
+        // The Admin AI markup, never the booking's quotation markup; null while the setting is unusable.
+        $markup = Setting::aiEstimateMarkup();
+        $estimatedGrandTotal = $markup !== null ? round($rawMaterialsTotal * $markup, 2) : null;
 
         return [
-            'markup_multiplier' => 3.0,
+            'markup_multiplier' => $markup,
             'raw_materials_total_php' => $rawMaterialsTotal,
             'estimated_grand_total_php' => $estimatedGrandTotal,
             'itemized_breakdown' => $itemizedBreakdown,
@@ -902,6 +905,26 @@ PROMPT;
             'unpriced_item_count' => count($unpricedItems),
             'unpriced_items' => $unpricedItems,
         ];
+    }
+
+    /**
+     * The analysis as a guest or client receives it: no per-item prices and no totals. Raflora
+     * prices reach them only through an issued quotation; Admin keeps the AI price as
+     * ai_recommended_price on the booking items.
+     */
+    public static function withoutPrices(array $analysis): array
+    {
+        unset($analysis['pricing_summary']);
+
+        if (is_array($analysis['suggested_materials'] ?? null)) {
+            $priceFields = array_flip(['unit_cost_php', 'estimated_unit_cost_php', 'estimated_unit_cost', 'estimated_subtotal_php', 'price_status']);
+            $analysis['suggested_materials'] = array_map(
+                fn ($material) => is_array($material) ? array_diff_key($material, $priceFields) : $material,
+                $analysis['suggested_materials']
+            );
+        }
+
+        return $analysis;
     }
 
     protected function positiveNumberOrNull(mixed $value): ?float
@@ -1156,7 +1179,7 @@ ITEMIZATION RULES:
 QUANTITY & SCALE GROUNDING:
 1. Primary Anchors: The booked table count and guest count (provided in the Context block below) MUST be used as the absolute anchors for calculating the quantities of table linens, chairs, and centerpieces. Use the uploaded photo only for visual style, bloom density, and material selection, while multiplying those materials by the provided table/guest counts.
 2. Provide realistic estimated quantities and prices in Philippine Pesos (PHP / ₱). Use realistic wholesale floor prices for flowers in the Dangwa/local market context.
-3. Output raw baseline market costs ONLY. Do NOT apply labor, setup, or 3x markup in the item prices (the backend handles the 3x pricing rule).
+3. Output raw baseline market costs ONLY. Do NOT apply labor, setup, or any markup in the item prices (the backend applies Raflora's markup and labour separately).
 4. Boxes Are Not Counts: Quantities come from the Context counts and the counting rules above, never from the number of boxes. A box only marks where an item is visible in this photo, not how many are needed for the event.
 
 SUGGESTED ALTERNATIVES & SEASONAL CONTEXT (DECISION-SUPPORT ONLY):

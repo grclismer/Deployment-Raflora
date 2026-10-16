@@ -23,6 +23,7 @@ class StaffMaterialReturnTest extends TestCase
         $inventoryItem = $this->inventoryItem();
         $this->confirmedBookingItem($booking, $inventoryItem, 4);
 
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $this->actingAs($staff)->get(route('staff.events.show', $booking));
         $returnRecord = AssetReturn::where('booking_id', $booking->id)->firstOrFail();
         $returnItem = $returnRecord->returnItems()->firstOrFail();
@@ -61,6 +62,7 @@ class StaffMaterialReturnTest extends TestCase
         $inventoryItem = $this->inventoryItem();
         $this->confirmedBookingItem($booking, $inventoryItem, 2);
 
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $this->actingAs($staffA)->get(route('staff.events.show', $booking));
         $returnRecord = AssetReturn::where('booking_id', $booking->id)->firstOrFail();
         $returnItem = $returnRecord->returnItems()->firstOrFail();
@@ -79,6 +81,7 @@ class StaffMaterialReturnTest extends TestCase
         $inventoryItem = $this->inventoryItem();
         $this->confirmedBookingItem($booking, $inventoryItem, 2);
 
+        app(\App\Services\ReturnRecordService::class)->openFor($booking);
         $this->actingAs($staff)->get(route('staff.events.show', $booking));
         $returnItem = ReturnItem::whereHas('assetReturn', fn ($query) => $query->where('booking_id', $booking->id))->firstOrFail();
 

@@ -99,7 +99,9 @@ class GuestBookingFourStepWizardTest extends TestCase
         $this->assertStringContainsString('id="review-notes"', $html);
         $this->assertStringContainsString('id="review-ai-materials-section"', $html);
         $this->assertStringContainsString('id="review-materials-list"', $html);
-        $this->assertStringContainsString('AI-Assisted Initial Estimate', $html);
+        $this->assertStringNotContainsString('AI-Assisted Initial Estimate', $html);
+        $this->assertStringNotContainsString('id="review-estimate-val"', $html);
+        $this->assertStringContainsString('In your official quotation', $html);
         $this->assertStringContainsString('NO PAYMENT IS REQUIRED AT THIS STAGE', $html);
 
         // 8. Fixed bug: special_requests is referenced instead of special_instructions
@@ -187,6 +189,8 @@ class GuestBookingFourStepWizardTest extends TestCase
             'venue_setting' => 'outdoor',
             'photo_usage' => 'style',
             'decor_areas' => ['centerpieces'],
+            // With areas picked, every photo says which of them it is for.
+            'photo_areas' => ['centerpieces'],
             'budget_range' => '30k_60k',
         ]);
 
@@ -278,16 +282,17 @@ class GuestBookingFourStepWizardTest extends TestCase
         $this->assertStringContainsString('Seasonal Context:', $html);
         $this->assertStringContainsString('Flower seasonality is decision support only and requires Raflora florist validation', $html);
 
-        // 6. Non-authoritative estimate banner rendered
-        $this->assertStringContainsString('AI-Assisted Initial Estimate', $html);
-        $this->assertStringContainsString('Final pricing is subject to Raflora review, material validation, availability/procurement considerations, and official quotation.', $html);
+        // 6. No AI estimate: the price comes only with the official quotation
+        $this->assertStringNotContainsString('AI-Assisted Initial Estimate', $html);
+        $this->assertStringNotContainsString('3,750.00', $html);
+        $this->assertStringContainsString('The price appears here once your official quotation is issued.', $html);
 
-        // 7. README booking workflow stages (Guest → Client → Staff) are rendered
+        // 7. Guest and client workflow stages are rendered; Staff operational stages are not shown to guests
         $this->assertStringContainsString('Request Submitted', $html);
         $this->assertStringContainsString('Awaiting Claim', $html);
         $this->assertStringContainsString('Raflora Review', $html);
         $this->assertStringContainsString('Material Preparation / Validation', $html);
-        $this->assertStringContainsString('Inventory Reconciliation', $html);
+        $this->assertStringNotContainsString('Inventory Reconciliation', $html);
         $this->assertStringNotContainsString('Request Expires', $html);
     }
 }

@@ -566,6 +566,25 @@ class SystemDataImporter
             if (!empty($tx['reference_transaction_ref']) && !isset($keyRegistry['inventory_transactions'][$tx['reference_transaction_ref']])) {
                 $errors[] = "Inventory transaction '{$tx['key']}' references non-existent reference transaction '{$tx['reference_transaction_ref']}'.";
             }
+
+            // Ledger sign convention: the application stores a release as a positive quantity and
+            // hold calculations subtract it (InventoryItem::reservedForBooking), so a negative
+            // release would read as an extra hold. Refused rather than guessed.
+            // Types are not limited to a list: older versions wrote types such as 'consumed' and
+            // 'event_started'. A row without a type cannot be read by any calculation.
+            if (!is_string($tx['transaction_type'] ?? null) || trim($tx['transaction_type']) === '') {
+                $errors[] = "Inventory transaction '{$tx['key']}' has no transaction_type.";
+            }
+
+            if (!isset($tx['quantity_change']) || !is_numeric($tx['quantity_change'])) {
+                $errors[] = "Inventory transaction '{$tx['key']}' has a missing or non-numeric quantity_change.";
+            } elseif (($tx['transaction_type'] ?? null) === 'booking_release' && (float) $tx['quantity_change'] <= 0) {
+                $errors[] = "Inventory transaction '{$tx['key']}' is a release and must have a positive quantity_change (got {$tx['quantity_change']}).";
+            } elseif (($tx['transaction_type'] ?? null) === 'booking_lock' && (float) $tx['quantity_change'] > 0) {
+                // Every application version stored a hold as -quantity (one wrote 0 as a marker);
+                // some readers count only negative holds, so a positive one would be read two ways.
+                $errors[] = "Inventory transaction '{$tx['key']}' is a hold and must have a negative quantity_change, or 0 for an older marker (got {$tx['quantity_change']}).";
+            }
         }
 
         foreach ($data['returns'] as $r) {

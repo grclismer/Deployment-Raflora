@@ -138,6 +138,8 @@ class EventDesignBriefTest extends TestCase
             'venue_setting' => 'both',
             'table_count' => 10,
             'decor_areas' => ['centerpieces', 'entrance'],
+            // This photo is for both picked areas.
+            'photo_areas' => ['centerpieces', 'entrance'],
             'color_palette' => ['Sage green'],
             'budget_range' => $budget,
         ];
@@ -210,14 +212,14 @@ class EventDesignBriefTest extends TestCase
         Mail::fake();
         $analysis = ['suggested_materials' => [$this->roseRow()]];
 
-        $this->post(route('guest.booking.store'), [
+        // The analysis comes from this session's photo analysis, never from the browser.
+        $this->withSession(['booking_analysis_payloads' => ['token-1' => ['analysis' => $analysis]]])->post(route('guest.booking.store'), [
             'guest_name' => 'Samantha Cruz',
             'guest_email' => 'samantha.cruz@example.com',
             'guest_phone' => '09179876543',
             'guest_address' => '78 Magnolia Lane, Quezon City',
             'booking_type' => 'custom_ai',
             'analysis_tokens' => json_encode(['token-1']),
-            'analysis_data' => json_encode($analysis),
             'event_type' => 'wedding',
             'event_date' => Carbon::now()->addDays(30)->toDateString(),
             'event_time' => '15:00',

@@ -208,7 +208,8 @@ class DashboardController extends Controller
 
         // 11. Inventory Status
         $inStockCount = InventoryItem::whereColumn('current_stock', '>', 'min_stock')->count();
-        $lowStockCount = InventoryItem::whereColumn('current_stock', '<=', 'min_stock')
+        // On-hand low stock (InventoryItem::scopeBelowMinimum), the rule Reports uses too.
+        $lowStockCount = InventoryItem::belowMinimum()
             ->where('current_stock', '>', 0)
             ->count();
         $outOfStockCount = InventoryItem::where('current_stock', '<=', 0)->count();
@@ -225,7 +226,7 @@ class DashboardController extends Controller
         ];
 
         // 12. Low Stock Items (Top 5 urgent items)
-        $lowStockItems = InventoryItem::whereColumn('current_stock', '<=', 'min_stock')
+        $lowStockItems = InventoryItem::belowMinimum()
             ->orderBy('current_stock', 'asc')
             ->limit(5)
             ->get();

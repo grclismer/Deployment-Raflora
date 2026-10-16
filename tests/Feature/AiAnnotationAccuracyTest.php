@@ -357,6 +357,10 @@ class AiAnnotationAccuracyTest extends TestCase
             'guest_access_token' => 'guest-token-annotations',
             'guest_email' => 'annotations@example.com',
             'guest_phone' => '09170000000',
+            'ai_analysis_data' => ['images' => [
+                ['id' => 1, 'photo_areas' => [], 'suggested_materials' => [$this->row('White Roses', ['line_id' => 'p1-m1', 'boxes' => [['box_2d' => [100, 100, 400, 400]]], 'image_id' => 1])]],
+                ['id' => 2, 'photo_areas' => [], 'suggested_materials' => [$this->row('Pampas Grass', ['line_id' => 'p2-m1', 'boxes' => [['box_2d' => [100, 100, 400, 400]]], 'image_id' => 2])]],
+            ]],
         ]);
 
         $html = view('guest.booking-analysis', [
@@ -369,10 +373,11 @@ class AiAnnotationAccuracyTest extends TestCase
             'token' => 'guest-token-annotations',
         ])->render();
 
-        $this->assertStringContainsString('window.showAnnotationsForImage?.(stage, trackingImages[idx].id)', $html);
+        // The photo gallery shows only the selected photo's boxes and legend entries.
+        $this->assertStringContainsString('window.showAnnotationsForImage?.(stage, photo.id)', $html);
         $this->assertSame(1, substr_count($html, 'data-annotation-box data-line-id="p2-m1" data-image-id="2"'));
         // The material list entries carry the same line IDs, so a box and its line find each other.
-        $this->assertStringContainsString('data-image-id="2" data-line-id="p2-m1"', $html);
+        $this->assertStringContainsString('data-image-ids="2" data-line-id="p2-m1"', $html);
     }
 
     public function test_guest_form_viewer_draws_real_ai_boxes_only(): void
@@ -383,7 +388,9 @@ class AiAnnotationAccuracyTest extends TestCase
         $this->assertStringNotContainsString('visual_marker', $html);
         $this->assertStringContainsString('function annotationBoxes(mat)', $html);
         $this->assertStringContainsString('if (!mat || !mat.is_detected || mat.is_recommendation) return [];', $html);
-        $this->assertStringContainsString('const annotationColors = {', $html);
+        // Box colors are the server-defined area colors (DecorAreaBreakdown::colors), passed in the component config.
+        $this->assertStringContainsString('areaColors', $html);
+        $this->assertStringContainsString('const annotationColor = function (mat)', $html);
         $this->assertStringContainsString('function fitViewerMarkers()', $html);
         $this->assertMatchesRegularExpression('/id="viewer-main-img"[^>]*object-contain/', $html);
         $this->assertStringContainsString('id="viewer-markers-hint-text"', $html);

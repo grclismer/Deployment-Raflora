@@ -164,17 +164,43 @@ class AdminSettingsController extends Controller
         ]);
 
         $user = $request->user();
-        $user->update(['password' => Hash::make($validated['password'])]);
+        $currentSessionId = $request->session()->getId();
 
-        AuditLog::record(
-            $user->id,
-            'password_updated',
-            'Password updated via Account Settings.',
-            'admin_security'
-        );
+        // Like OTP reset and recovery, a new password signs out the Admin's other sessions and
+        // revokes their trusted devices; this session stays signed in. With the database session
+        // driver all three writes share one transaction, so a failure leaves the old password,
+        // sessions and devices in place.
+        try {
+            [$sessionCount, $deviceCount] = DB::transaction(function () use ($user, $validated, $currentSessionId) {
+                $user->update(['password' => Hash::make($validated['password'])]);
+
+                $sessionCount = DB::table(config('session.table', 'sessions'))
+                    ->where('user_id', $user->id)
+                    ->where('id', '!=', $currentSessionId)
+                    ->delete();
+
+                $deviceCount = TrustedDevice::where('user_id', $user->id)
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => now()]);
+
+                return [$sessionCount, $deviceCount];
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('admin.settings', ['tab' => 'security'])
+                ->with('error', 'Your password was not changed because your other sessions and trusted devices could not be signed out. Please try again.');
+        }
+
+        // This browser's trust cookie no longer matches a usable device.
+        app(TrustedDeviceService::class)->clearTrustedDeviceCookie();
+
+        AuditLog::record($user->id, 'password_updated', 'Password updated via Account Settings.', 'admin_security');
+        AuditLog::record($user->id, 'sessions_revoked', "Signed out {$sessionCount} other active session(s) after a password change.", 'admin_security');
+        AuditLog::record($user->id, 'trusted_devices_revoked', "Revoked {$deviceCount} trusted device(s) after a password change.", 'admin_security');
 
         return redirect()->route('admin.settings')
-            ->with('success', 'Your password has been updated successfully.');
+            ->with('success', 'Your password has been updated. Your other sessions were signed out and your trusted devices were revoked.');
     }
 
     /**
@@ -241,7 +267,9 @@ class AdminSettingsController extends Controller
     {
         abort_unless($request->user()->role === 'admin', 403);
 
-        $validated = $request->validate([
+        // Own error bag: the Add Account form shares field names (name, password) with the
+        // Admin's profile and password forms, so its errors must not be read as theirs.
+        $validated = $request->validateWithBag('createAccount', [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             // Raflora supports exactly one Admin (S-01D single-admin bootstrap & recovery);
