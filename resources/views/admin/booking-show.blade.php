@@ -44,13 +44,25 @@
         $paidPercent = $totalObligation > 0 ? min(100, round(($paidAmount / $totalObligation) * 100, 1)) : 0;
 
         $canLogFinalPayment = in_array($booking->status, ['event_in_progress', 'event_completed', 'pending_return', 'pending_resolution'], true) && ($remaining > 0);
+        // A balance reference the client sent: Admin checks it under "Log Final Payment" before logging it.
+        $clientBalancePayment = $canLogFinalPayment ? $booking->payments->where('status', 'pending')->sortByDesc('created_at')->first() : null;
         $showMarkInProgress = in_array($booking->status, ['downpayment_received', 'confirmed'], true);
-        $showMarkEventCompleted = $booking->status === 'event_in_progress';
+        // Delivery orders are sold, not rented: no event completion or return audit; Admin (or the
+        // client) marks the item received instead (App\Services\DeliveryOrderService).
+        $isDeliveryOrder = $booking->isDelivery();
+        $showMarkDeliveryReceived = app(\App\Services\DeliveryOrderService::class)->canMarkReceived($booking);
+        $showMarkEventCompleted = $booking->status === 'event_in_progress' && !$isDeliveryOrder;
         $hasCompletedReturn = $booking->returns->where('status', 'Completed')->isNotEmpty();
         $hasCancellationRecovery = ($booking->status === 'cancelled') && ($booking->returns->isNotEmpty() || $booking->hasDispatchedReusableMaterials());
-        $showReturnAuditLink = $booking->status === 'event_completed' || in_array($booking->status, ['pending_return', 'pending_resolution'], true) || $hasCancellationRecovery || $booking->status === 'completed';
+        $showReturnAuditLink = !($isDeliveryOrder && $booking->status !== 'cancelled') && ($booking->status === 'event_completed' || in_array($booking->status, ['pending_return', 'pending_resolution'], true) || $hasCancellationRecovery || $booking->status === 'completed');
 
-        $showOperationalActions = $canLogFinalPayment || $showMarkInProgress || $showMarkEventCompleted || $showReturnAuditLink;
+        // The client's pending schedule change request, decided from the Quotation section (ScheduleChangeService).
+        $pendingSchedule = in_array($booking->status, \App\Services\ScheduleChangeService::OPEN_STATUSES, true)
+            ? app(\App\Services\ScheduleChangeService::class)->pendingFor($booking)
+            : null;
+        $scheduleAvailability = $pendingSchedule ? app(\App\Services\ScheduleChangeService::class)->availability($booking, $pendingSchedule->requested_date) : null;
+
+        $showOperationalActions = $canLogFinalPayment || $showMarkInProgress || $showMarkEventCompleted || $showMarkDeliveryReceived || $showReturnAuditLink;
 
         $damageLoss = $booking->returns ? $booking->returns->sum('total_damage_charge') : 0;
         $baseQuote = $booking->final_quoted_price ?: $booking->total_quoted;
@@ -92,8 +104,52 @@
                 'tone' => $prepAllComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'],
             ['id' => 'tab-staff', 'label' => 'Staff Assignment', 'icon' => 'fa-solid fa-user-gear',
                 'badge' => $assignedStaff ? null : 'Unassigned', 'tone' => 'bg-slate-100 text-slate-600'],
-            ['id' => 'tab-communication', 'label' => 'Communication', 'icon' => 'fa-regular fa-comments'],
         ];
+
+        // Tab highlight, read from the workflow stages only: done (green), action (orange), waiting (client's turn).
+        $currentStage = empty($bookingWorkflow['terminal']) ? $bookingWorkflow['current'] : null;
+        $stageDone = fn (string $key) => ($bookingWorkflow['stages'][$key]['state'] ?? null) === \App\Services\BookingWorkflowService::STATE_COMPLETE;
+        $staffNeededStages = ['confirmed', 'preparation_reservation', 'dispatch', 'event_execution'];
+        // Dispatch stage with nothing left to dispatch: the event now waits for Admin's "Mark Event In Progress".
+        $readyToStartEvent = $currentStage === 'dispatch' && $showMarkInProgress && (function () use ($booking) {
+            $txs = $booking->inventoryTransactions()->whereHas('inventoryItem', fn ($q) => $q->where('is_perishable', false))->get();
+            $reserved = abs((float) $txs->where('transaction_type', 'booking_lock')->filter(fn ($t) => (float) $t->quantity_change < 0)->sum('quantity_change'))
+                - (float) $txs->where('transaction_type', 'booking_release')->filter(fn ($t) => (float) $t->quantity_change > 0)->sum('quantity_change');
+            $dispatched = abs((float) $txs->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])->sum('quantity_change'));
+
+            return $dispatched >= max(0.0, $reserved);
+        })();
+        $tabStates = empty($bookingWorkflow['terminal']) ? [
+            'tab-details' => $currentStage === 'raflora_review' ? 'action' : ($stageDone('raflora_review') ? 'done' : null),
+            'tab-quotation' => ($pendingSchedule || in_array($currentStage, ['material_validation', 'quotation'], true)) ? 'action'
+                : ($currentStage === 'approval' ? 'waiting' : ($stageDone('approval') ? 'done' : null)),
+            'tab-materials' => $currentStage === 'material_validation' ? 'action' : (($allMaterialsValidated || $stageDone('material_validation')) ? 'done' : null),
+            'tab-preparation' => ($stageDone('dispatch') || $readyToStartEvent) ? 'done' : (in_array($currentStage, ['preparation_reservation', 'dispatch'], true) ? 'action' : null),
+            'tab-staff' => $assignedStaff ? 'done' : (in_array($currentStage, $staffNeededStages, true) ? 'action' : null),
+        ] : [];
+        $tabStateStyles = [
+            'done' => ['dot' => 'bg-emerald-500', 'tab' => 'bg-emerald-50/70', 'label' => 'Completed'],
+            'action' => ['dot' => 'bg-orange-500 animate-pulse', 'tab' => 'bg-orange-50', 'label' => 'Needs action'],
+            'waiting' => ['dot' => 'bg-sky-500', 'tab' => 'bg-sky-50/70', 'label' => 'Waiting for client'],
+        ];
+
+        // "Next step" shortcut: opens the section where the current workflow stage is handled.
+        $nextStep = match (true) {
+            // A client schedule request waits on Admin whatever the stage (ScheduleChangeService).
+            (bool) $pendingSchedule => ['target' => 'schedule-change-request', 'button' => 'Review Schedule Request'],
+            $currentStage === 'raflora_review' => ['target' => 'tab-details', 'button' => 'Review Event Details & AI'],
+            $currentStage === 'material_validation' => ['target' => 'tab-quotation', 'button' => 'Validate Materials in Quotation'],
+            $currentStage === 'quotation' => ['target' => 'tab-quotation', 'button' => 'Prepare & Send Quotation'],
+            $currentStage === 'approval' => ['target' => 'tab-quotation', 'button' => 'View Sent Quotation'],
+            $currentStage === 'payment' => ['target' => $booking->payments->isNotEmpty() ? 'payments-heading' : 'financial-summary-heading', 'button' => 'Review Payments'],
+            in_array($currentStage, $staffNeededStages, true) && !$assignedStaff => ['target' => 'tab-staff', 'button' => 'Assign Staff'],
+            $readyToStartEvent => ['target' => 'operational-actions-heading', 'button' => $isDeliveryOrder ? 'Mark Out for Delivery' : 'Start Event · Mark In Progress'],
+            $isDeliveryOrder && $showMarkDeliveryReceived => ['target' => 'operational-actions-heading', 'button' => 'Mark Item Received'],
+            $isDeliveryOrder && $currentStage === 'completion' && $canLogFinalPayment => ['target' => 'operational-actions-heading', 'button' => 'Log Final Payment'],
+            in_array($currentStage, ['confirmed', 'preparation_reservation', 'dispatch'], true) => ['target' => 'tab-preparation', 'button' => 'Open Preparation & Dispatch'],
+            in_array($currentStage, ['event_execution', 'material_return', 'inventory_reconciliation'], true) => ['target' => $showOperationalActions ? 'operational-actions-heading' : 'financial-summary-heading', 'button' => 'Open Operational Actions'],
+            default => null,
+        };
 
         $cardHeader = 'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between px-5 py-4 border-b border-slate-100';
         $cardTitle = 'text-[15px] font-semibold text-slate-900';
@@ -134,20 +190,6 @@
                     <p class="mt-1.5 text-sm text-slate-600 max-w-2xl">{{ $bookingWorkflow['current_detail'] }}</p>
                 @endif
             </div>
-            <dl class="grid grid-cols-3 gap-4 sm:gap-8 shrink-0">
-                <div>
-                    <dt class="text-xs font-medium text-slate-500">Total</dt>
-                    <dd class="mt-0.5 text-base font-semibold text-slate-900 tabular-nums">₱{{ number_format($totalObligation, 2) }}</dd>
-                </div>
-                <div>
-                    <dt class="text-xs font-medium text-slate-500">Paid</dt>
-                    <dd class="mt-0.5 text-base font-semibold text-emerald-700 tabular-nums">₱{{ number_format($paidAmount, 2) }}</dd>
-                </div>
-                <div>
-                    <dt class="text-xs font-medium text-slate-500">Balance</dt>
-                    <dd class="mt-0.5 text-base font-semibold tabular-nums {{ $remaining > 0 ? 'text-slate-900' : 'text-emerald-700' }}">₱{{ number_format($remaining, 2) }}</dd>
-                </div>
-            </dl>
         </div>
         <dl class="grid grid-cols-2 lg:grid-cols-4 border-t border-slate-100 bg-slate-50/60 text-sm">
             <div class="px-5 py-3 min-w-0">
@@ -171,12 +213,19 @@
         </dl>
     </section>
 
-    <!-- Booking Navigation Tabs -->
-    <div class="rf-admin-card mb-6 px-2 overflow-x-auto">
-        <nav class="-mb-px flex min-w-max" role="tablist" aria-label="Booking sections">
+    <!-- Booking Navigation Tabs: Overview is the page; every other section opens as a pop-up over it. -->
+    <div class="rf-admin-card mb-6 overflow-hidden">
+      <div class="relative overflow-hidden px-2">
+        <nav class="-mb-px flex flex-wrap gap-1" role="tablist" aria-label="Booking sections">
             @foreach($tabs as $tab)
-                @php $isFirstTab = $loop->first; @endphp
+                @php
+                    $isFirstTab = $loop->first;
+                    $tabState = $tabStates[$tab['id']] ?? null;
+                    $tabStyle = $tabState ? $tabStateStyles[$tabState] : null;
+                @endphp
                 <button
+                    @unless($isFirstTab) aria-haspopup="dialog" @endunless
+                    @if($tabState) data-tab-state="{{ $tabState }}" title="{{ $tabStyle['label'] }}" @endif
                     type="button"
                     role="tab"
                     id="{{ $tab['id'] }}-button"
@@ -184,23 +233,40 @@
                     aria-selected="{{ $isFirstTab ? 'true' : 'false' }}"
                     tabindex="{{ $isFirstTab ? '0' : '-1' }}"
                     onclick="switchTab('{{ $tab['id'] }}')"
-                    class="tab-button group inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3.5 py-3.5 text-sm font-medium transition focus:outline-none focus-visible:bg-slate-50 {{ $isFirstTab ? 'border-brand-600 text-brand-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800' }}"
+                    class="tab-button group mt-1.5 inline-flex items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 px-3.5 py-3 text-sm font-medium transition focus:outline-none focus-visible:bg-slate-50 {{ $tabStyle['tab'] ?? '' }} {{ $isFirstTab ? 'border-brand-600 text-brand-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800' }}"
                     data-target="{{ $tab['id'] }}"
                 >
+                    @if($tabStyle)
+                        <span class="h-2 w-2 shrink-0 rounded-full {{ $tabStyle['dot'] }}" aria-hidden="true"></span>
+                    @endif
                     <i class="{{ $tab['icon'] }} text-[13px] opacity-80" aria-hidden="true"></i>
                     <span>{{ $tab['label'] }}</span>
-                    @if($tab['id'] === 'tab-communication')
-                        <span id="admin-comm-unread-badge" class="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white tabular-nums {{ ($unreadMessageCount ?? 0) > 0 ? '' : 'hidden' }}">{{ $unreadMessageCount ?? 0 }}</span>
-                    @elseif(!empty($tab['badge']))
+                    @if(!empty($tab['badge']))
                         <span class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums {{ $tab['tone'] }}">{{ $tab['badge'] }}</span>
+                    @endif
+                    @if($tabStyle)
+                        <span class="sr-only">({{ $tabStyle['label'] }})</span>
                     @endif
                 </button>
             @endforeach
         </nav>
+      </div>
+      @if(!empty($tabStates))
+        <p class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-[11px] text-slate-500">
+            @foreach($tabStateStyles as $legend)
+                <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full {{ str_replace(' animate-pulse', '', $legend['dot']) }}" aria-hidden="true"></span>{{ $legend['label'] }}</span>
+            @endforeach
+            <span class="text-slate-400">Sections open as a pop-up over this overview.</span>
+        </p>
+      @endif
     </div>
 
     {{-- ============================== OVERVIEW ============================== --}}
     <div id="tab-overview" class="tab-content block space-y-6" role="tabpanel" aria-labelledby="tab-overview-button" tabindex="0">
+        @if($isDeliveryOrder)
+            <x-delivery-order-notice :booking="$booking" audience="admin" />
+        @endif
+
         @if($canCompleteReview)
             <section class="rf-admin-card border-brand-200 bg-brand-50/40" aria-labelledby="raflora-review-heading">
                 <div class="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -212,8 +278,11 @@
                             <p class="{{ $cardText }} max-w-3xl">Review the event details, inspiration, and client messages. Completing the review moves this booking to Material Preparation / Validation. Confirming, linking, or promoting a material also completes the review.</p>
                         </div>
                     </div>
-                    <form method="POST" action="{{ route('admin.bookings.complete-review', $booking) }}" class="shrink-0">
+                    <form method="POST" action="{{ route('admin.bookings.complete-review', $booking) }}" class="flex shrink-0 flex-col gap-2 sm:flex-row">
                         @csrf
+                        <button type="button" onclick="switchTab('tab-details')" class="{{ $btnSecondary }} w-full sm:w-auto">
+                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Open Event Details &amp; AI
+                        </button>
                         <button type="submit" class="{{ $btnPrimary }} w-full sm:w-auto">
                             <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i> Complete Raflora Review
                         </button>
@@ -228,7 +297,19 @@
             accent="brand"
             id="admin-booking-workflow"
             heading="Booking Workflow"
-            description="Guest → Client → Staff. Stages update from the booking, quotation, payment, inventory, and return records." />
+            description="Guest → Client → Staff. Stages update from the booking, quotation, payment, inventory, and return records.">
+            @if($nextStep && !$canCompleteReview)
+                {{-- Next-step shortcut in place of the stage badge: opens the section where the current stage is handled. --}}
+                <x-slot:action>
+                    <div id="admin-next-step" class="flex flex-col items-stretch gap-1 sm:items-end">
+                        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-orange-700">Next step · Stage {{ $bookingWorkflow['current_number'] }} of {{ $bookingWorkflow['total'] }}</span>
+                        <button type="button" data-next-step-target="{{ $nextStep['target'] }}" onclick="goToBookingSection(this.dataset.nextStepTarget)" class="{{ $btnPrimary }} w-full sm:w-auto">
+                            {{ $nextStep['button'] }} <i class="fa-solid fa-arrow-right text-xs" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </x-slot:action>
+            @endif
+        </x-booking-workflow>
 
         <div class="grid grid-cols-1 gap-6 {{ $showOperationalActions ? 'xl:grid-cols-12' : '' }}">
             <section class="rf-admin-card {{ $showOperationalActions ? 'xl:col-span-7' : '' }}" aria-labelledby="financial-summary-heading">
@@ -289,7 +370,7 @@
                     <div class="{{ $cardHeader }}">
                         <div>
                             <h2 id="operational-actions-heading" class="{{ $cardTitle }}">Operational Actions</h2>
-                            <p class="{{ $cardText }}">Event-day status updates, settlement and return audit.</p>
+                            <p class="{{ $cardText }}">{{ $isDeliveryOrder ? 'Delivery status updates and settlement.' : 'Event-day status updates, settlement and return audit.' }}</p>
                         </div>
                     </div>
                     <div class="flex flex-col gap-2.5 p-5">
@@ -302,7 +383,20 @@
                                 <input type="hidden" name="venue" value="{{ $booking->venue }}">
                                 <input type="hidden" name="status" value="{{ $booking->status }}">
                                 <button type="submit" name="action" value="mark_event_in_progress" class="{{ $btnPrimary }} w-full">
-                                    <i class="fa-solid fa-play" aria-hidden="true"></i>Mark Event In Progress
+                                    @if($isDeliveryOrder)
+                                        <i class="fa-solid fa-truck-fast" aria-hidden="true"></i>Mark Out for Delivery
+                                    @else
+                                        <i class="fa-solid fa-play" aria-hidden="true"></i>Mark Event In Progress
+                                    @endif
+                                </button>
+                            </form>
+                        @endif
+
+                        @if($showMarkDeliveryReceived)
+                            <form method="POST" action="{{ route('admin.bookings.delivery-received', $booking) }}" data-confirm="Mark the item as received?" data-confirm-message="Use this when the client confirmed by message or call that the order arrived. {{ $remaining > 0 ? 'The booking completes once the remaining balance is paid.' : 'The booking is fully paid, so it will be completed.' }} There is no return audit for delivery orders." data-confirm-label="Mark received">
+                                @csrf
+                                <button type="submit" class="{{ $btnPrimary }} w-full">
+                                    <i class="fa-solid fa-box-open" aria-hidden="true"></i>Mark Item Received
                                 </button>
                             </form>
                         @endif
@@ -321,7 +415,32 @@
                             </form>
                         @endif
 
-                        @if($canLogFinalPayment)
+                        @if($canLogFinalPayment && $clientBalancePayment)
+                            {{-- The client sent a reference for the balance: check it, then log it (or reject it). --}}
+                            <form method="POST" action="{{ route('admin.payments.verify', $clientBalancePayment->id) }}" data-confirm="Log this as the final payment?" data-confirm-message="Only continue after the reference {{ $clientBalancePayment->reference_number }} matches a received payment of ₱{{ number_format((float) $clientBalancePayment->amount, 2) }} in Raflora's account." data-confirm-label="Log final payment">
+                                @csrf
+                                <button type="submit" class="{{ $btnPrimary }} w-full">
+                                    <i class="fa-solid fa-money-bill" aria-hidden="true"></i>Log Final Payment
+                                </button>
+                            </form>
+                            <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-4" aria-labelledby="client-balance-payment-heading">
+                                <div class="flex items-center justify-between gap-2">
+                                    <h3 id="client-balance-payment-heading" class="text-sm font-semibold text-amber-900">Client payment to check</h3>
+                                    <span class="{{ $pill }} bg-amber-100 text-amber-800"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Awaiting verification</span>
+                                </div>
+                                <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    <div><dt class="text-xs text-slate-500">Amount</dt><dd class="font-semibold tabular-nums text-slate-900">₱{{ number_format((float) $clientBalancePayment->amount, 2) }}</dd></div>
+                                    <div><dt class="text-xs text-slate-500">Method</dt><dd class="font-semibold text-slate-900">{{ strtoupper(str_replace('_', ' ', $clientBalancePayment->payment_type)) }}</dd></div>
+                                    <div class="col-span-2"><dt class="text-xs text-slate-500">Reference #</dt><dd class="font-mono font-semibold text-slate-900 break-all">{{ $clientBalancePayment->reference_number }}</dd></div>
+                                    <div class="col-span-2"><dt class="text-xs text-slate-500">Sent</dt><dd class="text-slate-700">{{ optional($clientBalancePayment->created_at)->format('M d, Y h:i A') }}</dd></div>
+                                </dl>
+                                <p class="mt-3 text-xs text-amber-900">Check that this reference and amount appear in Raflora's GCash or bank account, then click <strong>Log Final Payment</strong>.</p>
+                                <form method="POST" action="{{ route('admin.payments.reject', $clientBalancePayment->id) }}" class="mt-2" data-confirm="Reject this reference?" data-confirm-message="The client is told the reference could not be verified and can send a corrected one." data-confirm-label="Reject reference" data-confirm-tone="danger">
+                                    @csrf
+                                    <button type="submit" class="text-xs font-semibold text-rose-700 hover:text-rose-800 hover:underline">Reference doesn't match — Reject</button>
+                                </form>
+                            </div>
+                        @elseif($canLogFinalPayment)
                             <button type="button" onclick="openBookingModal('booking-show-final-payment-modal')" class="{{ $btnPrimary }} w-full">
                                 <i class="fa-solid fa-money-bill" aria-hidden="true"></i>Log Final Payment
                             </button>
@@ -340,7 +459,7 @@
                         @endif
                     </div>
 
-                    @if($canLogFinalPayment)
+                    @if($canLogFinalPayment && !$clientBalancePayment)
                         <div id="booking-show-final-payment-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" aria-labelledby="final-payment-title" onclick="closeBookingModal('booking-show-final-payment-modal')">
                             <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl" onclick="event.stopPropagation()">
                                 <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
@@ -426,7 +545,9 @@
                                     </p>
                                 </div>
                             </div>
-                            @if($payment->status === 'pending')
+                            @if($payment->status === 'pending' && $clientBalancePayment && $clientBalancePayment->is($payment))
+                                <p class="shrink-0 text-xs font-medium text-amber-800">Check and log it under <a href="#operational-actions-heading" class="underline">Log Final Payment</a>.</p>
+                            @elseif($payment->status === 'pending')
                                 <div class="flex shrink-0 gap-2">
                                     <form method="POST" action="{{ route('admin.payments.reject', $payment->id) }}" data-confirm="Reject this payment?" data-confirm-message="The client will be told the payment could not be verified. The booking stays unconfirmed until a valid payment is verified." data-confirm-label="Reject payment" data-confirm-tone="danger">
                                         @csrf
@@ -445,6 +566,26 @@
         @endif
     </div>
 
+    {{-- ============================== SECTION POP-UP ============================== --}}
+    {{-- Every section below opens in this pop-up over the Overview; its forms and actions are unchanged. --}}
+    <div id="booking-section-modal" class="fixed inset-0 z-[45] hidden items-center justify-center overflow-hidden bg-slate-950/50 p-2 sm:p-4 lg:p-6" role="dialog" aria-modal="true" aria-labelledby="booking-section-modal-title">
+        <div class="relative isolate flex max-h-full w-full min-w-0 max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl focus:outline-none" tabindex="-1" data-section-modal-panel>
+            <div class="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+                <div class="flex min-w-0 items-center gap-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700" aria-hidden="true"><i id="booking-section-modal-icon" class="fa-solid fa-table-columns text-sm"></i></span>
+                    <div class="min-w-0">
+                        <h2 id="booking-section-modal-title" class="truncate text-base font-semibold text-slate-900">Section</h2>
+                        <p class="truncate text-xs text-slate-500">{{ $bookingHeading }} · {{ $bookingClientName }}</p>
+                    </div>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                    <span id="booking-section-modal-state" class="hidden rounded-full px-2 py-0.5 text-[11px] font-semibold"></span>
+                    <button type="button" onclick="switchTab('tab-overview')" class="{{ $btnSecondary }} max-sm:!hidden"><i class="fa-solid fa-arrow-left text-xs" aria-hidden="true"></i> Back to Overview</button>
+                    <button type="button" onclick="switchTab('tab-overview')" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close section"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div id="booking-section-modal-body" class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable] sm:p-5">
+
     {{-- ============================== EVENT DETAILS & AI ============================== --}}
     <div id="tab-details" class="tab-content hidden space-y-6" role="tabpanel" aria-labelledby="tab-details-button" tabindex="0">
         <section class="rf-admin-card overflow-hidden" aria-labelledby="event-details-heading">
@@ -458,8 +599,8 @@
                 <figure class="lg:col-span-4">
                     <div class="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                         @if($booking->inspiration_image)
-                            <a href="{{ asset('storage/' . $booking->inspiration_image) }}" target="_blank" rel="noopener" class="group relative block aspect-[4/5]">
-                                <img src="{{ asset('storage/' . $booking->inspiration_image) }}" alt="Inspiration Image" class="absolute inset-0 h-full w-full object-cover">
+                            <a href="{{ route('secure.inspiration.show', $booking->id) }}" target="_blank" rel="noopener" class="group relative block aspect-[4/5]">
+                                <img src="{{ route('secure.inspiration.show', $booking->id) }}" alt="Inspiration Image" class="absolute inset-0 h-full w-full object-cover">
                                 <span class="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-md bg-slate-900/70 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
                                     <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i> Open full size
                                 </span>
@@ -673,9 +814,27 @@
                     <h2 id="pricing-breakdown-heading" class="{{ $cardTitle }}">Material review &amp; quotation</h2>
                     <p class="{{ $cardText }} max-w-3xl">AI-suggested materials remain awaiting Admin confirmation until explicitly reviewed. Stock indicators reflect the existing inventory state.</p>
                 </div>
-                @if($materialItems->isNotEmpty())
-                    <span class="{{ $pill }} {{ $allMaterialsValidated ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }} shrink-0">{{ $validatedMaterialCount }}/{{ $materialItems->count() }} validated</span>
-                @endif
+                @php
+                    // Same rows that show a "Confirm Material" button: AI suggestions already linked to inventory.
+                    $readyToConfirm = $booking->bookingItems->filter(fn ($i) => $i->is_ai_suggested && !$i->confirmed_at && $i->inventory_item_id);
+                    $readyZeroPriceCount = $readyToConfirm->filter(fn ($i) => (float) $i->quoted_unit_price <= 0)->count();
+                @endphp
+                <div class="flex shrink-0 flex-wrap items-center gap-2">
+                    @if($materialItems->isNotEmpty())
+                        <span class="{{ $pill }} {{ $allMaterialsValidated ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">{{ $validatedMaterialCount }}/{{ $materialItems->count() }} validated</span>
+                    @endif
+                    @if($readyToConfirm->isNotEmpty())
+                        <form id="confirmAllMaterialsForm" method="POST" action="{{ route('admin.bookings.items.confirm-all', $booking) }}"
+                              data-confirm="Confirm {{ $readyToConfirm->count() }} {{ \Illuminate\Support\Str::plural('material', $readyToConfirm->count()) }}?"
+                              data-confirm-message="Every linked AI suggestion awaiting confirmation is confirmed at its saved quantity and unit cost.{{ $readyZeroPriceCount > 0 ? ' ' . $readyZeroPriceCount . ' of them still have a ₱0.00 unit cost.' : '' }} Unmatched suggestions still need Link or Promote."
+                              data-confirm-label="Confirm all">
+                            @csrf
+                            <button type="submit" class="{{ $btnPrimary }} py-1.5 text-xs">
+                                <i class="fa-solid fa-check-double" aria-hidden="true"></i>Confirm all linked ({{ $readyToConfirm->count() }})
+                            </button>
+                        </form>
+                    @endif
+                </div>
             </div>
 
             <form id="mainBookingForm" method="POST" action="{{ route('admin.bookings.update', ['booking' => $booking->id]) }}">
@@ -959,6 +1118,64 @@
                     </div>
 
                     <div class="flex flex-col gap-3 border-t border-slate-100 pt-4 lg:flex-row lg:items-center lg:justify-end">
+                        @if($pendingSchedule)
+                            {{-- Client's schedule change request: check Raflora's side, agree it in Messages, then decide (ScheduleChangeService). --}}
+                            <div id="schedule-change-request" class="w-full rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm lg:mr-auto lg:max-w-2xl lg:flex-1" aria-labelledby="schedule-change-request-heading">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <h3 id="schedule-change-request-heading" class="flex items-center gap-2 font-semibold text-amber-950">
+                                        <i class="fa-solid fa-calendar-days text-amber-600" aria-hidden="true"></i>Schedule change requested
+                                    </h3>
+                                    <span class="{{ $pill }} bg-amber-100 text-amber-800">Awaiting your decision</span>
+                                </div>
+                                <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <div><dt class="text-xs text-slate-500">Current</dt><dd class="font-medium text-slate-700">{{ $pendingSchedule->previousLabel() }}</dd></div>
+                                    <div><dt class="text-xs text-slate-500">Requested</dt><dd class="font-semibold text-slate-900">{{ $pendingSchedule->requestedLabel() }}</dd></div>
+                                    @if($pendingSchedule->reason)
+                                        <div class="sm:col-span-2"><dt class="text-xs text-slate-500">Client's reason</dt><dd class="text-slate-700">{{ $pendingSchedule->reason }}</dd></div>
+                                    @endif
+                                </dl>
+
+                                <div class="mt-3 rounded-lg border border-amber-200/80 bg-white/70 p-3">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Raflora availability on {{ $pendingSchedule->requested_date->format('M j, Y') }}</p>
+                                    <ul class="mt-2 space-y-1.5 text-xs text-slate-700">
+                                        <li class="flex items-start gap-2">
+                                            <i class="fa-solid {{ $scheduleAvailability['other_bookings']->isEmpty() ? 'fa-circle-check text-emerald-600' : 'fa-circle-info text-sky-600' }} mt-0.5" aria-hidden="true"></i>
+                                            <span>
+                                                @if($scheduleAvailability['other_bookings']->isEmpty())
+                                                    No other bookings on this date.
+                                                @else
+                                                    {{ $scheduleAvailability['other_bookings']->count() }} other {{ \Illuminate\Support\Str::plural('booking', $scheduleAvailability['other_bookings']->count()) }} on this date:
+                                                    {{ $scheduleAvailability['other_bookings']->take(5)->map(fn ($other) => '#' . $other->id . ' ' . ucfirst((string) $other->event_type) . ' (' . $other->status_display_label . ')')->implode(', ') }}{{ $scheduleAvailability['other_bookings']->count() > 5 ? ', …' : '' }}
+                                                @endif
+                                            </span>
+                                        </li>
+                                        @if(empty($scheduleAvailability['materials']))
+                                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-info mt-0.5 text-slate-400" aria-hidden="true"></i><span>No linked reusable materials to check yet.</span></li>
+                                        @elseif($scheduleAvailability['short'] === 0)
+                                            <li class="flex items-start gap-2"><i class="fa-solid fa-circle-check mt-0.5 text-emerald-600" aria-hidden="true"></i><span>All {{ count($scheduleAvailability['materials']) }} linked reusable materials are in stock for this date.</span></li>
+                                        @else
+                                            @foreach($scheduleAvailability['materials'] as $material)
+                                                @unless($material['ok'])
+                                                    <li class="flex items-start gap-2 text-rose-700"><i class="fa-solid fa-triangle-exclamation mt-0.5" aria-hidden="true"></i><span>{{ $material['name'] }}: needs {{ rtrim(rtrim(number_format($material['needed'], 2), '0'), '.') }}, only {{ rtrim(rtrim(number_format($material['available'], 2), '0'), '.') }} free that day.</span></li>
+                                                @endunless
+                                            @endforeach
+                                        @endif
+                                    </ul>
+                                </div>
+
+                                <p class="mt-3 text-xs text-amber-900">Confirm the date with the client in Messages first. Accepting moves the event{!! in_array($booking->status, \App\Services\ScheduleChangeService::QUOTATION_STATUSES, true) ? '; then send the updated quotation with <strong>Approve &amp; Send Official Quote</strong>' : '' !!}.</p>
+                                <label for="schedule-decision-note" class="sr-only">Note to the client</label>
+                                <input id="schedule-decision-note" type="text" name="decision_note" form="scheduleDecisionForm" maxlength="1000" placeholder="Note to the client (optional, shown in Messages)" class="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none">
+                                <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                    <button type="submit" form="scheduleDecisionForm" name="decision" value="decline" class="{{ $btnSecondary }}">
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>Decline Request
+                                    </button>
+                                    <button type="submit" form="scheduleDecisionForm" name="decision" value="accept" class="{{ $btnPrimary }}">
+                                        <i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Accept New Schedule
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
                         @unless($quoteReadOnly && !$hasTentative)
                             @if($quotationExpired)
                                 <div class="flex flex-1 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
@@ -986,6 +1203,12 @@
                 </div>
             </form>
         </section>
+
+        @if($pendingSchedule)
+            <form id="scheduleDecisionForm" method="POST" action="{{ route('admin.bookings.schedule-requests.decide', ['booking' => $booking->id, 'scheduleRequest' => $pendingSchedule->id]) }}" class="hidden" data-confirm="Decide this schedule request?" data-confirm-message="Accept moves the event to {{ $pendingSchedule->requestedLabel() }}; Decline keeps {{ $pendingSchedule->previousLabel() }}. The client is told in Messages either way." data-confirm-label="Continue">
+                @csrf
+            </form>
+        @endif
 
         @if($booking->status === 'approved')
             <form id="finalApproveForm" method="POST" action="{{ route('admin.bookings.final-approve', ['booking' => $booking->id]) }}" class="hidden">
@@ -1549,23 +1772,60 @@
         </section>
     </div>
 
+            </div>
+        </div>
+    </div>
+
     {{-- ============================== COMMUNICATION ============================== --}}
-    <div id="tab-communication" class="tab-content hidden space-y-6" role="tabpanel" aria-labelledby="tab-communication-button" tabindex="0">
-        <x-booking-conversation
-            :booking="$booking"
-            role="admin"
-            :booking-messages="$bookingMessages"
-            :unread-count="$unreadMessageCount ?? 0"
-            :active-quotation="$activeQuotation"
-        />
+    {{-- A floating message button opens the conversation from any tab; Client Meetings sit behind a switch inside it. --}}
+    @php
+        $adminMeetings = $booking->meetings()->orderByDesc('scheduled_datetime')->get();
+        $adminMeetingsAllowed = \App\Models\Meeting::bookingAllowsMeetings($booking);
+        $openMeetingCount = $adminMeetings->filter(fn ($m) => $m->isOpen())->count();
+        $meetingFormFailed = $errors->hasAny(['meeting_type', 'scheduled_datetime', 'meeting_link', 'address', 'agenda', 'outcome_notes', 'reason']);
+    @endphp
+    <style>
+        #admin-chat-panel #booking-conversation-root { border: 0; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; min-height: 100%; }
+        /* The panel header already names the conversation, so the component's own title bar is hidden here. */
+        #admin-chat-panel #booking-conversation-root > div:first-child { display: none; }
+        #admin-chat-panel #booking-conversation-root > .relative { flex: 1 1 0; display: flex; flex-direction: column; min-height: 160px; }
+        #admin-chat-panel #comm-messages-scroll { flex: 1 1 0; max-height: none; min-height: 0; padding: 1rem; }
+        #admin-chat-panel #comm-empty-state { padding-top: 2rem; padding-bottom: 2rem; }
+        #admin-chat-panel #comm-message-text { height: 4.5rem; min-height: 4.5rem; }
+        #admin-chat-panel #meetings-section { border: 0; border-radius: 0; box-shadow: none; }
+    </style>
+    <div id="admin-chat-panel" class="fixed inset-x-3 top-16 bottom-24 z-[46] hidden flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:inset-x-auto sm:right-6 sm:top-auto sm:h-[min(760px,calc(100vh-8rem))] sm:w-[480px]" role="dialog" aria-modal="false" aria-labelledby="admin-chat-panel-title" data-meeting-error="{{ $meetingFormFailed ? '1' : '0' }}">
+        <div class="flex items-center justify-between gap-3 bg-brand-800 px-4 py-3 text-white">
+            <div class="min-w-0">
+                <h2 id="admin-chat-panel-title" class="text-sm font-semibold !text-white">Messages · Booking #{{ $booking->id }}</h2>
+                <p class="truncate text-xs text-white/75">{{ $bookingClientName }}</p>
+            </div>
+            <button type="button" id="admin-chat-close" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white" aria-label="Close messages"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <div class="flex gap-1 border-b border-slate-200 bg-slate-50 p-1.5" role="group" aria-label="Messages or meetings">
+            <button type="button" data-chat-view="messages" aria-pressed="true" class="admin-chat-view-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+                <i class="fa-regular fa-comments text-xs" aria-hidden="true"></i>Messages
+            </button>
+            <button type="button" data-chat-view="meetings" aria-pressed="false" class="admin-chat-view-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+                <i class="fa-regular fa-calendar text-xs" aria-hidden="true"></i>Client Meetings
+                @if($openMeetingCount > 0)
+                    <span class="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800 tabular-nums">{{ $openMeetingCount }}</span>
+                @endif
+            </button>
+        </div>
+        <div id="admin-chat-view-messages" class="min-h-0 flex-1 overflow-y-auto">
+            <x-booking-conversation
+                :booking="$booking"
+                role="admin"
+                :booking-messages="$bookingMessages"
+                :unread-count="$unreadMessageCount ?? 0"
+                :active-quotation="$activeQuotation"
+            />
+        </div>
+        <div id="admin-chat-view-meetings" class="hidden min-h-0 flex-1 overflow-y-auto">
 
         {{-- Client Meetings (README Client Workflow: client and Raflora can meet about the booking) --}}
-        @php
-            $adminMeetings = $booking->meetings()->orderByDesc('scheduled_datetime')->get();
-            $adminMeetingsAllowed = \App\Models\Meeting::bookingAllowsMeetings($booking);
-            $openMeetingCount = $adminMeetings->filter(fn ($m) => $m->isOpen())->count();
-        @endphp
-        <section class="rf-admin-card overflow-hidden" aria-labelledby="meetings-heading">
+        <section id="meetings-section" class="rf-admin-card overflow-hidden" aria-labelledby="meetings-heading">
             <div class="{{ $cardHeader }}">
                 <div>
                     <h2 id="meetings-heading" class="{{ $cardTitle }}">Client Meetings</h2>
@@ -1709,7 +1969,13 @@
                 </form>
             @endif
         </section>
+        </div>
     </div>
+
+    <button type="button" id="admin-chat-launcher" class="fixed bottom-6 right-6 z-[46] inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand-700 text-white shadow-lg ring-4 ring-white transition hover:bg-brand-800 focus:outline-none focus-visible:ring-brand-300" aria-controls="admin-chat-panel" aria-expanded="false" aria-label="Open messages and client meetings" title="Messages &amp; client meetings">
+        <i id="admin-chat-launcher-icon" class="fa-solid fa-comments text-xl" aria-hidden="true"></i>
+        <span id="admin-comm-unread-badge" class="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-none text-white tabular-nums ring-2 ring-white {{ ($unreadMessageCount ?? 0) > 0 ? '' : 'hidden' }}">{{ $unreadMessageCount ?? 0 }}</span>
+    </button>
 
     {{-- ============================== MODALS ============================== --}}
     <div id="aiMaterialModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="aiMaterialModalTitle">
@@ -1780,16 +2046,48 @@
             const INACTIVE = ['border-transparent', 'text-slate-500', 'hover:border-slate-300', 'hover:text-slate-800'];
             const storageKey = 'raflora_admin_booking_tab_{{ $booking->id }}';
 
+            const sectionModal = document.getElementById('booking-section-modal');
+            const STATE_CHIPS = {
+                done: ['bg-emerald-100', 'text-emerald-800', 'Completed'],
+                action: ['bg-orange-100', 'text-orange-800', 'Needs action'],
+                waiting: ['bg-sky-100', 'text-sky-800', 'Waiting for client'],
+            };
+            let lastFocus = null;
+
+            // Overview is the page itself; every other section opens in the pop-up over it.
             function switchTab(tabId) {
                 const selected = document.getElementById(tabId);
                 if (!selected || !selected.classList.contains('tab-content')) return;
+                const isOverview = tabId === 'tab-overview';
 
                 document.querySelectorAll('.tab-content').forEach(el => {
-                    el.classList.add('hidden');
-                    el.classList.remove('block');
+                    if (el.id === 'tab-overview') return;
+                    el.classList.toggle('hidden', el !== selected);
+                    el.classList.toggle('block', el === selected);
                 });
-                selected.classList.remove('hidden');
-                selected.classList.add('block');
+
+                if (isOverview) {
+                    if (!sectionModal.classList.contains('hidden')) {
+                        sectionModal.classList.add('hidden');
+                        sectionModal.classList.remove('flex');
+                        document.body.classList.remove('overflow-hidden');
+                        if (lastFocus) lastFocus.focus({ preventScroll: true });
+                    }
+                } else {
+                    const button = document.getElementById(tabId + '-button');
+                    document.getElementById('booking-section-modal-title').textContent = button.querySelector('span:not([aria-hidden]):not(.sr-only)')?.textContent.trim() || '';
+                    document.getElementById('booking-section-modal-icon').className = (button.querySelector('i')?.className || '').replace('opacity-80', '').trim();
+                    const chip = document.getElementById('booking-section-modal-state');
+                    const chipStyle = STATE_CHIPS[button.dataset.tabState];
+                    chip.className = 'rounded-full px-2 py-0.5 text-[11px] font-semibold ' + (chipStyle ? chipStyle.slice(0, 2).join(' ') : 'hidden');
+                    chip.textContent = chipStyle ? chipStyle[2] : '';
+                    if (sectionModal.classList.contains('hidden')) lastFocus = document.activeElement;
+                    sectionModal.classList.remove('hidden');
+                    sectionModal.classList.add('flex');
+                    document.getElementById('booking-section-modal-body').scrollTop = 0;
+                    document.body.classList.add('overflow-hidden');
+                    sectionModal.querySelector('[data-section-modal-panel]').focus?.({ preventScroll: true });
+                }
 
                 document.querySelectorAll('.tab-button').forEach(btn => {
                     const isActive = btn.dataset.target === tabId;
@@ -1803,11 +2101,6 @@
                 try { sessionStorage.setItem(storageKey, tabId); } catch (e) {}
                 if (history.replaceState) {
                     history.replaceState(null, '', '#' + tabId.replace('tab-', ''));
-                }
-
-                if (tabId === 'tab-communication') {
-                    const refreshBtn = document.getElementById('comm-refresh-btn');
-                    if (refreshBtn) refreshBtn.click();
                 }
             }
             window.switchTab = switchTab;
@@ -1823,8 +2116,38 @@
                         : event.key === 'ArrowRight' ? (index === last ? 0 : index + 1)
                         : (index === 0 ? last : index - 1);
                     all[next].focus();
-                    switchTab(all[next].dataset.target);
                 });
+            });
+
+            // "Next step" shortcut: a section id opens its pop-up; anything else is a card on the Overview.
+            window.goToBookingSection = function (target) {
+                const el = document.getElementById(target);
+                if (!el) return;
+                if (el.classList.contains('tab-content')) {
+                    switchTab(target);
+                    return;
+                }
+                // A card inside a section opens that section's pop-up and scrolls to the card.
+                const section = el.closest('.tab-content');
+                if (section && section.id !== 'tab-overview') {
+                    switchTab(section.id);
+                    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+                    return;
+                }
+                switchTab('tab-overview');
+                el.closest('section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+
+            sectionModal.addEventListener('click', (event) => {
+                if (event.target === sectionModal) switchTab('tab-overview');
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape' || sectionModal.classList.contains('hidden')) return;
+                // A pop-up opened from inside the section (material review, confirm, etc.) closes first.
+                const nested = [...document.querySelectorAll('[aria-modal="true"]')].some(el => el !== sectionModal && el.getClientRects().length > 0);
+                if (nested) return;
+                event.stopImmediatePropagation();
+                switchTab('tab-overview');
             });
 
             document.addEventListener('DOMContentLoaded', () => {
@@ -1834,6 +2157,83 @@
                 const initial = [fromHash, stored].find(id => id && document.getElementById(id)?.classList.contains('tab-content'));
                 if (initial && initial !== 'tab-overview') {
                     switchTab(initial);
+                }
+            });
+        })();
+
+        // Floating messages panel: stays available on every tab and reopens after a page reload.
+        (function () {
+            const panel = document.getElementById('admin-chat-panel');
+            const launcher = document.getElementById('admin-chat-launcher');
+            const launcherIcon = document.getElementById('admin-chat-launcher-icon');
+            if (!panel || !launcher) return;
+            const storageKey = 'raflora_admin_booking_chat_{{ $booking->id }}';
+            const ACTIVE = ['bg-white', 'text-brand-800', 'shadow-sm'];
+            const INACTIVE = ['text-slate-500', 'hover:text-slate-800'];
+            let currentView = 'messages';
+
+            function remember(open) {
+                try { sessionStorage.setItem(storageKey, JSON.stringify({ open, view: currentView })); } catch (e) {}
+            }
+
+            function setView(view) {
+                currentView = view === 'meetings' ? 'meetings' : 'messages';
+                document.getElementById('admin-chat-view-messages').classList.toggle('hidden', currentView !== 'messages');
+                document.getElementById('admin-chat-view-meetings').classList.toggle('hidden', currentView !== 'meetings');
+                panel.querySelectorAll('.admin-chat-view-btn').forEach(btn => {
+                    const isActive = btn.dataset.chatView === currentView;
+                    btn.classList.remove(...(isActive ? INACTIVE : ACTIVE));
+                    btn.classList.add(...(isActive ? ACTIVE : INACTIVE));
+                    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                });
+                if (panel.classList.contains('hidden')) return;
+                if (currentView === 'messages') document.getElementById('comm-refresh-btn')?.click();
+                remember(true);
+            }
+
+            function openChat(view) {
+                panel.classList.remove('hidden');
+                panel.classList.add('flex');
+                launcher.setAttribute('aria-expanded', 'true');
+                launcher.setAttribute('aria-label', 'Close messages');
+                launcherIcon.className = 'fa-solid fa-xmark text-xl';
+                setView(view || currentView);
+                remember(true);
+                if (currentView === 'messages') document.getElementById('comm-message-text')?.focus({ preventScroll: true });
+            }
+
+            function closeChat() {
+                panel.classList.add('hidden');
+                panel.classList.remove('flex');
+                launcher.setAttribute('aria-expanded', 'false');
+                launcher.setAttribute('aria-label', 'Open messages and client meetings');
+                launcherIcon.className = 'fa-solid fa-comments text-xl';
+                remember(false);
+            }
+
+            window.openBookingChat = openChat;
+            launcher.addEventListener('click', () => panel.classList.contains('hidden') ? openChat() : closeChat());
+            document.getElementById('admin-chat-close').addEventListener('click', () => { closeChat(); launcher.focus(); });
+            panel.querySelectorAll('.admin-chat-view-btn').forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.chatView)));
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape' || panel.classList.contains('hidden')) return;
+                // Let an open pop-up (material review, substitute, etc.) close first.
+                if ([...document.querySelectorAll('[aria-modal="true"]')].some(el => el.getClientRects().length > 0)) return;
+                closeChat();
+                launcher.focus();
+            });
+
+            document.addEventListener('DOMContentLoaded', () => {
+                let saved = null;
+                try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (e) {}
+                if (panel.dataset.meetingError === '1') {
+                    openChat('meetings');
+                } else if (location.hash === '#communication') {
+                    openChat('messages');
+                } else if (saved && saved.open) {
+                    openChat(saved.view);
+                } else {
+                    setView(saved?.view || 'messages');
                 }
             });
         })();
@@ -2009,6 +2409,17 @@
                     removeCheckbox.addEventListener('change', updateLineTotals);
                 }
             });
+
+            // "Confirm all" reloads the page, so warn when typed quantities or prices would be discarded.
+            const confirmAllForm = document.getElementById('confirmAllMaterialsForm');
+            if (confirmAllForm) {
+                const baseMessage = confirmAllForm.dataset.confirmMessage;
+                document.querySelectorAll('tr[id^="row_"] input[name$="[quantity]"], tr[id^="row_"] input[name$="[unit_price]"]').forEach((input) => {
+                    input.addEventListener('input', () => {
+                        confirmAllForm.dataset.confirmMessage = 'Quantities or prices you typed in the table are not saved yet and will be discarded. ' + baseMessage;
+                    });
+                });
+            }
 
             const multiplierInput = document.getElementById('markup-multiplier');
             if (multiplierInput) {

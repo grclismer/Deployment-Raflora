@@ -1,14 +1,4 @@
 <x-admin-layout title="Dashboard" description="Bookings, revenue, inventory and follow-ups at a glance.">
-    <x-slot:actions>
-        <a
-            href="{{ route('bookings.create') }}"
-            class="inline-flex items-center gap-2 h-9 px-4 bg-brand-700 hover:bg-brand-800 text-white font-semibold text-sm rounded-lg shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
-        >
-            <i class="fa-solid fa-plus text-xs" aria-hidden="true"></i>
-            <span>New Booking</span>
-        </a>
-    </x-slot:actions>
-
     @php
         $peso = fn ($value) => '₱' . number_format((float) $value, 2);
 

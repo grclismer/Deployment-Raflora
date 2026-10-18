@@ -224,6 +224,7 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
     Route::post('/bookings/{booking}/messages', [BookingController::class, 'sendMessage'])->name('bookings.messages.store');
     Route::post('/bookings/{booking}/messages/read', [BookingController::class, 'markMessagesRead'])->name('bookings.messages.read');
     Route::post('/bookings/{booking}/request-cancellation', [BookingController::class, 'requestCancellation'])->name('bookings.request-cancellation');
+    Route::post('/bookings/{booking}/delivery-received', [BookingController::class, 'confirmDeliveryReceived'])->name('bookings.delivery-received');
     Route::post('/bookings/{booking}/payment-reference', [BookingController::class, 'submitPaymentReference'])->name('bookings.payment.reference');
     Route::post('/bookings/{booking}/proposals/{presentation}/feedback', [BookingController::class, 'submitProposalFeedback'])->name('bookings.proposals.feedback');
     // Client ↔ Raflora meetings (README Client Workflow)
@@ -433,6 +434,7 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     Route::post('/bookings/{booking}/ai-link', [AdminBookingController::class, 'linkAiItem'])->name('admin.bookings.ai.link');
     Route::post('/bookings/{booking}/ai-promote', [AdminBookingController::class, 'promoteAiItem'])->name('admin.bookings.ai.promote');
     Route::post('/bookings/{booking}/items/{bookingItem}/confirm', [AdminBookingController::class, 'confirmMaterial'])->name('admin.bookings.items.confirm');
+    Route::post('/bookings/{booking}/items/confirm-all', [AdminBookingController::class, 'confirmAllMaterials'])->name('admin.bookings.items.confirm-all');
     Route::post('/bookings/{booking}/final-approve', [AdminBookingController::class, 'finalApproveQuotation'])->name('admin.bookings.final-approve');
     // Admin negotiation loop
     Route::post('/bookings/{booking}/reply', [AdminBookingController::class, 'reply'])->name('admin.bookings.reply');
@@ -447,9 +449,13 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     Route::post('/bookings/{booking}/decline', [AdminBookingController::class, 'decline'])->name('admin.bookings.decline');
     Route::post('/bookings/{booking}/reserve-materials', [AdminBookingController::class, 'reserveMaterials'])->name('admin.bookings.reserve-materials');
     Route::post('/bookings/{booking}/confirm-fresh-flowers', [AdminBookingController::class, 'confirmFreshFlowers'])->name('admin.bookings.confirm-fresh-flowers');
+    Route::post('/bookings/{booking}/delivery-received', [AdminBookingController::class, 'markDeliveryReceived'])->name('admin.bookings.delivery-received');
+    Route::post('/bookings/{booking}/schedule-requests/{scheduleRequest}', [AdminBookingController::class, 'decideScheduleRequest'])->name('admin.bookings.schedule-requests.decide');
     Route::post('/bookings/{booking}/resolve-shortages', [AdminBookingController::class, 'resolveBookingShortages'])->name('admin.bookings.resolve-shortages');
     Route::post('/notifications/resolve-booking-shortages/{booking}', [AdminBookingController::class, 'resolveBookingShortages'])->name('admin.notifications.resolve-booking-shortages');
     Route::post('/notifications/promote-booking-items/{booking}', [AdminBookingController::class, 'promoteBookingItemsToInventory'])->name('admin.notifications.promote-booking-items');
+    Route::get('/notifications/booking-shortages/{booking}/export', [\App\Http\Controllers\Admin\BookingShortageExportController::class, 'csv'])->name('admin.notifications.booking-shortages.export');
+    Route::get('/notifications/booking-shortages/{booking}/report', [\App\Http\Controllers\Admin\BookingShortageExportController::class, 'report'])->name('admin.notifications.booking-shortages.report');
     // Admin Dispatch
     Route::post('/bookings/{booking}/dispatch', [AdminBookingController::class, 'dispatchItems'])->name('admin.bookings.dispatch');
     Route::post('/bookings/transactions/{transaction}/correct-dispatch', [AdminBookingController::class, 'correctDispatch'])->name('admin.bookings.dispatch.correct');
@@ -498,6 +504,7 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     // Note: Admin Return Tracking real routes are defined above (lines 170-173)
     // Admin Reports: KPI charts and operational activity
     Route::get('/reports', [ReportController::class, 'index'])->name('admin.reports');
+    Route::get('/reports/export', [ReportController::class, 'exportCsv'])->name('admin.reports.export');
     // Admin Client Records: View client history and records
     Route::get('/client-records', [\App\Http\Controllers\Admin\ClientRecordController::class, 'index'])->name('admin.client-records');
 

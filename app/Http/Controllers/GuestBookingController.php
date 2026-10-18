@@ -150,6 +150,12 @@ class GuestBookingController extends Controller
             $eventType = trim($request->input('other_event_type'));
         }
 
+        // A delivery order has no guests or tables (the form hides both).
+        if ($eventType === \App\Models\Booking::DELIVERY_EVENT_TYPE) {
+            $validated['table_count'] = null;
+            $validated['guest_count'] = null;
+        }
+
         $scaleContext = '';
         if (!empty($validated['table_count'])) {
             $scaleContext .= "Tables: {$validated['table_count']}. ";
@@ -331,18 +337,7 @@ class GuestBookingController extends Controller
 
             $actualUnitPrice = 0;
             // $totalCost will be calculated after we find the inventory item
-            $inventoryItem = InventoryItem::query()
-                ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($itemName)])
-                ->first();
-
-            if (!$inventoryItem) {
-                $normalizedName = $this->normalizeInventoryName($itemName);
-                $inventoryItem = InventoryItem::query()->get()->first(function ($candidate) use ($normalizedName): bool {
-                    return $this->normalizeInventoryName($candidate->name) === $normalizedName
-                        || str_contains($this->normalizeInventoryName($candidate->name), $normalizedName)
-                        || str_contains($normalizedName, $this->normalizeInventoryName($candidate->name));
-                });
-            }
+            $inventoryItem = $this->inventoryItemNamed($itemName);
 
             $materialEntry = $material;
             if ($inventoryItem) {
@@ -405,7 +400,26 @@ class GuestBookingController extends Controller
 
     protected function normalizeInventoryName(?string $name): string
     {
-        return strtolower(trim(preg_replace('/[^a-z0-9]+/', ' ', (string) $name) ?? ''));
+        // Lower-case first: the pattern keeps only a-z and 0-9, so capitals must not be stripped.
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $name)) ?? '');
+    }
+
+    /**
+     * The catalog item an AI suggestion names: an exact match ignoring case and punctuation, and
+     * only when one catalog item has that name. A partial name (e.g. "Tulip" inside "Handmade Pink
+     * Velvet Tulip") is never linked; the row stays unmatched for Admin to link or promote.
+     */
+    protected function inventoryItemNamed(string $name): ?InventoryItem
+    {
+        $normalized = $this->normalizeInventoryName($name);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $matches = InventoryItem::query()->get()
+            ->filter(fn (InventoryItem $candidate): bool => $this->normalizeInventoryName($candidate->name) === $normalized);
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     protected function createInventoryShortageAlert(Booking $booking, InventoryItem $inventoryItem, float $required): void
@@ -858,14 +872,7 @@ class GuestBookingController extends Controller
                 $mName = trim((string) ($materialItem['item_name'] ?? ''));
                 $invItem = null;
                 if ($mName !== '') {
-                    $invItem = InventoryItem::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($mName)])->first();
-                    if (!$invItem) {
-                        $normMName = $this->normalizeInventoryName($mName);
-                        $invItem = InventoryItem::get()->first(function ($candidate) use ($normMName) {
-                            $candNorm = $this->normalizeInventoryName($candidate->name);
-                            return $candNorm === $normMName || str_contains($candNorm, $normMName) || str_contains($normMName, $candNorm);
-                        });
-                    }
+                    $invItem = $this->inventoryItemNamed($mName);
                 }
 
                 if ($invItem && !empty($invItem->image_path) && Storage::disk('local')->exists($invItem->image_path)) {

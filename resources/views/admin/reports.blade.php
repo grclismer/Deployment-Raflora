@@ -1,4 +1,9 @@
 <x-admin-layout title="Reports & Analytics">
+    <x-slot:actions>
+        <a href="{{ route('admin.reports.export') }}" class="inline-flex items-center gap-2 h-9 px-4 bg-brand-700 hover:bg-brand-800 text-white font-semibold text-sm rounded-lg shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2" title="Download this report as a CSV file">
+            <i class="fa-solid fa-file-arrow-down text-xs" aria-hidden="true"></i>Export Report (CSV)
+        </a>
+    </x-slot:actions>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
     <div class="mx-auto max-w-[1600px] space-y-6">

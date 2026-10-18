@@ -456,7 +456,12 @@ class BookingCommunicationTest extends TestCase
         $response->assertSee('Live Sync');
         $response->assertSee('Hello Admin, this is a test message from client.');
         $response->assertSee('Ref: Quotation v1');
-        $response->assertSee('data-target="tab-communication"', false);
+        // The conversation opens from a floating message button on every tab instead of its own tab.
+        $response->assertSee('id="admin-chat-launcher"', false);
+        $response->assertSee('id="admin-chat-panel"', false);
+        $response->assertSee('data-chat-view="meetings"', false);
+        $response->assertSee('id="meetings-heading"', false);
+        $response->assertDontSee('data-target="tab-communication"', false);
     }
 
     public function test_client_booking_analysis_renders_conversation_component(): void

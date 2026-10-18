@@ -213,8 +213,10 @@ class BookingController extends Controller
             $selectedPackage = \App\Models\Package::find($validated['package_id']);
         }
 
-        $tableCount = $request->input('table_count');
-        $guestCount = $request->input('guest_count');
+        // A delivery order has no guests or tables (the form hides both).
+        $isDeliveryOrder = $validated['event_type'] === \App\Models\Booking::DELIVERY_EVENT_TYPE;
+        $tableCount = $isDeliveryOrder ? null : $request->input('table_count');
+        $guestCount = $isDeliveryOrder ? null : $request->input('guest_count');
 
         $eventType = $validated['event_type'];
         if ($eventType === 'other' && !empty($request->input('other_event_type'))) {
@@ -671,18 +673,7 @@ class BookingController extends Controller
             $rawAiPrice = $material['unit_cost_php'] ?? $material['estimated_unit_cost_php'] ?? $material['estimated_unit_cost'] ?? null;
             $aiRecommendedPrice = is_numeric($rawAiPrice) && (float) $rawAiPrice > 0 ? round((float) $rawAiPrice, 2) : null;
 
-            $inventoryItem = InventoryItem::query()
-                ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($itemName)])
-                ->first();
-
-            if (!$inventoryItem) {
-                $normalizedName = $this->normalizeInventoryName($itemName);
-                $inventoryItem = InventoryItem::query()->get()->first(function ($candidate) use ($normalizedName): bool {
-                    return $this->normalizeInventoryName($candidate->name) === $normalizedName
-                        || str_contains($this->normalizeInventoryName($candidate->name), $normalizedName)
-                        || str_contains($normalizedName, $this->normalizeInventoryName($candidate->name));
-                });
-            }
+            $inventoryItem = $this->inventoryItemNamed($itemName);
 
             $verifiedUnitPrice = $inventoryItem ? (float) $inventoryItem->unit_cost : 0.0;
             $totalCost += $quantity * $verifiedUnitPrice;
@@ -747,7 +738,26 @@ class BookingController extends Controller
 
     protected function normalizeInventoryName(?string $name): string
     {
-        return strtolower(trim(preg_replace('/[^a-z0-9]+/', ' ', (string) $name) ?? ''));
+        // Lower-case first: the pattern keeps only a-z and 0-9, so capitals must not be stripped.
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $name)) ?? '');
+    }
+
+    /**
+     * The catalog item an AI suggestion names: an exact match ignoring case and punctuation, and
+     * only when one catalog item has that name. A partial name (e.g. "Tulip" inside "Handmade Pink
+     * Velvet Tulip") is never linked; the row stays unmatched for Admin to link or promote.
+     */
+    protected function inventoryItemNamed(string $name): ?InventoryItem
+    {
+        $normalized = $this->normalizeInventoryName($name);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $matches = InventoryItem::query()->get()
+            ->filter(fn (InventoryItem $candidate): bool => $this->normalizeInventoryName($candidate->name) === $normalized);
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     protected function createInventoryShortageAlert(Booking $booking, InventoryItem $inventoryItem, float $required): void
@@ -776,6 +786,9 @@ class BookingController extends Controller
         ]);
     }
 
+    /** Booking statuses in which the client may send a reference for the remaining balance. */
+    public const BALANCE_PAYMENT_STATUSES = ['event_in_progress', 'event_completed', 'pending_resolution'];
+
     public function submitPaymentReference(Request $request, Booking $booking): RedirectResponse
     {
         $client = $this->resolveClient();
@@ -785,7 +798,8 @@ class BookingController extends Controller
         }
 
         $isInitialPayment = $booking->status === 'admin_approved';
-        $isPostEventPayment = in_array($booking->status, ['event_completed', 'pending_resolution'], true);
+        // Remaining balance: from the event day on (in progress, completed, or settling extra charges).
+        $isPostEventPayment = in_array($booking->status, self::BALANCE_PAYMENT_STATUSES, true);
 
         if ($booking->status === 'pending_return') {
             return back()->with('error', 'Payment reference cannot be submitted while material return reconciliation is in progress.');
@@ -854,7 +868,7 @@ class BookingController extends Controller
             }
 
             $lockedIsInitial = $lockedBooking->status === 'admin_approved';
-            $lockedIsPostEvent = in_array($lockedBooking->status, ['event_completed', 'pending_resolution'], true);
+            $lockedIsPostEvent = in_array($lockedBooking->status, self::BALANCE_PAYMENT_STATUSES, true);
 
             if (!$lockedIsInitial && !$lockedIsPostEvent) {
                 return 'Payment reference cannot be submitted at this time.';
@@ -975,30 +989,36 @@ class BookingController extends Controller
             abort(403, 'Unauthorized access to this booking.');
         }
 
-        if ($booking->status !== 'quotation_sent') {
+        // Changes can be requested any time before the event starts.
+        if (!in_array($booking->status, \App\Services\ScheduleChangeService::OPEN_STATUSES, true)) {
             return back()->with('error', 'This booking cannot be modified at this stage.');
         }
 
+        // Each change type asks for its own details: an item and quantity, a new schedule, or a description.
         $validated = $request->validate([
             'change_type' => ['required', 'string', 'in:material,item,schedule,other'],
-            'change_item' => ['required', 'string', 'max:255'],
-            'change_quantity' => ['required', 'integer', 'min:1'],
-            'change_reason' => ['nullable', 'string', 'max:2000'],
+            'change_item' => ['nullable', 'required_if:change_type,material,item', 'string', 'max:255'],
+            'change_quantity' => ['nullable', 'required_if:change_type,material,item', 'integer', 'min:1'],
+            'requested_date' => ['nullable', 'required_if:change_type,schedule', 'date', 'after_or_equal:today'],
+            'requested_start_time' => ['nullable', 'date_format:H:i'],
+            'requested_end_time' => ['nullable', 'date_format:H:i', 'after:requested_start_time'],
+            'change_reason' => ['nullable', 'required_if:change_type,other', 'string', 'max:2000'],
+        ], [
+            'change_item.required_if' => 'Please enter the item or material you want to change.',
+            'change_quantity.required_if' => 'Please enter the quantity.',
+            'requested_date.required_if' => 'Please choose the new event date.',
+            'requested_date.after_or_equal' => 'The new event date cannot be in the past.',
+            'requested_end_time.after' => 'The end time must be after the start time.',
+            'change_reason.required_if' => 'Please describe the change you would like.',
         ]);
 
         try {
             \Illuminate\Support\Facades\DB::transaction(function () use ($booking, $client, $validated) {
                 $activeQuotation = $booking->activeQuotation()->first();
 
-                $messageText = sprintf(
-                    "Request Changes:\nType: %s\nItem/Material: %s\nQuantity: %d\nDetails: %s",
-                    ucfirst($validated['change_type']),
-                    $validated['change_item'],
-                    $validated['change_quantity'],
-                    $validated['change_reason'] ?? 'None provided'
-                );
+                $messageText = $this->changeRequestMessage($booking, $validated);
 
-                \App\Models\BookingMessage::create([
+                $changeMessage = \App\Models\BookingMessage::create([
                     'booking_id' => $booking->id,
                     'sender_type' => 'client',
                     'sender_id' => $client?->id,
@@ -1006,8 +1026,25 @@ class BookingController extends Controller
                     'related_quotation_version' => $activeQuotation?->version,
                 ]);
 
-                $booking->status = 'change_requested';
-                $booking->save();
+                // A new date/time is kept as a request Admin accepts or declines from the Quotation section.
+                if ($validated['change_type'] === 'schedule') {
+                    app(\App\Services\ScheduleChangeService::class)->record($booking, $validated, $changeMessage);
+                }
+
+                // Only an issued quotation goes back to revision; later stages (accepted, paid,
+                // confirmed) keep their status and Admin handles the request from the booking.
+                if ($booking->status === 'quotation_sent') {
+                    $booking->status = 'change_requested';
+                    $booking->save();
+                }
+
+                AdminAlert::create([
+                    'type' => 'change_requested',
+                    'title' => 'Change Requested: Booking #' . $booking->id,
+                    'message' => Str::limit(str_replace("\n", ' · ', trim(Str::after($messageText, 'Request Changes:'))), 150),
+                    'booking_id' => $booking->id,
+                    'is_read' => false,
+                ]);
 
                 $this->logAuditEvent('booking', 'change_requested', $booking, 'Client requested changes to the quotation', \Illuminate\Support\Facades\Auth::id());
             });
@@ -1019,6 +1056,38 @@ class BookingController extends Controller
         }
     }
 
+    /**
+     * The change request as a chat message (parsed by components/booking-conversation):
+     * "Request Changes:" then Type, and Item/Material + Quantity or Schedule, then Details.
+     */
+    protected function changeRequestMessage(Booking $booking, array $validated): string
+    {
+        $type = $validated['change_type'];
+        $details = trim((string) ($validated['change_reason'] ?? '')) ?: 'None provided';
+
+        if ($type === 'schedule') {
+            $time = fn (?string $value) => $value ? \Illuminate\Support\Carbon::createFromFormat('H:i', $value)->format('g:i A') : null;
+            $start = $time($validated['requested_start_time'] ?? null);
+            $end = $time($validated['requested_end_time'] ?? null);
+            $schedule = \Illuminate\Support\Carbon::parse($validated['requested_date'])->format('M j, Y')
+                . ($start ? ' · ' . $start . ($end ? ' – ' . $end : '') : ($end ? ' · until ' . $end : ''));
+            $current = $booking->event_date ? ' (currently ' . $booking->event_date->format('M j, Y') . ')' : '';
+
+            return "Request Changes:\nType: Schedule\nSchedule: {$schedule}{$current}\nDetails: {$details}";
+        }
+
+        if ($type === 'other') {
+            return "Request Changes:\nType: Other\nDetails: {$details}";
+        }
+
+        return sprintf(
+            "Request Changes:\nType: %s\nItem/Material: %s\nQuantity: %d\nDetails: %s",
+            ucfirst($type),
+            $validated['change_item'],
+            $validated['change_quantity'],
+            $details
+        );
+    }
     public function replyToAdmin(Request $request, Booking $booking, \App\Services\BookingAttachmentService $attachmentService): RedirectResponse
     {
         $client = $this->resolveClient();
@@ -1288,6 +1357,37 @@ class BookingController extends Controller
             'marked_read' => $affected,
             'unread_count' => 0,
         ]);
+    }
+
+    /**
+     * Delivery orders: the client confirms the items arrived. No return audit follows.
+     */
+    public function confirmDeliveryReceived(Booking $booking, \App\Services\DeliveryOrderService $deliveryOrders): RedirectResponse
+    {
+        $client = $this->resolveClient();
+
+        if ($booking->client_id !== $client?->id) {
+            abort(403, 'Unauthorized access to this booking.');
+        }
+
+        try {
+            $status = $deliveryOrders->markReceived($booking, \Illuminate\Support\Facades\Auth::id(), \App\Services\DeliveryOrderService::VIA_CLIENT);
+        } catch (\RuntimeException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+
+        AdminAlert::create([
+            'type' => 'delivery_received',
+            'title' => 'Delivery Received: Booking #' . $booking->id,
+            'message' => 'The client confirmed they received their delivery order.'
+                . ($status === 'completed' ? ' The booking is now complete.' : ' The remaining balance is still due.'),
+            'booking_id' => $booking->id,
+            'is_read' => false,
+        ]);
+
+        return redirect()->back()->with('success', $status === 'completed'
+            ? 'Thank you! Your order is marked as received and your booking is complete.'
+            : 'Thank you! Your order is marked as received. Please settle the remaining balance to close your booking.');
     }
 
     public function requestCancellation(Request $request, Booking $booking): RedirectResponse

@@ -99,7 +99,7 @@
                 </div>
             </div>
             @if($isAdmin)
-                <button type="button" onclick="if(window.switchTab) switchTab('tab-quotation');" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition shadow-xs shrink-0">
+                <button type="button" onclick="if(window.switchTab) switchTab('tab-quotation'); setTimeout(() => document.getElementById('schedule-change-request')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition shadow-xs shrink-0">
                     <i class="fa-solid fa-file-signature mr-1.5"></i>Review &amp; Update Quotation
                 </button>
             @endif
@@ -140,6 +140,7 @@
                                 if (str_starts_with($line, 'Type:')) $changeDetails['type'] = trim(substr($line, 5));
                                 elseif (str_starts_with($line, 'Item/Material:')) $changeDetails['item'] = trim(substr($line, 14));
                                 elseif (str_starts_with($line, 'Quantity:')) $changeDetails['quantity'] = trim(substr($line, 9));
+                                elseif (str_starts_with($line, 'Schedule:')) $changeDetails['schedule'] = trim(substr($line, 9));
                                 elseif (str_starts_with($line, 'Details:')) $changeDetails['details'] = trim(substr($line, 8));
                                 elseif (str_starts_with($line, 'Reason:')) $changeDetails['reason'] = trim(substr($line, 7));
                             }
@@ -198,6 +199,12 @@
                                                     <strong class="font-semibold">{{ $changeDetails['quantity'] }}</strong>
                                                 </div>
                                             @endif
+                                        </div>
+                                    @endif
+                                    @if(!empty($changeDetails['schedule']))
+                                        <div class="text-xs mb-2">
+                                            <span class="text-[11px] block opacity-75">Requested schedule:</span>
+                                            <strong class="font-semibold">{{ $changeDetails['schedule'] }}</strong>
                                         </div>
                                     @endif
                                     @php
@@ -517,15 +524,15 @@
                 unreadChip.classList.add('hidden');
             }
         }
-        const adminTabBadge = document.getElementById('admin-comm-unread-badge');
-        if (adminTabBadge) {
+        // Launcher badges of the floating chat panels (Admin and client booking pages).
+        document.querySelectorAll('#admin-comm-unread-badge, [data-chat-unread-badge]').forEach((badge) => {
             if (count > 0) {
-                adminTabBadge.textContent = count;
-                adminTabBadge.classList.remove('hidden');
+                badge.textContent = count;
+                badge.classList.remove('hidden');
             } else {
-                adminTabBadge.classList.add('hidden');
+                badge.classList.add('hidden');
             }
-        }
+        });
     }
 
     function escapeHtml(text) {
@@ -550,11 +557,12 @@
         let bodyHtml = '';
         if (isChangeRequest) {
             const lines = rawText.trim().split('\n');
-            let type = '', item = '', qty = '', reason = '';
+            let type = '', item = '', qty = '', schedule = '', reason = '';
             lines.forEach(line => {
                 if (line.startsWith('Type:')) type = line.substring(5).trim();
                 else if (line.startsWith('Item/Material:')) item = line.substring(14).trim();
                 else if (line.startsWith('Quantity:')) qty = line.substring(9).trim();
+                else if (line.startsWith('Schedule:')) schedule = line.substring(9).trim();
                 else if (line.startsWith('Details:')) reason = line.substring(8).trim();
                 else if (line.startsWith('Reason:')) reason = line.substring(7).trim();
             });
@@ -580,6 +588,7 @@
                         ${typeBadge}
                     </div>
                     ${itemQtyGrid}
+                    ${schedule ? `<div class="text-xs mb-2"><span class="text-[11px] block opacity-75">Requested schedule:</span><strong class="font-semibold">${escapeHtml(schedule)}</strong></div>` : ''}
                     ${reasonHtml}
                 </div>`;
         } else if (isCancellation) {

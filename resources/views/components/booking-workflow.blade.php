@@ -153,6 +153,9 @@
             <span class="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
                 <i class="fa-solid fa-circle-check" aria-hidden="true"></i>Workflow complete · {{ $workflow['total'] }} of {{ $workflow['total'] }}
             </span>
+        @elseif($workflow['current'] && isset($action) && $action->isNotEmpty())
+            {{-- Optional shortcut (Admin booking page) shown in place of the stage badge. --}}
+            <div class="shrink-0">{{ $action }}</div>
         @elseif($workflow['current'])
             <span class="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold {{ $palette['badge'] }}">
                 Stage {{ $workflow['current_number'] }} of {{ $workflow['total'] }} · {{ $workflow['current_label'] }}

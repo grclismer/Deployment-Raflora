@@ -36,14 +36,14 @@ class GuestBookingStep4RedesignTest extends TestCase
 
         // 2. Compact review cards
         $this->assertStringContainsString('id="review-card-event"', $html);
-        $this->assertStringContainsString('id="review-card-method"', $html);
+        // The booking method is shown in the Inspiration Images / Selected Package card (no separate card).
+        $this->assertStringNotContainsString('id="review-card-method"', $html);
         $this->assertStringContainsString('id="review-card-images"', $html);
         $this->assertStringContainsString('id="review-ai-materials-section"', $html);
         $this->assertStringContainsString('id="review-card-contact"', $html);
 
         // 3. Mobile accordion summary elements
         $this->assertStringContainsString('id="review-event-mobile-summary"', $html);
-        $this->assertStringContainsString('id="review-method-mobile-summary"', $html);
         $this->assertStringContainsString('id="review-media-mobile-summary"', $html);
         $this->assertStringContainsString('id="review-contact-mobile-summary"', $html);
         $this->assertStringContainsString('toggleReviewCard', $html);

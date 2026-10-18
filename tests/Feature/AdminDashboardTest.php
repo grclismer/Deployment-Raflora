@@ -92,8 +92,9 @@ class AdminDashboardTest extends TestCase
         $response->assertSee('Inventory Status');
         $response->assertSee('Recent Bookings');
         $response->assertSee('Low Stock Items');
-        $response->assertSee('New Booking');
-        $response->assertSee(route('bookings.create'));
+        // The header has no New Booking button or booking search on the Dashboard.
+        $response->assertDontSee('New Booking');
+        $response->assertDontSee('id="adminGlobalSearch"', false);
 
         // Confirm required view data contracts exist
         $response->assertViewHas([

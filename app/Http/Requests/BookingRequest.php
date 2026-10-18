@@ -26,7 +26,7 @@ class BookingRequest extends FormRequest
         return [
             'booking_type' => ['nullable', 'string', 'in:custom_ai,preset'],
             'package_id' => ['nullable', 'exists:packages,id'],
-            'event_type' => ['required', 'string', 'in:wedding,birthday,corporate,other'],
+            'event_type' => ['required', 'string', 'in:wedding,birthday,corporate,delivery,other'],
             'other_event_type' => ['nullable', 'string', 'max:255', 'required_if:event_type,other'],
             'event_date' => ['required', 'date', 'after_or_equal:today'],
             'event_time' => ['nullable', 'date_format:H:i'],

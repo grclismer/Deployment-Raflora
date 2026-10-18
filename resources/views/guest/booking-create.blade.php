@@ -164,6 +164,7 @@
                                                     <option value="wedding" {{ old('event_type') === 'wedding' ? 'selected' : '' }}>Wedding</option>
                                                     <option value="birthday" {{ old('event_type') === 'birthday' ? 'selected' : '' }}>Birthday</option>
                                                     <option value="corporate" {{ old('event_type') === 'corporate' ? 'selected' : '' }}>Corporate</option>
+                                                    <option value="delivery" {{ old('event_type') === 'delivery' ? 'selected' : '' }}>Delivery</option>
                                                     <option value="other" {{ old('event_type') === 'other' ? 'selected' : '' }}>Other</option>
                                                 </select>
                                                 <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
@@ -230,7 +231,7 @@
                                         </div>
 
                                         <!-- Scale Fields (Expected Guests & Number of Tables side-by-side on Row 3) -->
-                                        <div class="col-span-1" id="scale-fields-container" data-span="lg:col-span-2">
+                                        <div class="col-span-1 {{ old('event_type') === 'delivery' ? 'hidden' : '' }}" id="scale-fields-container" data-span="lg:col-span-2" data-delivery-hidden>
                                             <label for="guest_count" class="block text-xs font-semibold text-[#0B1E43] mb-1">Expected Guests</label>
                                             <div class="relative">
                                                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
@@ -242,7 +243,7 @@
                                                 <p class="text-xs text-rose-600 mt-1 font-semibold">{{ $message }}</p>
                                             @enderror
                                         </div>
-                                        <div class="col-span-1" id="scale-tables-container">
+                                        <div class="col-span-1 {{ old('event_type') === 'delivery' ? 'hidden' : '' }}" id="scale-tables-container" data-delivery-hidden>
                                             <label for="table_count" class="block text-xs font-semibold text-[#0B1E43] mb-1">Number of Tables</label>
                                             <div class="relative">
                                                 <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
@@ -539,7 +540,8 @@
                                 </div>
                             </div>
                             
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                            {{-- These same fields are shown in the Step 4 "Review Contact Information" dialog while it is open. --}}
+                            <div id="guest-contact-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                                 <!-- Full Name -->
                                 <div>
                                     <label for="guest_name" class="block text-xs font-semibold text-slate-500 mb-1">Full Name <span class="text-rose-500">*</span></label>
@@ -669,36 +671,7 @@
                                     </div>
                                 </div>
 
-                                <!-- Review Card 2: Booking Method & Design -->
-                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="review-card-method">
-                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
-                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
-                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                        </div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <div class="min-w-0">
-                                                    <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">Booking Method &amp; Design</h4>
-                                                    <span id="review-method-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">Smart AI Custom Design</span>
-                                                </div>
-                                                <div class="flex items-center gap-1.5 shrink-0">
-                                                    <button type="button" onclick="showGuestStep(2)" class="inline-flex items-center gap-1 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs">
-                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                                        Edit
-                                                    </button>
-                                                    <button type="button" onclick="toggleReviewCard('review-card-method')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Booking Method">
-                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div id="review-card-method-body" class="mt-2 text-xs sm:text-sm font-bold text-[#0B1E43] hidden sm:block">
-                                                <span id="review-method-title">Smart AI Custom Design</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Review Card 3: Inspiration Images / Package -->
+                                <!-- Review Card 3: Inspiration Images / Package (also names the booking method) -->
                                 <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="review-card-images">
                                     <div class="p-4 sm:p-5 flex items-start gap-3.5">
                                         <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
@@ -718,6 +691,16 @@
                                                     <button type="button" onclick="toggleReviewCard('review-card-images')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Inspiration Images">
                                                         <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                                                     </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Booking Method & Design (moved here from its own card): "Smart AI Custom Design"
+                                                 in Inspiration Images, "Pre-Set Curated Package" in Selected Package -->
+                                            <div id="review-method-row" class="mb-3 pb-3 border-b border-slate-100">
+                                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Booking Method &amp; Design</span>
+                                                <div class="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-[#0B1E43]">
+                                                    <svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                                    <span id="review-method-title">Smart AI Custom Design</span>
                                                 </div>
                                             </div>
 
@@ -761,104 +744,13 @@
                                     </div>
                                 </div>
 
-                                <!-- Review Card 4: AI Analysis Summary (Custom AI Only) -->
-                                <div id="review-ai-materials-section" class="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5 hidden">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <div class="flex items-center gap-2.5 min-w-0">
-                                            <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                                            </div>
-                                            <div>
-                                                <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">AI Analysis Summary</h4>
-                                                <p class="text-[11px] text-slate-500">Indicative ranges and material suggestions per decoration area</p>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-1.5 shrink-0">
-                                            <button type="button" onclick="showGuestStep(2)" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition shadow-2xs">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                                                <span class="hidden sm:inline">View AI Analysis</span>
-                                            </button>
-                                            <button type="button" onclick="toggleReviewCard('review-ai-materials-section')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle AI Analysis Summary">
-                                                <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div id="review-ai-materials-section-body" class="space-y-3.5">
-                                        <!-- Compact Multi-Image AI Summary Metrics -->
-                                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs">
-                                            <div>
-                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Inspiration Images</span>
-                                                <span class="font-bold text-slate-800" id="review-images-count-text">1 image</span>
-                                            </div>
-                                            <div>
-                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Detected Materials</span>
-                                                <span class="font-bold text-emerald-700" id="review-materials-count-text">0 items</span>
-                                            </div>
-                                            <div class="col-span-2 sm:col-span-1">
-                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Price</span>
-                                                <span class="font-bold text-slate-800">In your official quotation</span>
-                                            </div>
-                                        </div>
-
-                                        {{-- All photos combined on the server: per-area AI ranges and quantities, with no figure counted twice --}}
-                                        <p id="review-estimate-status" class="hidden text-[11px] text-slate-500" role="status"></p>
-                                        <x-ai-estimate id="review-ai-estimate" class="mb-3 hidden" />
-                                        <x-decor-area-breakdown-live id="review-area-breakdown" class="mb-3" />
-
-                                        <div id="review-materials-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1 hidden"></div>
-
-                                        <!-- Review AI Disclaimers -->
-                                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                                            <p><strong class="text-slate-700">Seasonal Context:</strong> Sourced information is AI-assisted and reference-based. It requires Raflora florist validation and does not guarantee supplier availability.</p>
-                                            <p><strong class="text-slate-700">Business Truth:</strong> AI detection ≠ procurement feasibility ≠ inventory availability ≠ official quotation.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Review Card 5: Contact Information -->
-                                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all" id="review-card-contact">
-                                    <div class="p-4 sm:p-5 flex items-start gap-3.5">
-                                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100/60 mt-0.5">
-                                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                                        </div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <div class="min-w-0">
-                                                    <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">Contact Information</h4>
-                                                    <span id="review-contact-mobile-summary" class="sm:hidden text-xs text-slate-500 font-normal truncate block mt-0.5">-</span>
-                                                </div>
-                                                <div class="flex items-center gap-1.5 shrink-0">
-                                                    <button type="button" onclick="showGuestStep(3)" class="inline-flex items-center gap-1 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs">
-                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                                        Edit
-                                                    </button>
-                                                    <button type="button" onclick="toggleReviewCard('review-card-contact')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle Contact Information">
-                                                        <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            
-                                            <div id="review-card-contact-body" class="mt-4 pt-3.5 border-t border-slate-100 hidden sm:grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-3 text-xs">
-                                                <div>
-                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Full Name</span>
-                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="review-contact-name">-</span>
-                                                </div>
-                                                <div>
-                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Email</span>
-                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block truncate" id="review-contact-email">-</span>
-                                                </div>
-                                                <div>
-                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Mobile Phone</span>
-                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="review-contact-phone">-</span>
-                                                </div>
-                                                <div>
-                                                    <span class="text-slate-400 font-bold block text-[10px] uppercase tracking-wider">Physical Address</span>
-                                                    <span class="font-bold text-slate-800 text-xs sm:text-sm mt-0.5 block" id="review-contact-address">-</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <!-- Review Card 5: Contact Information, reviewed and edited in a dialog opened from the sidebar.
+                                     The review script still writes these values; they are not shown here. -->
+                                <div id="review-card-contact" class="hidden" aria-hidden="true">
+                                    <span id="review-contact-name">-</span>
+                                    <span id="review-contact-email">-</span>
+                                    <span id="review-contact-phone">-</span>
+                                    <span id="review-contact-address">-</span>
                                 </div>
                             </div>
                             
@@ -939,6 +831,29 @@
                                     </ul>
                                 </div>
 
+                                <!-- Review shortcuts: open the AI Analysis Summary and Contact Information dialogs -->
+                                <button type="button" id="open-review-ai-summary" data-review-dialog-open="review-ai-summary-modal" class="hidden w-full text-left bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs hover:border-emerald-300 hover:bg-emerald-50/40 transition flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-haspopup="dialog">
+                                    <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                                    </span>
+                                    <span class="flex-1 min-w-0">
+                                        <span class="block font-bold text-[#0B1E43] text-xs sm:text-sm font-serif">View AI Analysis Summary</span>
+                                        <span class="block text-[11px] text-slate-500 truncate">Indicative ranges and materials per area</span>
+                                    </span>
+                                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </button>
+
+                                <button type="button" id="open-review-contact" data-review-dialog-open="review-contact-modal" class="w-full text-left bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs hover:border-emerald-300 hover:bg-emerald-50/40 transition flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-haspopup="dialog">
+                                    <span class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100/60 flex items-center justify-center shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                    </span>
+                                    <span class="flex-1 min-w-0">
+                                        <span class="block font-bold text-[#0B1E43] text-xs sm:text-sm font-serif">Review Contact Information</span>
+                                        <span id="review-contact-mobile-summary" class="block text-[11px] text-slate-500 truncate">-</span>
+                                    </span>
+                                    <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </button>
+
                                 <!-- Ready to Submit Card (Mobile Only) -->
                                 <div class="sm:hidden bg-emerald-50 rounded-2xl p-4 border border-emerald-100 flex gap-3 items-start">
                                     <div class="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
@@ -949,6 +864,99 @@
                                         <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">This creates a booking request for Raflora review. It does not confirm your booking.</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                                <!-- Review Card 4: AI Analysis Summary (Custom AI Only), shown in a dialog opened from the sidebar.
+                                     The section itself is unchanged; the review script still fills it and shows/hides it. -->
+                                <div id="review-ai-summary-modal" class="fixed inset-0 z-[45] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs hidden" role="dialog" aria-modal="true" aria-label="AI Analysis Summary" tabindex="-1" data-review-dialog>
+                                    <div class="relative w-full sm:max-w-3xl lg:max-w-4xl max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] bg-slate-50 rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+                                        <div class="flex items-center justify-end gap-2 px-3 py-2 sm:px-4 border-b border-slate-200/80 bg-white shrink-0">
+                                            <button type="button" data-review-dialog-close class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" aria-label="Close AI Analysis Summary">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                <span>Close</span>
+                                            </button>
+                                        </div>
+                                        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
+                                <div id="review-ai-materials-section" class="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-2xs space-y-3.5 hidden">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2.5 min-w-0">
+                                            <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                                            </div>
+                                            <div>
+                                                <h4 class="font-bold text-[#0B1E43] text-sm sm:text-base font-serif">AI Analysis Summary</h4>
+                                                <p class="text-[11px] text-slate-500">Indicative ranges and material suggestions per decoration area</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 shrink-0">
+                                            <button type="button" onclick="showGuestStep(2)" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition shadow-2xs">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                                <span class="hidden sm:inline">View AI Analysis</span>
+                                            </button>
+                                            <button type="button" onclick="toggleReviewCard('review-ai-materials-section')" class="sm:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg" aria-label="Toggle AI Analysis Summary">
+                                                <svg data-accordion-chevron class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div id="review-ai-materials-section-body" class="space-y-3.5">
+                                        <!-- Compact Multi-Image AI Summary Metrics -->
+                                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs">
+                                            <div>
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Inspiration Images</span>
+                                                <span class="font-bold text-slate-800" id="review-images-count-text">1 image</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Detected Materials</span>
+                                                <span class="font-bold text-emerald-700" id="review-materials-count-text">0 items</span>
+                                            </div>
+                                            <div class="col-span-2 sm:col-span-1">
+                                                <span class="text-[10px] text-slate-400 font-semibold uppercase block">Price</span>
+                                                <span class="font-bold text-slate-800">In your official quotation</span>
+                                            </div>
+                                        </div>
+
+                                        {{-- All photos combined on the server: per-area AI ranges and quantities, with no figure counted twice --}}
+                                        <p id="review-estimate-status" class="hidden text-[11px] text-slate-500" role="status"></p>
+                                        <x-ai-estimate id="review-ai-estimate" class="mb-3 hidden" />
+                                        <x-decor-area-breakdown-live id="review-area-breakdown" class="mb-3" />
+
+                                        <div id="review-materials-list" class="space-y-1.5 max-h-48 overflow-y-auto pr-1 hidden"></div>
+
+                                        <!-- Review AI Disclaimers -->
+                                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                                            <p><strong class="text-slate-700">Seasonal Context:</strong> Sourced information is AI-assisted and reference-based. It requires Raflora florist validation and does not guarantee supplier availability.</p>
+                                            <p><strong class="text-slate-700">Business Truth:</strong> AI detection ≠ procurement feasibility ≠ inventory availability ≠ official quotation.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                        <!-- Review Contact Information dialog: shows the Step 3 fields themselves (moved in while open) -->
+                        <div id="review-contact-modal" class="fixed inset-0 z-[45] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs hidden" role="dialog" aria-modal="true" aria-labelledby="review-contact-modal-title" tabindex="-1" data-review-dialog>
+                            <div class="relative w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+                                <header class="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5 border-b border-slate-100 bg-slate-50/90 shrink-0">
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <h3 id="review-contact-modal-title" class="text-base sm:text-lg font-bold text-[#0B1E43] font-serif tracking-tight">Contact Information</h3>
+                                            <p class="text-xs text-slate-500 mt-0.5">Used for your booking tracking link and quotation.</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" data-review-dialog-close class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white transition" aria-label="Cancel and close Contact Information">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+                                </header>
+                                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5" data-contact-fields-slot></div>
+                                <footer class="flex items-center justify-end gap-2 px-4 py-3 sm:px-5 border-t border-slate-100 bg-slate-50/90 shrink-0">
+                                    <button type="button" data-review-dialog-close class="flex-1 sm:flex-none px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                                    <button type="button" data-contact-save class="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-2xs transition">Save changes</button>
+                                </footer>
                             </div>
                         </div>
 
@@ -2455,8 +2463,19 @@
         const eventSelect = document.getElementById('event_type');
         const otherContainer = document.getElementById('otherEventTypeContainer');
         const otherInput = document.getElementById('other_event_type');
-        // Guest and table counts stay visible for every event type: they anchor the AI's quantities.
+        // Guest and table counts anchor the AI's quantities; a delivery order has neither, so they are
+        // hidden, cleared and left out of the submission (disabled).
+        function syncDeliveryFields() {
+            const isDelivery = eventSelect?.value === 'delivery';
+            document.querySelectorAll('[data-delivery-hidden]').forEach(el => el.classList.toggle('hidden', isDelivery));
+            ['guest_count', 'table_count'].map(id => document.getElementById(id)).filter(Boolean).forEach(input => {
+                if (isDelivery) input.value = '';
+                input.disabled = isDelivery;
+            });
+        }
         if(eventSelect) {
+            syncDeliveryFields();
+            eventSelect.addEventListener('change', syncDeliveryFields);
             eventSelect.addEventListener('change', function() {
                 if(this.value === 'other') {
                     if (otherContainer) otherContainer.classList.remove('hidden');
@@ -2846,6 +2865,114 @@
             document.getElementById('booking-area-details-modal')?.addEventListener('click', function(e) {
                 if (e.target === this) closeAreaDetailsModal();
             });
+        });
+
+        // Step 4 review dialogs. AI Analysis Summary: the existing section, filled and shown/hidden by
+        // populateReview() as before. Contact Information: the Step 3 fields themselves are moved into the
+        // dialog while it is open, so there is still one form, one validation and one draft.
+        document.addEventListener('DOMContentLoaded', function() {
+            const aiSection = document.getElementById('review-ai-materials-section');
+            const aiOpenBtn = document.getElementById('open-review-ai-summary');
+            const contactModal = document.getElementById('review-contact-modal');
+            const contactFields = document.getElementById('guest-contact-fields');
+            const contactSlot = contactModal?.querySelector('[data-contact-fields-slot]');
+            const contactIds = ['guest_name', 'guest_email', 'guest_phone', 'guest_address'];
+            let fieldsHome = null;
+            let snapshot = null;
+            let opener = null;
+
+            const isOpen = (id) => {
+                const el = document.getElementById(id);
+                return !!el && !el.classList.contains('hidden');
+            };
+            const openDialogs = () => Array.from(document.querySelectorAll('[data-review-dialog]:not(.hidden)'));
+
+            // The AI shortcut is offered only when the review shows the AI section (custom design with analyzed photos).
+            const syncAiButton = () => aiOpenBtn?.classList.toggle('hidden', !aiSection || aiSection.classList.contains('hidden'));
+            if (aiSection) new MutationObserver(syncAiButton).observe(aiSection, { attributes: true, attributeFilter: ['class'] });
+            syncAiButton();
+
+            function moveContactFieldsIn() {
+                if (!contactFields || !contactSlot || fieldsHome) return;
+                snapshot = Object.fromEntries(contactIds.map(id => [id, document.getElementById(id)?.value ?? '']));
+                fieldsHome = document.createComment('guest-contact-fields');
+                contactFields.parentNode.insertBefore(fieldsHome, contactFields);
+                contactSlot.appendChild(contactFields);
+            }
+
+            function moveContactFieldsBack() {
+                if (!fieldsHome) return;
+                fieldsHome.parentNode.insertBefore(contactFields, fieldsHome);
+                fieldsHome.remove();
+                fieldsHome = null;
+                snapshot = null;
+            }
+
+            // Cancel: put back the values the dialog opened with (the existing listeners re-save the draft).
+            function restoreContactValues() {
+                if (!snapshot) return;
+                contactIds.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (el.value !== snapshot[id]) {
+                        el.value = snapshot[id];
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                    clearField(el, id + '_error');
+                });
+            }
+
+            function openDialog(id, trigger) {
+                const modal = document.getElementById(id);
+                if (!modal) return;
+                opener = trigger || document.activeElement;
+                if (modal === contactModal) moveContactFieldsIn();
+                modal.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+                (modal === contactModal ? document.getElementById('guest_name') : modal.querySelector('[data-review-dialog-close]'))?.focus();
+            }
+
+            function closeDialog(modal, restore = true) {
+                if (!modal || modal.classList.contains('hidden')) return;
+                if (modal === contactModal) {
+                    if (restore) restoreContactValues();
+                    moveContactFieldsBack();
+                }
+                modal.classList.add('hidden');
+                if (!openDialogs().length) document.body.classList.remove('overflow-hidden');
+                if (opener && typeof opener.focus === 'function') opener.focus();
+                opener = null;
+            }
+
+            document.querySelectorAll('[data-review-dialog-open]').forEach(btn => {
+                btn.addEventListener('click', () => openDialog(btn.dataset.reviewDialogOpen, btn));
+            });
+            document.querySelectorAll('[data-review-dialog-close]').forEach(btn => {
+                btn.addEventListener('click', () => closeDialog(btn.closest('[data-review-dialog]')));
+            });
+            document.querySelectorAll('[data-review-dialog]').forEach(modal => {
+                modal.addEventListener('click', e => { if (e.target === modal) closeDialog(modal); });
+            });
+
+            // Save: the same Step 3 validation; on errors the dialog stays open with messages beside the fields.
+            contactModal?.querySelector('[data-contact-save]')?.addEventListener('click', function() {
+                if (!validateStep(3)) return;
+                closeDialog(contactModal, false);
+                populateReview();
+            });
+
+            // Escape closes the top review dialog, unless the validation or area-details dialog is on top of it.
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'Escape' || isOpen('raflora-validation-modal') || isOpen('booking-area-details-modal')) return;
+                const top = openDialogs().pop();
+                if (top) closeDialog(top);
+            }, true);
+
+            // Closing the area-details dialog (opened from the AI summary) unlocks page scroll; keep it locked.
+            const areaModal = document.getElementById('booking-area-details-modal');
+            if (areaModal) new MutationObserver(() => {
+                if (areaModal.classList.contains('hidden') && openDialogs().length) document.body.classList.add('overflow-hidden');
+            }).observe(areaModal, { attributes: true, attributeFilter: ['class'] });
         });
 
     </script>

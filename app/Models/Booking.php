@@ -19,6 +19,8 @@ class Booking extends Model
      */
     public const DEFAULT_QUOTATION_MARKUP = 3.0;
 
+    public const DELIVERY_EVENT_TYPE = 'delivery';
+
     protected static function booted(): void
     {
         static::creating(function (Booking $booking): void {
@@ -157,6 +159,7 @@ class Booking extends Model
         'preparation_start_date' => 'date',
         'confirmed_at' => 'datetime',
         'reviewed_at' => 'datetime',
+        'delivery_received_at' => 'datetime',
         'downpayment_amount' => 'decimal:2',
         'total_quoted' => 'decimal:2',
         'ai_analysis_data' => 'json',
@@ -208,6 +211,20 @@ class Booking extends Model
         }
 
         return $perishableItems->every(fn ($item) => in_array($item->procurement_status, ['confirmed', 'procured', 'ready'], true));
+    }
+
+    /**
+     * Delivery orders (event type "delivery") are bought, not rented: nothing comes back, so
+     * there is no return audit and the booking closes once the client has the items.
+     */
+    public function isDelivery(): bool
+    {
+        return strtolower(trim((string) $this->event_type)) === self::DELIVERY_EVENT_TYPE;
+    }
+
+    public function isDeliveryReceived(): bool
+    {
+        return $this->isDelivery() && !is_null($this->delivery_received_at);
     }
 
     public function hasReusableMaterials(): bool
@@ -458,6 +475,14 @@ class Booking extends Model
     /**
      * Get all inventory transactions for this booking.
      */
+    /**
+     * The client's "Schedule" change requests (App\Services\ScheduleChangeService).
+     */
+    public function scheduleRequests(): HasMany
+    {
+        return $this->hasMany(BookingScheduleRequest::class);
+    }
+
     public function inventoryTransactions(): HasMany
     {
         return $this->hasMany(InventoryTransaction::class, 'booking_id', 'id');

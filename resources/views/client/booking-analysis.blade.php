@@ -33,10 +33,14 @@
                     $paidAmount         = (float) $booking->total_paid;
                     $remaining          = (float) ($booking->shared_remaining_balance ?? 0);
                     
-                    $canShowPaymentForm = !$hasPendingPayment && (
-                        $booking->status === 'admin_approved' || 
-                        (in_array($booking->status, ['event_completed', 'pending_resolution'], true) && $remaining > 0)
-                    );
+                    // First payment (downpayment or full) after Admin approval: the inline form below.
+                    $canShowPaymentForm = !$hasPendingPayment && $booking->status === 'admin_approved';
+
+                    // Remaining balance, from the event day on: the "Pay Remaining Balance" button and dialog.
+                    $isBalanceStage = in_array($booking->status, \App\Http\Controllers\BookingController::BALANCE_PAYMENT_STATUSES, true);
+                    $canPayRemainingBalance = $isBalanceStage && $remaining > 0 && $displayedTotal !== null && !$hasPendingPayment;
+                    $balancePaymentWaiting = $isBalanceStage && $hasPendingPayment;
+                    $balancePaymentRejected = $canPayRemainingBalance && $latestPayment && $latestPayment->status === 'rejected';
 
                     $canRequestCancellation = in_array($booking->status, [
                         'pending',
@@ -50,6 +54,11 @@
                         'confirmed',
                         'in_preparation',
                     ], true);
+
+                    // Changes can be requested any time before the event starts. An open quotation has its own
+                    // button next to Accept Quotation; every other stage gets the separate row below.
+                    $canRequestChanges = in_array($booking->status, \App\Services\ScheduleChangeService::OPEN_STATUSES, true);
+                    $showChangeRequestRow = $canRequestChanges && !($booking->status === 'quotation_sent' && !(isset($isExpired) && $isExpired));
 
                     $presentations = isset($presentations) ? $presentations : $booking->presentations()->orderBy('created_at')->get();
                     $isTerminal = in_array($booking->status, ['cancelled', 'declined'], true);
@@ -67,6 +76,14 @@
                     </div>
 
                     {{-- 2. Booking Header --}}
+                    @php
+                        // Display only: "19:35:00" reads as "7:35 PM"; anything unparseable is shown as stored.
+                        $eventTimeDisplay = null;
+                        if ($booking->event_time) {
+                            try { $eventTimeDisplay = \Illuminate\Support\Carbon::parse($booking->event_time)->format('g:i A'); }
+                            catch (\Throwable $e) { $eventTimeDisplay = $booking->event_time; }
+                        }
+                    @endphp
                     <section aria-labelledby="booking-summary-heading" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col md:flex-row gap-5 items-start">
                         @if($previewImage)
                             <div class="w-full md:w-32 md:h-32 rounded-xl overflow-hidden shrink-0 bg-slate-100 border border-slate-200 hidden md:block">
@@ -83,7 +100,7 @@
                             </h1>
                             <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 font-medium">
                                 @if($booking->event_date)
-                                    <span>{{ $booking->event_date->format('F j, Y') }} at {{ $booking->event_time ?? 'TBD' }}</span>
+                                    <span>{{ $booking->event_date->format('F j, Y') }} at {{ $eventTimeDisplay ?? 'TBD' }}</span>
                                 @endif
                                 @if($booking->venue)
                                     <span class="text-slate-300" aria-hidden="true">|</span>
@@ -102,6 +119,10 @@
                     </section>
 
                 {{-- 3. Booking progress: client stages; event stages appear once the booking is confirmed --}}
+                @if($booking->isDelivery())
+                    <x-delivery-order-notice :booking="$booking" audience="client" class="mb-6" />
+                @endif
+
                 <x-booking-workflow :workflow="$bookingWorkflow" audience="client" :show-current="false" heading="Booking Progress" description="Where your booking is in Raflora's process." id="client-booking-workflow" />
 
                 <div class="flex flex-col lg:flex-row gap-6 mb-8">
@@ -110,7 +131,7 @@
                     <div class="w-full lg:flex-1 space-y-6">
                         
                         <section aria-labelledby="status-action-heading" class="rounded-2xl border-2 {{ $isTerminal ? 'border-slate-300' : 'border-emerald-600' }} bg-white shadow-sm overflow-hidden h-full">
-                            <div class="{{ $isTerminal ? 'bg-slate-50 border-slate-200' : 'bg-emerald-50/50 border-emerald-100' }} p-5 sm:p-6 sm:p-8 border-b flex flex-col sm:flex-row sm:items-start justify-between gap-8 h-full">
+                            <div class="{{ $isTerminal ? 'bg-slate-50 border-slate-200' : 'bg-emerald-50/50 border-emerald-100' }} p-5 sm:p-6 sm:p-8 border-b flex flex-col sm:flex-row sm:items-start justify-between gap-8">
                                 
                                 {{-- Status Info --}}
                                 <div class="flex-1 min-w-0">
@@ -134,9 +155,9 @@
                                         @elseif($booking->status === 'in_preparation')
                                             Event in Preparation
                                         @elseif($booking->status === 'event_in_progress')
-                                            Event in Progress
+                                            {{ $booking->isDelivery() ? 'Out for Delivery' : 'Event in Progress' }}
                                         @elseif($booking->status === 'event_completed')
-                                            Event Completed
+                                            {{ $booking->isDelivery() ? 'Order Received' : 'Event Completed' }}
                                         @elseif($booking->status === 'pending_return')
                                             Material Return Pending
                                         @elseif($booking->status === 'pending_resolution')
@@ -178,7 +199,7 @@
                                         @elseif($booking->status === 'in_preparation')
                                             <p>Your event styling materials and arrangements are actively being prepared by the Raflora team.</p>
                                         @elseif($booking->status === 'event_in_progress')
-                                            <p>Your event is currently taking place.</p>
+                                            <p>{{ $booking->isDelivery() ? 'Your order is on its way. Tap "Item Received" above once it arrives.' : 'Your event is currently taking place.' }}</p>
                                         @elseif($booking->status === 'pending_return')
                                             <p>Your event has concluded. Material return reconciliation is currently in progress.</p>
                                         @elseif($booking->status === 'pending_resolution')
@@ -190,7 +211,7 @@
                                             @if($hasPendingPayment)
                                                 <p>Your final payment reference has been submitted and is currently being verified by Raflora Administration.</p>
                                             @elseif($remaining > 0)
-                                                <p>Your event has concluded, and final payment remains outstanding. Please submit your payment reference below to settle your balance.</p>
+                                                <p>{{ $booking->isDelivery() ? 'You received your order, and final payment remains outstanding.' : 'Your event has concluded, and final payment remains outstanding.' }} Please submit your payment reference below to settle your balance.</p>
                                             @else
                                                 <p>Your event has concluded. Thank you for choosing Raflora Enterprises!</p>
                                             @endif
@@ -204,6 +225,37 @@
                                             <p>{{ $booking->client_status_label }}</p>
                                         @endif
                                     </div>
+
+                                    @php
+                                        // The client's latest schedule change request while the quotation is still being settled.
+                                        $latestSchedule = in_array($booking->status, \App\Services\ScheduleChangeService::OPEN_STATUSES, true)
+                                            ? $booking->scheduleRequests()->where('status', '!=', \App\Models\BookingScheduleRequest::STATUS_SUPERSEDED)->latest('id')->first()
+                                            : null;
+                                    @endphp
+                                    @if($latestSchedule)
+                                        @php
+                                            $scheduleTone = match ($latestSchedule->status) {
+                                                'accepted' => ['border-emerald-200 bg-emerald-50 text-emerald-900', 'fa-calendar-check text-emerald-600'],
+                                                'declined' => ['border-rose-200 bg-rose-50 text-rose-900', 'fa-calendar-xmark text-rose-600'],
+                                                default => ['border-amber-200 bg-amber-50 text-amber-900', 'fa-calendar-days text-amber-600'],
+                                            };
+                                        @endphp
+                                        <div id="client-schedule-request" class="mt-4 flex items-start gap-3 rounded-xl border p-4 text-sm {{ $scheduleTone[0] }}">
+                                            <i class="fa-solid {{ $scheduleTone[1] }} mt-0.5" aria-hidden="true"></i>
+                                            <div>
+                                                @if($latestSchedule->status === 'accepted')
+                                                    <p class="font-semibold">Schedule change accepted</p>
+                                                    <p>Your event is now on {{ $latestSchedule->requestedLabel() }}.</p>
+                                                @elseif($latestSchedule->status === 'declined')
+                                                    <p class="font-semibold">Schedule change declined</p>
+                                                    <p>Your event stays on {{ $latestSchedule->previousLabel() }}.@if($latestSchedule->decision_note) Reason: {{ $latestSchedule->decision_note }}@endif</p>
+                                                @else
+                                                    <p class="font-semibold">Schedule change requested</p>
+                                                    <p>You asked to move your event to {{ $latestSchedule->requestedLabel() }}. Raflora is checking availability and will confirm with you in Messages.</p>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endif
 
                                     @if($latestPayment && in_array($latestPayment->status, ['pending', 'verified', 'downpayment_received', 'fully_paid'], true))
                                         <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm">
@@ -308,12 +360,25 @@
                                     @if(in_array($booking->status, ['downpayment_received', 'confirmed', 'in_preparation', 'event_in_progress', 'pending_return', 'pending_resolution', 'event_completed', 'payment_submitted', 'payment_pending'], true) && $remaining > 0)
                                         <p class="text-sm font-semibold text-amber-700 mt-3 bg-amber-50 rounded-lg px-3 py-1.5 inline-block border border-amber-200">Balance: ₱{{ number_format($remaining, 2) }}</p>
                                     @endif
+
+                                    @if($canPayRemainingBalance)
+                                        <div class="mt-3">
+                                            <button type="button" id="pay-remaining-balance-btn" onclick="document.getElementById('remainingBalanceModal').classList.remove('hidden')" class="rf-btn rf-btn-primary w-full sm:w-auto px-5" aria-haspopup="dialog">
+                                                Pay Remaining Balance
+                                            </button>
+                                            @if($balancePaymentRejected)
+                                                <p class="mt-2 text-xs font-medium text-rose-700">Your last reference could not be verified. Please send a corrected one.</p>
+                                            @endif
+                                        </div>
+                                    @elseif($balancePaymentWaiting)
+                                        <p class="mt-3 text-xs font-medium text-slate-600 sm:max-w-[16rem] sm:ml-auto">Remaining balance payment sent. Raflora is checking your reference.</p>
+                                    @endif
                                 </div>
                                 @endif
                             </div>
 
                             {{-- Action Area & Modals --}}
-                            @if(!$isTerminal && ($booking->status === 'quotation_sent' || $canShowPaymentForm || $canRequestCancellation))
+                            @if(!$isTerminal && ($booking->status === 'quotation_sent' || $canShowPaymentForm || $canRequestCancellation || $showChangeRequestRow))
                                 <div class="p-5 sm:p-6 sm:p-8 bg-white border-t border-slate-100">
                                     @if($booking->status === 'quotation_sent')
                                         @if(isset($isExpired) && $isExpired)
@@ -408,27 +473,69 @@
                                             </button>
                                         </div>
                                     @endif
+
+                                    @if($showChangeRequestRow)
+                                        <div id="client-request-changes-row" class="pt-4 mt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <p class="text-sm text-slate-600">Need to change a material, the schedule, or something else? Send a request and Raflora will review it.</p>
+                                            <button type="button" onclick="document.getElementById('changeModal').classList.remove('hidden')" class="rf-btn rf-btn-secondary w-full sm:w-auto px-4 shrink-0">Request Changes</button>
+                                        </div>
+                                    @endif
                                 </div>
                             @endif
 
-                            {{-- Real-time Communication Component --}}
-                            <div class="p-5 sm:p-6 sm:p-8 bg-slate-50 border-t border-slate-200">
-                                    <x-booking-conversation 
-                                        :booking="$booking"
-                                        role="client"
-                                        :booking-messages="$bookingMessages ?? collect()"
-                                        :unread-count="$unreadMessageCount ?? 0"
-                                        :active-quotation="$activeQuotation"
-                                    />
-                                </div>
+                        </section>
+
                             {{-- Meetings with Raflora (README Client Workflow: client and Raflora can meet about the booking) --}}
                             @php
                                 $clientMeetings = $booking->meetings()->orderByDesc('scheduled_datetime')->get();
                                 $meetingsAllowed = \App\Models\Meeting::bookingAllowsMeetings($booking);
                                 $hasPendingMeetingRequest = $clientMeetings->contains(fn ($m) => $m->status === \App\Models\Meeting::STATUS_REQUESTED);
                             @endphp
+                        @php
+                            $showMeetingsView = $clientMeetings->isNotEmpty() || $meetingsAllowed;
+                            $errors = $errors ?? new \Illuminate\Support\ViewErrorBag();
+                            $meetingFormFailed = $errors->hasAny(['meeting_type', 'preferred_datetime', 'agenda']);
+                        @endphp
+                        {{-- Floating chat panel: messages (and meetings) with Raflora, open from any point on the page. --}}
+                        <style>
+                            #client-chat-panel #booking-conversation-root { border: 0; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; min-height: 100%; }
+                            /* The panel header already names the conversation, so the component's own title bar is hidden here. */
+                            #client-chat-panel #booking-conversation-root > div:first-child { display: none; }
+                            #client-chat-panel #booking-conversation-root > .relative { flex: 1 1 0; display: flex; flex-direction: column; min-height: 160px; }
+                            #client-chat-panel #comm-messages-scroll { flex: 1 1 0; max-height: none; min-height: 0; padding: 1rem; }
+                            #client-chat-panel #comm-empty-state { padding-top: 2rem; padding-bottom: 2rem; }
+                            #client-chat-panel #comm-message-text { height: 4.5rem; min-height: 4.5rem; }
+                        </style>
+                        <div id="client-chat-panel" class="fixed inset-x-3 top-20 bottom-24 z-[45] hidden flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:inset-x-auto sm:right-6 sm:top-auto sm:h-[min(720px,calc(100vh-8rem))] sm:w-[440px]" role="dialog" aria-modal="false" aria-labelledby="client-chat-panel-title" data-meeting-error="{{ $meetingFormFailed ? '1' : '0' }}">
+                            <div class="flex items-center justify-between gap-3 bg-emerald-700 px-4 py-3 text-white">
+                                <div class="min-w-0">
+                                    <h2 id="client-chat-panel-title" class="text-sm font-semibold !text-white">Messages · Booking #{{ $booking->id }}</h2>
+                                    <p class="truncate text-xs text-white/80">Chat with Raflora about this booking</p>
+                                </div>
+                                <button type="button" id="client-chat-close" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white" aria-label="Close messages"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                            </div>
+                            @if($showMeetingsView)
+                                <div class="flex gap-1 border-b border-slate-200 bg-slate-50 p-1.5" role="group" aria-label="Messages or meetings">
+                                    <button type="button" data-chat-view="messages" aria-pressed="true" class="client-chat-view-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+                                        <i class="fa-regular fa-comments text-xs" aria-hidden="true"></i>Messages
+                                    </button>
+                                    <button type="button" data-chat-view="meetings" aria-pressed="false" class="client-chat-view-btn inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+                                        <i class="fa-regular fa-calendar text-xs" aria-hidden="true"></i>Meetings
+                                    </button>
+                                </div>
+                            @endif
+                            <div id="client-chat-view-messages" class="min-h-0 flex-1 overflow-y-auto">
+                                <x-booking-conversation
+                                    :booking="$booking"
+                                    role="client"
+                                    :booking-messages="$bookingMessages ?? collect()"
+                                    :unread-count="$unreadMessageCount ?? 0"
+                                    :active-quotation="$activeQuotation"
+                                />
+                            </div>
+                            <div id="client-chat-view-meetings" class="hidden min-h-0 flex-1 overflow-y-auto">
                             @if($clientMeetings->isNotEmpty() || $meetingsAllowed)
-                                <div id="client-meetings" class="p-5 sm:p-6 sm:p-8 bg-white border-t border-slate-200">
+                                <div id="client-meetings" class="p-4 sm:p-5 bg-white">
                                     <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-1">Meetings with Raflora</h3>
                                     <p class="text-sm text-slate-500 mb-4">Request an online or in-person meeting to discuss your booking. Raflora confirms the final schedule.</p>
 
@@ -494,41 +601,165 @@
                                     @endif
                                 </div>
                             @endif
-                        </section>
+                            </div>
+                        </div>
+                        <button type="button" id="client-chat-launcher" class="fixed bottom-6 right-6 z-[45] inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-700 text-white shadow-lg ring-4 ring-white transition hover:bg-emerald-800 focus:outline-none focus-visible:ring-emerald-300" aria-controls="client-chat-panel" aria-expanded="false" aria-label="Open messages" title="Messages">
+                            <i id="client-chat-launcher-icon" class="fa-solid fa-comments text-xl" aria-hidden="true"></i>
+                            <span data-chat-unread-badge class="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-none text-white tabular-nums ring-2 ring-white {{ ($unreadMessageCount ?? 0) > 0 ? '' : 'hidden' }}">{{ $unreadMessageCount ?? 0 }}</span>
+                        </button>
+                        <script>
+                            (() => {
+                                const panel = document.getElementById('client-chat-panel');
+                                const launcher = document.getElementById('client-chat-launcher');
+                                const launcherIcon = document.getElementById('client-chat-launcher-icon');
+                                if (!panel || !launcher) return;
+                                // The layout's content wrapper (relative z-10) would keep the panel under the sticky header.
+                                document.body.append(panel, launcher);
+                                const storageKey = 'raflora_client_booking_chat_{{ $booking->id }}';
+                                const ACTIVE = ['bg-white', 'text-emerald-800', 'shadow-sm'];
+                                const INACTIVE = ['text-slate-500', 'hover:text-slate-800'];
+                                const meetingsView = document.getElementById('client-chat-view-meetings');
+                                let currentView = 'messages';
+
+                                const remember = (open) => {
+                                    try { sessionStorage.setItem(storageKey, JSON.stringify({ open, view: currentView })); } catch (e) {}
+                                };
+
+                                const setView = (view) => {
+                                    currentView = view === 'meetings' && panel.querySelector('[data-chat-view="meetings"]') ? 'meetings' : 'messages';
+                                    document.getElementById('client-chat-view-messages').classList.toggle('hidden', currentView !== 'messages');
+                                    meetingsView.classList.toggle('hidden', currentView !== 'meetings');
+                                    panel.querySelectorAll('.client-chat-view-btn').forEach((btn) => {
+                                        const isActive = btn.dataset.chatView === currentView;
+                                        btn.classList.remove(...(isActive ? INACTIVE : ACTIVE));
+                                        btn.classList.add(...(isActive ? ACTIVE : INACTIVE));
+                                        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                                    });
+                                    if (panel.classList.contains('hidden')) return;
+                                    if (currentView === 'messages') document.getElementById('comm-refresh-btn')?.click();
+                                    remember(true);
+                                };
+
+                                const openChat = (view) => {
+                                    panel.classList.remove('hidden');
+                                    panel.classList.add('flex');
+                                    launcher.setAttribute('aria-expanded', 'true');
+                                    launcher.setAttribute('aria-label', 'Close messages');
+                                    launcherIcon.className = 'fa-solid fa-xmark text-xl';
+                                    setView(view || currentView);
+                                    remember(true);
+                                    if (currentView === 'messages') document.getElementById('comm-message-text')?.focus({ preventScroll: true });
+                                };
+
+                                const closeChat = () => {
+                                    panel.classList.add('hidden');
+                                    panel.classList.remove('flex');
+                                    launcher.setAttribute('aria-expanded', 'false');
+                                    launcher.setAttribute('aria-label', 'Open messages');
+                                    launcherIcon.className = 'fa-solid fa-comments text-xl';
+                                    remember(false);
+                                };
+
+                                window.openBookingChat = openChat;
+                                launcher.addEventListener('click', () => panel.classList.contains('hidden') ? openChat() : closeChat());
+                                document.getElementById('client-chat-close').addEventListener('click', () => { closeChat(); launcher.focus(); });
+                                panel.querySelectorAll('.client-chat-view-btn').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.chatView)));
+                                document.addEventListener('keydown', (event) => {
+                                    if (event.key !== 'Escape' || panel.classList.contains('hidden')) return;
+                                    // Let an open pop-up (request changes, cancellation, etc.) close first.
+                                    if ([...document.querySelectorAll('[aria-modal="true"]')].some((el) => el.getClientRects().length > 0)) return;
+                                    closeChat();
+                                    launcher.focus();
+                                });
+
+                                let saved = null;
+                                try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch (e) {}
+                                if (panel.dataset.meetingError === '1') {
+                                    openChat('meetings');
+                                } else if (['#communication', '#booking-conversation-root'].includes(location.hash)) {
+                                    openChat('messages');
+                                } else if (saved && saved.open) {
+                                    openChat(saved.view);
+                                } else {
+                                    setView(saved?.view || 'messages');
+                                }
+                            })();
+                        </script>
                         
                         {{-- Modals --}}
-                        <div id="changeModal" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="changeModalTitle">
-                            <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
-                                <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        @php
+                            // The fields shown follow the change type (material, schedule, other); after a failed
+                            // submit the pop-up reopens on the same type with the client's input kept.
+                            $errors = $errors ?? new \Illuminate\Support\ViewErrorBag();
+                            $changeFieldErrors = $errors->hasAny(['change_type', 'change_item', 'change_quantity', 'requested_date', 'requested_start_time', 'requested_end_time', 'change_reason']);
+                            $oldChangeType = old('change_type', '');
+                            $oldChangeGroup = $oldChangeType === 'item' ? 'material' : $oldChangeType;
+                            $currentScheduleText = $booking->event_date
+                                ? $booking->event_date->format('M j, Y') . ($eventTimeDisplay ? ' at ' . $eventTimeDisplay : '')
+                                : 'Not set';
+                        @endphp
+                        <div id="changeModal" class="{{ $changeFieldErrors ? '' : 'hidden' }} fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="changeModalTitle">
+                            <div class="bg-white rounded-2xl w-full max-w-lg max-h-full flex flex-col overflow-hidden shadow-xl">
+                                <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                                     <h3 id="changeModalTitle" class="text-lg font-bold text-slate-800">Request Changes</h3>
                                     <button type="button" onclick="document.getElementById('changeModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600" aria-label="Close modal">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                     </button>
                                 </div>
-                                <form method="POST" action="{{ route('bookings.request-changes', $booking->id) }}" class="p-5 sm:p-6 space-y-4">
+                                <form method="POST" action="{{ route('bookings.request-changes', $booking->id) }}" class="p-5 sm:p-6 space-y-4 overflow-y-auto" id="changeRequestForm">
                                     @csrf
                                     <div class="rf-field">
                                         <label class="rf-label" for="change_type">Change Type</label>
                                         <select name="change_type" id="change_type" class="rf-input" required>
                                             <option value="">Select a change type</option>
-                                            <option value="material">Material / Item</option>
-                                            <option value="schedule">Schedule</option>
-                                            <option value="other">Other</option>
+                                            <option value="material" @selected($oldChangeGroup === 'material')>Material / Item</option>
+                                            <option value="schedule" @selected($oldChangeGroup === 'schedule')>Schedule</option>
+                                            <option value="other" @selected($oldChangeGroup === 'other')>Other</option>
                                         </select>
+                                        @error('change_type')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
                                     </div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                                    {{-- Material / Item --}}
+                                    <div data-change-fields="material" class="grid grid-cols-1 sm:grid-cols-2 gap-4 {{ $oldChangeGroup === 'material' ? '' : 'hidden' }}">
                                         <div class="rf-field">
-                                            <label class="rf-label" for="change_item">Item / Material / Topic</label>
-                                            <input type="text" name="change_item" id="change_item" class="rf-input" required placeholder="e.g., Roses">
+                                            <label class="rf-label" for="change_item">Item / Material</label>
+                                            <input type="text" name="change_item" id="change_item" class="rf-input" value="{{ old('change_item') }}" required placeholder="e.g., Roses" maxlength="255">
+                                            @error('change_item')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
                                         </div>
                                         <div class="rf-field">
-                                            <label class="rf-label" for="change_quantity">Quantity (if applicable)</label>
-                                            <input type="number" name="change_quantity" id="change_quantity" class="rf-input" min="1" value="1" required>
+                                            <label class="rf-label" for="change_quantity">Quantity</label>
+                                            <input type="number" name="change_quantity" id="change_quantity" class="rf-input" min="1" value="{{ old('change_quantity', 1) }}" required>
+                                            @error('change_quantity')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
                                         </div>
                                     </div>
-                                    <div class="rf-field">
-                                        <label class="rf-label" for="change_reason">Additional Details / Reason (Optional)</label>
-                                        <textarea name="change_reason" id="change_reason" rows="3" class="rf-input resize-none" placeholder="e.g., Please add 15 red roses to the arrangement."></textarea>
+
+                                    {{-- Schedule --}}
+                                    <div data-change-fields="schedule" class="space-y-4 {{ $oldChangeGroup === 'schedule' ? '' : 'hidden' }}">
+                                        <p class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">Current schedule: <strong class="text-slate-800">{{ $currentScheduleText }}</strong></p>
+                                        <div class="rf-field">
+                                            <label class="rf-label" for="requested_date">New Event Date</label>
+                                            <input type="date" name="requested_date" id="requested_date" class="rf-input" value="{{ old('requested_date') }}" min="{{ now()->toDateString() }}" required>
+                                            @error('requested_date')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div class="rf-field">
+                                                <label class="rf-label" for="requested_start_time">New Start Time (optional)</label>
+                                                <input type="time" name="requested_start_time" id="requested_start_time" class="rf-input" value="{{ old('requested_start_time') }}">
+                                                @error('requested_start_time')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
+                                            </div>
+                                            <div class="rf-field">
+                                                <label class="rf-label" for="requested_end_time">New End Time (optional)</label>
+                                                <input type="time" name="requested_end_time" id="requested_end_time" class="rf-input" value="{{ old('requested_end_time') }}">
+                                                @error('requested_end_time')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Details: optional for material/schedule, the whole request for "Other" --}}
+                                    <div class="rf-field {{ $oldChangeGroup === '' ? 'hidden' : '' }}" data-change-details>
+                                        <label class="rf-label" for="change_reason" data-change-details-label>{{ $oldChangeGroup === 'other' ? 'What would you like to change?' : 'Additional Details / Reason (Optional)' }}</label>
+                                        <textarea name="change_reason" id="change_reason" rows="3" class="rf-input resize-none" maxlength="2000" placeholder="e.g., Please add 15 red roses to the arrangement." @required($oldChangeGroup === 'other')>{{ old('change_reason') }}</textarea>
+                                        @error('change_reason')<p class="text-xs text-rose-600 mt-1 font-semibold" role="alert">{{ $message }}</p>@enderror
                                     </div>
                                     <div class="flex justify-end gap-3 mt-6">
                                         <button type="button" onclick="document.getElementById('changeModal').classList.add('hidden')" class="rf-btn rf-btn-secondary">Cancel</button>
@@ -537,6 +768,39 @@
                                 </form>
                             </div>
                         </div>
+                        <script>
+                            (() => {
+                                // The layout's content wrapper (relative z-10) would keep the pop-up under the sticky header.
+                                const modal = document.getElementById('changeModal');
+                                if (modal) document.body.appendChild(modal);
+                                const form = document.getElementById('changeRequestForm');
+                                const select = document.getElementById('change_type');
+                                if (!form || !select) return;
+                                const details = form.querySelector('[data-change-details]');
+                                const detailsLabel = form.querySelector('[data-change-details-label]');
+                                const reason = document.getElementById('change_reason');
+                                const placeholders = {
+                                    material: 'e.g., Please add 15 red roses to the arrangement.',
+                                    schedule: 'e.g., The venue moved our reception to the afternoon.',
+                                    other: 'e.g., Please change the ribbon color to champagne gold.',
+                                };
+                                // Only the selected type's fields are shown, required and submitted (hidden ones are disabled).
+                                const sync = () => {
+                                    const type = select.value === 'item' ? 'material' : select.value;
+                                    form.querySelectorAll('[data-change-fields]').forEach((group) => {
+                                        const active = group.dataset.changeFields === type;
+                                        group.classList.toggle('hidden', !active);
+                                        group.querySelectorAll('input, select, textarea').forEach((input) => { input.disabled = !active; });
+                                    });
+                                    details.classList.toggle('hidden', type === '');
+                                    reason.required = type === 'other';
+                                    detailsLabel.textContent = type === 'other' ? 'What would you like to change?' : 'Additional Details / Reason (Optional)';
+                                    reason.placeholder = placeholders[type] || '';
+                                };
+                                select.addEventListener('change', sync);
+                                sync();
+                            })();
+                        </script>
 
 
                     </div>
@@ -592,7 +856,7 @@
                                     @endif
                                     <div>
                                         <p class="text-xs text-slate-400 font-semibold uppercase">Date & Time</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ optional($booking->event_date)->format('F j, Y') ?? 'TBD' }} @if($booking->event_time) at {{ $booking->event_time }} @endif</p>
+                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ optional($booking->event_date)->format('F j, Y') ?? 'TBD' }} @if($eventTimeDisplay) at {{ $eventTimeDisplay }} @endif</p>
                                     </div>
                                     <div>
                                         <p class="text-xs text-slate-400 font-semibold uppercase">Venue</p>
@@ -608,7 +872,7 @@
                             </section>
 
                             {{-- Quotation Breakdown --}}
-                            <section aria-labelledby="breakdown-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                            <section aria-labelledby="breakdown-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $booking->package_id && $booking->package ? 'lg:col-span-2' : '' }}">
                                 <h2 id="breakdown-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Quotation Breakdown</h2>
                                 
                                 @if(isset($quotationItems) && count($quotationItems) > 0)
@@ -641,10 +905,9 @@
                                 @endif
                             </section>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {{-- Inspiration photos (every photo, the areas each is for, AI boxes, enlarged view) --}}
+                            {{-- Inspiration photos (every photo, the areas each is for, AI boxes, enlarged view) --}}
                                 @if($previewImage)
-                                <section aria-labelledby="concept-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                                <section aria-labelledby="concept-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $hasAiAnalysis ? '' : 'lg:col-span-2' }}">
                                     <h2 id="concept-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Inspiration Image &amp; AI Recommendation</h2>
                                     <x-inspiration-gallery id="client-inspiration-gallery"
                                         :photos="$galleryPhotos"
@@ -657,9 +920,55 @@
                                 </section>
                                 @endif
 
+                            {{-- AI Analysis (If exists) --}}
+                            @if($hasAiAnalysis)
+                            <section aria-labelledby="ai-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $previewImage ? '' : 'lg:col-span-2' }}">
+                                <h2 id="ai-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Visual Analysis (Decision Support)</h2>
+                                <p class="text-sm text-slate-500 mb-4">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
+
+                                {{-- Indicative AI ranges per area; the official quotation above is the price that applies --}}
+                                <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" />
+                            </section>
+
+                            {{-- AI-suggested materials (same panels as before), full width so each area's list stays short --}}
+                            <section aria-labelledby="ai-materials-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
+                                <h2 id="ai-materials-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Suggested Materials</h2>
+
+                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-5" />
+
+                                {{-- With picked areas the panel above already groups every material; this list groups by where the AI saw them. --}}
+                                @if(\App\Support\DecorAreaBreakdown::requestedAreas($booking->design_brief) === [])
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    @foreach($analysisGroups as $group)
+                                        <div>
+                                            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">{{ $group['area_label'] ?? 'Overall Design' }}</h3>
+                                            <div class="space-y-2">
+                                                @foreach($group['items'] ?? [] as $item)
+                                                    @php
+                                                        $categoryLabel = strtoupper($item['category']);
+                                                        $displayQty = $item['quantity'] > 0 ? number_format((float) $item['quantity'], 0) : '~' . number_format((float) max(1, $item['quantity']), 0);
+                                                    @endphp
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50 p-3" data-line-id="{{ $item['line_id'] }}">
+                                                        <div class="flex items-start justify-between gap-2">
+                                                            <div class="min-w-0">
+                                                                <p class="text-sm font-semibold text-slate-800 leading-snug">{{ $item['name'] }}</p>
+                                                                <p class="mt-0.5 text-xs text-slate-500">{{ $displayQty }} {{ $item['unit_type'] }}</p>
+                                                            </div>
+                                                            <span class="shrink-0 rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{{ $categoryLabel }}</span>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                @endif
+                            </section>
+                            @endif
+
                                 {{-- Proposals Card (If exists) --}}
                                 @if($presentations && $presentations->count() > 0)
-                                <section aria-labelledby="proposals-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                                <section aria-labelledby="proposals-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
                                     <h2 id="proposals-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Proposals &amp; Feedback</h2>
                                     
                                     <div class="space-y-4">
@@ -700,52 +1009,70 @@
                                     </div>
                                 </section>
                                 @endif
-                            </div>
-
-                            {{-- AI Analysis (If exists) --}}
-                            @if($hasAiAnalysis)
-                            <section aria-labelledby="ai-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                                <h2 id="ai-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Visual Analysis (Decision Support)</h2>
-                                <p class="text-sm text-slate-500 mb-4">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
-
-                                {{-- Indicative AI ranges per area; the official quotation above is the price that applies --}}
-                                <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" class="mb-5" />
-
-                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-5" />
-
-                                {{-- With picked areas the panel above already groups every material; this list groups by where the AI saw them. --}}
-                                @if(\App\Support\DecorAreaBreakdown::requestedAreas($booking->design_brief) === [])
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    @foreach($analysisGroups as $group)
-                                        <div>
-                                            <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">{{ $group['area_label'] ?? 'Overall Design' }}</h3>
-                                            <div class="space-y-2">
-                                                @foreach($group['items'] ?? [] as $item)
-                                                    @php
-                                                        $categoryLabel = strtoupper($item['category']);
-                                                        $displayQty = $item['quantity'] > 0 ? number_format((float) $item['quantity'], 0) : '~' . number_format((float) max(1, $item['quantity']), 0);
-                                                    @endphp
-                                                    <div class="rounded-lg border border-slate-100 bg-slate-50 p-3" data-line-id="{{ $item['line_id'] }}">
-                                                        <div class="flex items-start justify-between gap-2">
-                                                            <div class="min-w-0">
-                                                                <p class="text-sm font-semibold text-slate-800 leading-snug">{{ $item['name'] }}</p>
-                                                                <p class="mt-0.5 text-xs text-slate-500">{{ $displayQty }} {{ $item['unit_type'] }}</p>
-                                                            </div>
-                                                            <span class="shrink-0 rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{{ $categoryLabel }}</span>
-                                                        </div>
-                                                    </div>
-                                                @endforeach
-                                            </div>
-                                        </div>
-                                    @endforeach
-                                </div>
-                                @endif
-                            </section>
-                            @endif
 
                         </div>
                     </div>
                 </div>
+
+                {{-- Remaining Balance Payment Modal --}}
+                @if($canPayRemainingBalance)
+                    <div id="remainingBalanceModal" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="remainingBalanceModalTitle">
+                        <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
+                            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                <h3 id="remainingBalanceModalTitle" class="text-lg font-bold text-slate-800">Pay Remaining Balance</h3>
+                                <button type="button" onclick="document.getElementById('remainingBalanceModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600" aria-label="Close modal">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                            </div>
+                            <form method="POST" action="{{ route('bookings.payment.reference', ['booking' => $booking->id]) }}" class="p-5 sm:p-6 space-y-4">
+                                @csrf
+                                <dl class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2 text-sm">
+                                    <div class="flex justify-between gap-3"><dt class="text-slate-600">Total</dt><dd class="font-semibold tabular-nums">₱{{ number_format((float) $displayedTotal, 2) }}</dd></div>
+                                    <div class="flex justify-between gap-3"><dt class="text-slate-600">Paid</dt><dd class="font-semibold tabular-nums text-emerald-700">₱{{ number_format($paidAmount, 2) }}</dd></div>
+                                    <div class="flex justify-between gap-3 border-t border-slate-200 pt-2"><dt class="font-semibold text-slate-800">Remaining balance to pay</dt><dd class="font-bold tabular-nums text-slate-900">₱{{ number_format($remaining, 2) }}</dd></div>
+                                </dl>
+
+                                @if($balancePaymentRejected)
+                                    <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900" role="alert">
+                                        <p class="font-bold text-sm text-rose-800">Previous Payment Submission Not Verified</p>
+                                        <p class="mt-1 text-xs text-rose-700">
+                                            Your previous payment reference (<span class="font-semibold">{{ $latestPayment->reference_number }}</span>
+                                            via <span class="font-semibold uppercase">{{ strtoupper($latestPayment->payment_type) }}</span>)
+                                            could not be verified by Raflora Administration.
+                                        </p>
+                                        <p class="mt-1 text-xs text-rose-600">Please double-check your payment receipt or transaction slip, verify the reference number, and submit a corrected reference below to complete your final settlement.</p>
+                                    </div>
+                                @endif
+
+                                <div class="rf-field mb-0">
+                                    <label for="balance_payment_option" class="rf-label">Payment Option</label>
+                                    {{-- The server charges exactly the remaining balance as a final settlement. --}}
+                                    <select id="balance_payment_option" name="payment_option" class="rf-select">
+                                        <option value="full_payment" selected>Final Balance Settlement (₱{{ number_format($remaining, 2) }})</option>
+                                    </select>
+                                </div>
+
+                                <div class="rf-field mb-0">
+                                    <label for="balance_payment_type" class="rf-label">Payment Method</label>
+                                    <select id="balance_payment_type" name="payment_type" class="rf-select">
+                                        <option value="gcash">GCash</option>
+                                        <option value="bank_transfer">Bank Transfer</option>
+                                    </select>
+                                </div>
+                                <div class="rf-field mb-0">
+                                    <label for="balance_reference_number" class="rf-label">Reference Number</label>
+                                    <input id="balance_reference_number" type="text" name="reference_number" maxlength="255" placeholder="Reference # from your GCash or bank receipt" class="rf-input" required>
+                                </div>
+                                <p class="text-xs text-slate-500">Raflora checks this reference against its account before recording your payment. Your balance updates once it is verified.</p>
+
+                                <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+                                    <button type="button" onclick="document.getElementById('remainingBalanceModal').classList.add('hidden')" class="rf-btn rf-btn-secondary">Cancel</button>
+                                    <button type="submit" class="rf-btn rf-btn-primary">Submit Payment Reference</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                @endif
 
                 {{-- Cancellation Modal --}}
                 @if($canRequestCancellation)
@@ -807,8 +1134,9 @@
 
             const changeModal = document.getElementById('changeModal');
             const cancellationModal = document.getElementById('cancellationModal');
+            const remainingBalanceModal = document.getElementById('remainingBalanceModal');
 
-            [changeModal, cancellationModal].forEach((m) => {
+            [changeModal, cancellationModal, remainingBalanceModal].forEach((m) => {
                 if (!m) return;
                 m.addEventListener('click', (event) => {
                     if (event.target === m) {
@@ -824,6 +1152,9 @@
                     }
                     if (cancellationModal && !cancellationModal.classList.contains('hidden')) {
                         cancellationModal.classList.add('hidden');
+                    }
+                    if (remainingBalanceModal && !remainingBalanceModal.classList.contains('hidden')) {
+                        remainingBalanceModal.classList.add('hidden');
                     }
                 }
             });

@@ -311,7 +311,7 @@
                     </div>
 
                     {{-- Package Hero Row (Image + Details) --}}
-                    <div class="flex flex-col sm:flex-row gap-4 items-start">
+                    <div class="flex flex-col {{ $isCurated ? 'sm:flex-row' : 'lg:flex-row' }} gap-4 items-start">
                         {{-- Package / Inspiration Image --}}
                         <div class="w-full sm:w-72 flex flex-col gap-2 shrink-0">
                             @php
@@ -379,6 +379,132 @@
                                         @endif
                                     </p>
                                 </div>
+                            @endunless
+
+                            @unless($isCurated)
+                                {{-- Beside the inspiration image (moved from the bottom of this card) --}}
+                            {{-- AI Analyzed Floral Materials Section --}}
+                            <div class="mt-5 pt-4 border-t border-stone-100">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-xs font-bold uppercase tracking-wider text-stone-700">
+                                        AI-Analyzed Materials <span class="text-stone-400 font-normal">({{ count($analysisMaterials) }} items)</span>
+                                    </h4>
+                                    <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">Decision Support</span>
+                                </div>
+
+                                {{-- Indicative AI ranges per area (server-calculated); distinct from the official quotation --}}
+                                <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" class="mb-3" />
+
+                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-3" />
+
+                                @php
+                                    // Which photos each combined line was seen in (several photos of one design share a line).
+                                    $lineImageIds = fn (array $mat) => array_values(array_unique(array_map('intval', (array) ($mat['image_ids'] ?? [$mat['image_id'] ?? 1]))));
+                                @endphp
+                                @if(count($multiImages) > 1)
+                                    <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1" id="tracking-material-tabs" role="group" aria-label="Show materials by photo">
+                                        <button type="button" onclick="filterTrackingMaterials('all')" aria-pressed="true" class="tracking-mat-tab px-3 py-1 rounded-lg text-xs font-bold transition bg-emerald-700 text-white shadow-2xs shrink-0" data-target="all">
+                                            All Materials ({{ count($analysisMaterials) }})
+                                        </button>
+                                        @foreach($multiImages as $mImg)
+                                            <button type="button" onclick="filterTrackingMaterials({{ $mImg['id'] }})" aria-pressed="false" class="tracking-mat-tab px-3 py-1 rounded-lg text-xs font-bold transition bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 shrink-0" data-target="{{ $mImg['id'] }}">
+                                                Photo {{ $loop->iteration }} ({{ collect($analysisMaterials)->filter(fn ($mat) => in_array($mImg['id'], $lineImageIds($mat), true))->count() }})
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                <div class="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                                    @forelse($analysisMaterials as $mat)
+                                        @php
+                                            $matName = $mat['item_name'] ?? 'Floral Item';
+                                            $category = ucfirst($mat['category'] ?? 'flower');
+                                            $qty = $mat['quantity'] ?? $mat['estimated_quantity'] ?? null;
+                                            $unit = $mat['unit_type'] ?? 'pcs';
+                                            $isDetected = !empty($mat['is_detected']) && empty($mat['is_recommendation']);
+                                            $confidence = isset($mat['confidence']) ? round((float)$mat['confidence'] * 100) : null;
+                                            $alt = $mat['suggested_alternative'] ?? null;
+                                            $altReason = $mat['alternative_reason'] ?? null;
+                                            $seasonalNote = $mat['seasonal_notes'] ?? null;
+                                            $matImgIds = $lineImageIds($mat);
+                                        @endphp
+                                        <div class="tracking-mat-item p-3 rounded-xl border border-stone-200 bg-stone-50/60 hover:bg-stone-50 transition" data-image-id="{{ $matImgIds[0] ?? 1 }}" data-image-ids="{{ implode(' ', $matImgIds) }}" data-line-id="{{ $mat['line_id'] ?? 'm' . ($loop->index + 1) }}">
+                                            <div class="flex items-start justify-between gap-2">
+                                                <div>
+                                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                                        <span class="font-bold text-stone-900 text-xs sm:text-sm">{{ $matName }}</span>
+                                                        @if(count($multiImages) > 1)
+                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                                {{ count($matImgIds) > 1 ? 'Inspiration Photos ' . implode(', ', $matImgIds) : 'Inspiration Photo ' . ($matImgIds[0] ?? 1) }}
+                                                            </span>
+                                                        @endif
+                                                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {{ $isDetected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700' }}">
+                                                            {{ $isDetected ? 'AI Detected' : 'AI Recommendation' }}
+                                                        </span>
+                                                        <span class="text-[10px] font-medium text-stone-500 bg-white border border-stone-200 px-1.5 py-0.2 rounded">
+                                                            {{ $category }}
+                                                        </span>
+                                                        @if(!empty($mat['area']))
+                                                            <span class="text-[10px] font-semibold text-stone-600 bg-white border border-stone-200 px-1.5 py-0.5 rounded">
+                                                                {{ ucfirst($mat['area']) }}
+                                                            </span>
+                                                        @endif
+                                                        @if($confidence !== null)
+                                                            <span class="text-[10px] text-stone-400 font-medium">({{ $confidence }}% confidence)</span>
+                                                        @endif
+                                                    </div>
+                                                    <div class="text-xs text-stone-600 mt-1">
+                                                        <span class="font-semibold text-stone-800">Est. Qty:</span> {{ $qty !== null ? $qty . ' ' . $unit : 'To be confirmed by Raflora' }}
+                                                        @if(!empty($mat['area']) && $mat['area'] !== 'overall')
+                                                            <span class="mx-1 text-stone-300">•</span>
+                                                            <span class="text-stone-500 capitalize">Area: {{ str_replace('_', ' ', $mat['area']) }}</span>
+                                                        @endif
+                                                    </div>
+                                                    @if(!empty($mat['note']))
+                                                        <p class="text-[11px] text-stone-500 italic mt-1 leading-snug">{{ $mat['note'] }}</p>
+                                                    @endif
+                                                </div>
+                                            </div>
+
+                                            @if(!empty($alt))
+                                                <div class="mt-2 pt-2 border-t border-stone-200/60 text-xs bg-white/70 p-2 rounded-lg border border-amber-100">
+                                                    <span class="font-bold text-amber-800 text-[10px] uppercase tracking-wider block">AI-Suggested Alternative (Subject to Raflora Validation):</span>
+                                                    <div class="text-stone-700 mt-0.5">
+                                                        <strong class="text-stone-900">{{ $matName }}</strong> → <span class="text-emerald-700 font-semibold">{{ $alt }}</span>
+                                                        @if($altReason)
+                                                            <p class="text-[11px] text-stone-500 mt-0.5">{{ $altReason }}</p>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endif
+
+                                            @if(!empty($seasonalNote))
+                                                <div class="mt-1.5 text-[11px] text-stone-500 flex items-center gap-1.5">
+                                                    <i class="fa-solid fa-leaf text-emerald-600 text-[10px]"></i>
+                                                    <span>Seasonal Context: {{ $seasonalNote }} (Requires Raflora validation)</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    @empty
+                                        <div class="p-4 rounded-xl border border-stone-200 bg-stone-50 text-center text-xs text-stone-400">
+                                            No individual materials itemized. Our team will specify materials during request review.
+                                        </div>
+                                    @endforelse
+                                </div>
+
+                                @if(!empty($cleanSpecialRequests))
+                                    <div class="mt-3 pt-3 border-t border-stozne-100">
+                                        <span class="text-[10px] font-bold uppercase tracking-wider text-stone-500 block mb-1">Additional Requests / Notes</span>
+                                        <p class="text-xs text-stone-700 bg-stone-50 p-2.5 rounded-xl border border-stone-200">{{ $cleanSpecialRequests }}</p>
+                                    </div>
+                                @endif
+
+                                {{-- Seasonality & Quotation Disclaimers --}}
+                                <div class="mt-3 p-2.5 rounded-xl border border-stone-200 bg-stone-50/80 text-[11px] text-stone-600 space-y-1">
+                                    <p><i class="fa-solid fa-circle-info text-stone-500 mr-1"></i><strong>Seasonal Context:</strong> Flower seasonality is decision support only and requires Raflora florist validation for your event date. It does not guarantee supplier availability.</p>
+                                    <p><i class="fa-solid fa-scale-balanced text-stone-500 mr-1"></i><strong>Distinct Business Truth:</strong> AI detection ≠ supplier procurement ≠ current inventory stock ≠ official quotation.</p>
+                                </div>
+                            </div>
                             @endunless
                         </div>
                     </div>
@@ -496,129 +622,6 @@
                                     <p class="text-xs text-stone-700 bg-stone-50 p-2.5 rounded-xl border border-stone-200">{{ $cleanSpecialRequests }}</p>
                                 </div>
                             @endif
-                        </div>
-                    @else
-                        {{-- AI Analyzed Floral Materials Section --}}
-                        <div class="mt-5 pt-4 border-t border-stone-100">
-                            <div class="flex items-center justify-between mb-3">
-                                <h4 class="text-xs font-bold uppercase tracking-wider text-stone-700">
-                                    AI-Analyzed Materials <span class="text-stone-400 font-normal">({{ count($analysisMaterials) }} items)</span>
-                                </h4>
-                                <span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">Decision Support</span>
-                            </div>
-
-                            {{-- Indicative AI ranges per area (server-calculated); distinct from the official quotation --}}
-                            <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" class="mb-3" />
-
-                            <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-3" />
-
-                            @php
-                                // Which photos each combined line was seen in (several photos of one design share a line).
-                                $lineImageIds = fn (array $mat) => array_values(array_unique(array_map('intval', (array) ($mat['image_ids'] ?? [$mat['image_id'] ?? 1]))));
-                            @endphp
-                            @if(count($multiImages) > 1)
-                                <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1" id="tracking-material-tabs" role="group" aria-label="Show materials by photo">
-                                    <button type="button" onclick="filterTrackingMaterials('all')" aria-pressed="true" class="tracking-mat-tab px-3 py-1 rounded-lg text-xs font-bold transition bg-emerald-700 text-white shadow-2xs shrink-0" data-target="all">
-                                        All Materials ({{ count($analysisMaterials) }})
-                                    </button>
-                                    @foreach($multiImages as $mImg)
-                                        <button type="button" onclick="filterTrackingMaterials({{ $mImg['id'] }})" aria-pressed="false" class="tracking-mat-tab px-3 py-1 rounded-lg text-xs font-bold transition bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 shrink-0" data-target="{{ $mImg['id'] }}">
-                                            Photo {{ $loop->iteration }} ({{ collect($analysisMaterials)->filter(fn ($mat) => in_array($mImg['id'], $lineImageIds($mat), true))->count() }})
-                                        </button>
-                                    @endforeach
-                                </div>
-                            @endif
-
-                            <div class="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                                @forelse($analysisMaterials as $mat)
-                                    @php
-                                        $matName = $mat['item_name'] ?? 'Floral Item';
-                                        $category = ucfirst($mat['category'] ?? 'flower');
-                                        $qty = $mat['quantity'] ?? $mat['estimated_quantity'] ?? null;
-                                        $unit = $mat['unit_type'] ?? 'pcs';
-                                        $isDetected = !empty($mat['is_detected']) && empty($mat['is_recommendation']);
-                                        $confidence = isset($mat['confidence']) ? round((float)$mat['confidence'] * 100) : null;
-                                        $alt = $mat['suggested_alternative'] ?? null;
-                                        $altReason = $mat['alternative_reason'] ?? null;
-                                        $seasonalNote = $mat['seasonal_notes'] ?? null;
-                                        $matImgIds = $lineImageIds($mat);
-                                    @endphp
-                                    <div class="tracking-mat-item p-3 rounded-xl border border-stone-200 bg-stone-50/60 hover:bg-stone-50 transition" data-image-id="{{ $matImgIds[0] ?? 1 }}" data-image-ids="{{ implode(' ', $matImgIds) }}" data-line-id="{{ $mat['line_id'] ?? 'm' . ($loop->index + 1) }}">
-                                        <div class="flex items-start justify-between gap-2">
-                                            <div>
-                                                <div class="flex items-center gap-1.5 flex-wrap">
-                                                    <span class="font-bold text-stone-900 text-xs sm:text-sm">{{ $matName }}</span>
-                                                    @if(count($multiImages) > 1)
-                                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                                            {{ count($matImgIds) > 1 ? 'Inspiration Photos ' . implode(', ', $matImgIds) : 'Inspiration Photo ' . ($matImgIds[0] ?? 1) }}
-                                                        </span>
-                                                    @endif
-                                                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full {{ $isDetected ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700' }}">
-                                                        {{ $isDetected ? 'AI Detected' : 'AI Recommendation' }}
-                                                    </span>
-                                                    <span class="text-[10px] font-medium text-stone-500 bg-white border border-stone-200 px-1.5 py-0.2 rounded">
-                                                        {{ $category }}
-                                                    </span>
-                                                    @if(!empty($mat['area']))
-                                                        <span class="text-[10px] font-semibold text-stone-600 bg-white border border-stone-200 px-1.5 py-0.5 rounded">
-                                                            {{ ucfirst($mat['area']) }}
-                                                        </span>
-                                                    @endif
-                                                    @if($confidence !== null)
-                                                        <span class="text-[10px] text-stone-400 font-medium">({{ $confidence }}% confidence)</span>
-                                                    @endif
-                                                </div>
-                                                <div class="text-xs text-stone-600 mt-1">
-                                                    <span class="font-semibold text-stone-800">Est. Qty:</span> {{ $qty !== null ? $qty . ' ' . $unit : 'To be confirmed by Raflora' }}
-                                                    @if(!empty($mat['area']) && $mat['area'] !== 'overall')
-                                                        <span class="mx-1 text-stone-300">•</span>
-                                                        <span class="text-stone-500 capitalize">Area: {{ str_replace('_', ' ', $mat['area']) }}</span>
-                                                    @endif
-                                                </div>
-                                                @if(!empty($mat['note']))
-                                                    <p class="text-[11px] text-stone-500 italic mt-1 leading-snug">{{ $mat['note'] }}</p>
-                                                @endif
-                                            </div>
-                                        </div>
-
-                                        @if(!empty($alt))
-                                            <div class="mt-2 pt-2 border-t border-stone-200/60 text-xs bg-white/70 p-2 rounded-lg border border-amber-100">
-                                                <span class="font-bold text-amber-800 text-[10px] uppercase tracking-wider block">AI-Suggested Alternative (Subject to Raflora Validation):</span>
-                                                <div class="text-stone-700 mt-0.5">
-                                                    <strong class="text-stone-900">{{ $matName }}</strong> → <span class="text-emerald-700 font-semibold">{{ $alt }}</span>
-                                                    @if($altReason)
-                                                        <p class="text-[11px] text-stone-500 mt-0.5">{{ $altReason }}</p>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        @endif
-
-                                        @if(!empty($seasonalNote))
-                                            <div class="mt-1.5 text-[11px] text-stone-500 flex items-center gap-1.5">
-                                                <i class="fa-solid fa-leaf text-emerald-600 text-[10px]"></i>
-                                                <span>Seasonal Context: {{ $seasonalNote }} (Requires Raflora validation)</span>
-                                            </div>
-                                        @endif
-                                    </div>
-                                @empty
-                                    <div class="p-4 rounded-xl border border-stone-200 bg-stone-50 text-center text-xs text-stone-400">
-                                        No individual materials itemized. Our team will specify materials during request review.
-                                    </div>
-                                @endforelse
-                            </div>
-
-                            @if(!empty($cleanSpecialRequests))
-                                <div class="mt-3 pt-3 border-t border-stone-100">
-                                    <span class="text-[10px] font-bold uppercase tracking-wider text-stone-500 block mb-1">Additional Requests / Notes</span>
-                                    <p class="text-xs text-stone-700 bg-stone-50 p-2.5 rounded-xl border border-stone-200">{{ $cleanSpecialRequests }}</p>
-                                </div>
-                            @endif
-
-                            {{-- Seasonality & Quotation Disclaimers --}}
-                            <div class="mt-3 p-2.5 rounded-xl border border-stone-200 bg-stone-50/80 text-[11px] text-stone-600 space-y-1">
-                                <p><i class="fa-solid fa-circle-info text-stone-500 mr-1"></i><strong>Seasonal Context:</strong> Flower seasonality is decision support only and requires Raflora florist validation for your event date. It does not guarantee supplier availability.</p>
-                                <p><i class="fa-solid fa-scale-balanced text-stone-500 mr-1"></i><strong>Distinct Business Truth:</strong> AI detection ≠ supplier procurement ≠ current inventory stock ≠ official quotation.</p>
-                            </div>
                         </div>
                     @endif
                 </div>

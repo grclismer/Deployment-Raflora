@@ -61,6 +61,7 @@ class BookingController extends Controller
         $statusFilter = in_array($rawStatus, $validStatuses, true) ? $rawStatus : 'all';
 
         $searchTerm = trim((string) $request->query('search', ''));
+        $searchBookingNumber = $this->bookingNumberFromSearch($searchTerm);
 
         $eventTypeFilter = $request->query('event_type', 'all');
         $eventDateFrom = $request->query('event_date_from');
@@ -95,9 +96,9 @@ class BookingController extends Controller
 
         // Search Filter
         if ($searchTerm !== '') {
-            $query->where(function ($q) use ($searchTerm) {
-                if (is_numeric($searchTerm)) {
-                    $q->orWhere('id', (int) $searchTerm);
+            $query->where(function ($q) use ($searchTerm, $searchBookingNumber) {
+                if ($searchBookingNumber !== null) {
+                    $q->orWhere('id', $searchBookingNumber);
                 }
                 $q->orWhere('event_type', 'like', "%{$searchTerm}%")
                   ->orWhere('venue', 'like', "%{$searchTerm}%")
@@ -146,8 +147,11 @@ class BookingController extends Controller
             }
 
             if (!empty($searchTerm)) {
-                $guestQuery->where(function ($q) use ($searchTerm) {
-                    $q->where('guest_name', 'like', "%{$searchTerm}%")
+                $guestQuery->where(function ($q) use ($searchTerm, $searchBookingNumber) {
+                    if ($searchBookingNumber !== null) {
+                        $q->orWhere('id', $searchBookingNumber);
+                    }
+                    $q->orWhere('guest_name', 'like', "%{$searchTerm}%")
                       ->orWhere('guest_email', 'like', "%{$searchTerm}%")
                       ->orWhere('event_type', 'like', "%{$searchTerm}%")
                       ->orWhere('venue', 'like', "%{$searchTerm}%");
@@ -229,6 +233,17 @@ class BookingController extends Controller
      * Open the booking's return record from what was dispatched (ReturnRecordService). Lines that
      * were never dispatched, or are not linked to inventory, are not returnable and are left out.
      */
+    /**
+     * A search for a booking number: "53", "#53", "booking 53", "Booking #53", "BOOKING NO. 53" or "id 53"
+     * (any letter case) gives 53; anything else is not a number search.
+     */
+    protected function bookingNumberFromSearch(string $term): ?int
+    {
+        return preg_match('/^(?:(?:booking|id)\s*(?:no\.?|number)?\s*)?#?\s*(\d{1,9})$/i', trim($term), $matches)
+            ? (int) $matches[1]
+            : null;
+    }
+
     protected function ensureReturnRecordForBooking(Booking $booking): void
     {
         app(\App\Services\ReturnRecordService::class)->openFor($booking);
@@ -721,68 +736,13 @@ class BookingController extends Controller
             ->get();
 
         // Read-only: booking lines are linked to inventory only by Admin's explicit actions.
+        $shortageService = app(\App\Services\BookingShortageService::class);
         foreach ($activeBookings as $booking) {
-            $shortageItems = [];
-            // Units already dispatched to this booking, per item, still to be set against its lines.
-            $dispatchedLeft = [];
-            foreach ($booking->bookingItems as $bookingItem) {
-                $required = (float) ($bookingItem->quantity ?? 0);
-                if ($required <= 0) {
-                    continue;
+            $shortageItems = $shortageService->itemsFor($booking);
+            foreach ($shortageItems as $shortageItem) {
+                if (($shortageItem['is_shortage'] ?? false) && $shortageItem['inventory_item_id']) {
+                    $bookedInventoryItemIds->push($shortageItem['inventory_item_id']);
                 }
-
-                $item = $bookingItem->inventoryItem;
-                if ($item) {
-                    // Dispatched units have left current_stock and are at the event, so only the
-                    // rest of the line is still needed from stock.
-                    $dispatchedLeft[$item->id] ??= $item->dispatchedForBooking($booking->id);
-                    $alreadyDispatched = min($required, $dispatchedLeft[$item->id]);
-                    $dispatchedLeft[$item->id] -= $alreadyDispatched;
-                    $required -= $alreadyDispatched;
-                }
-                if (!$item) {
-                    $shortageItems[] = [
-                        'inventory_item_id' => null,
-                        'booking_item_id' => $bookingItem->id,
-                        'name' => $bookingItem->item_name ?? 'Unmatched booking item',
-                        'quoted_unit_price' => (float) ($bookingItem->quoted_unit_price ?? 0),
-                        'required' => $required,
-                        'current_stock' => 0,
-                        'reserved_stock' => 0,
-                        'net_available' => 0,
-                        'shortfall' => $required,
-                        'is_missing' => true,
-                        'is_shortage' => true,
-                    ];
-                    continue;
-                }
-
-                // Stock held for other bookings: everything held minus what this booking itself
-                // holds (InventoryItem::reservedForBooking), never minus what it merely needs.
-                $reservedByOtherBookings = max(0.0, (float) $item->reserved_stock - $item->reservedForBooking($booking->id));
-                $available = max(0.0, (float) $item->current_stock - $reservedByOtherBookings);
-                $isShortage = $available < $required;
-                if ($isShortage) {
-                    $bookedInventoryItemIds->push($item->id);
-                }
-
-                $shortageItems[] = [
-                    'inventory_item_id' => $item->id,
-                    'name' => $item->name,
-                    'required' => $required,
-                    'current_stock' => (float) $item->current_stock,
-                    'reserved_stock' => $reservedByOtherBookings,
-                    'net_available' => $available,
-                    'shortfall' => max(0.0, $required - $available),
-                    'is_missing' => false,
-                    'is_shortage' => $isShortage,
-                ];
-            }
-
-            if (!empty($shortageItems)) {
-                usort($shortageItems, function (array $left, array $right): int {
-                    return ((int) ($right['is_shortage'] ?? false)) <=> ((int) ($left['is_shortage'] ?? false));
-                });
             }
 
             $shortageCount = count(array_filter($shortageItems, fn (array $item): bool => (bool) ($item['is_shortage'] ?? false)));
@@ -1694,6 +1654,10 @@ class BookingController extends Controller
             return 'This booking is closed (' . $booking->status_display_label . '), so its status can no longer be changed.';
         }
 
+        if ($booking->isDelivery() && in_array($to, ['event_completed', 'pending_return', 'pending_resolution', 'completed'], true)) {
+            return 'Delivery orders have no return audit. Use "Mark Item Received" once the client has the items.';
+        }
+
         return match ($to) {
             'declined', 'cancelled', 'rejected' => $this->hasPaymentAwaitingVerification($booking)
                 ? 'The client submitted a payment reference that is still waiting for verification. Verify or reject it before closing this booking.'
@@ -1884,6 +1848,54 @@ class BookingController extends Controller
             return redirect()->back()->with('error', 'Link or promote this AI suggestion before confirming it.');
         }
 
+        $this->confirmBookingItemRequirement($booking, $bookingItem);
+        $this->recordReviewFromMaterialAction($booking, 'material confirmation');
+
+        return redirect()->back()->with('success', 'Material requirement confirmed for this booking.');
+    }
+
+    /**
+     * Confirm every AI-suggested material that is already linked to inventory, one item at a time,
+     * exactly as the per-row "Confirm Material" button does. Unmatched suggestions are left for linking.
+     */
+    public function confirmAllMaterials(Request $request, Booking $booking): RedirectResponse
+    {
+        if (Auth::user()?->role !== 'admin') {
+            abort(403, 'Only an authorized admin can confirm material requirements.');
+        }
+
+        $readyItems = $booking->bookingItems()
+            ->where('is_ai_suggested', true)
+            ->whereNull('confirmed_at')
+            ->whereNotNull('inventory_item_id')
+            ->orderBy('id')
+            ->get();
+
+        if ($readyItems->isEmpty()) {
+            return redirect()->back()->with('error', 'There are no linked materials waiting for confirmation.');
+        }
+
+        DB::transaction(function () use ($booking, $readyItems) {
+            foreach ($readyItems as $bookingItem) {
+                $this->confirmBookingItemRequirement($booking, $bookingItem);
+            }
+        });
+        $this->recordReviewFromMaterialAction($booking, 'material confirmation');
+
+        $unmatchedCount = $booking->bookingItems()
+            ->where('is_ai_suggested', true)
+            ->whereNull('inventory_item_id')
+            ->count();
+        $message = $readyItems->count() . ' ' . Str::plural('material', $readyItems->count()) . ' confirmed for this booking.';
+        if ($unmatchedCount > 0) {
+            $message .= ' ' . $unmatchedCount . ' unmatched ' . Str::plural('suggestion', $unmatchedCount) . ' still ' . ($unmatchedCount === 1 ? 'needs' : 'need') . ' linking or promoting.';
+        }
+
+        return redirect()->back()->with('success', $message);
+    }
+
+    protected function confirmBookingItemRequirement(Booking $booking, BookingItem $bookingItem): void
+    {
         $bookingItem->confirmed_at = now();
         $bookingItem->save();
 
@@ -1909,9 +1921,6 @@ class BookingController extends Controller
             ['booking_item_id' => $bookingItem->id, 'confirmed_at' => $bookingItem->confirmed_at?->toIso8601String()],
             'material_requirement_confirmed'
         );
-        $this->recordReviewFromMaterialAction($booking, 'material confirmation');
-
-        return redirect()->back()->with('success', 'Material requirement confirmed for this booking.');
     }
 
     protected function resolveAiSuggestedBookingItem(Request $request, Booking $booking, ?BookingItem $bookingItem = null): ?BookingItem
@@ -2107,6 +2116,9 @@ class BookingController extends Controller
 
         if ($action === 'mark_event_in_progress' && !in_array($normalizedOldStatus, ['downpayment_received', 'confirmed', 'fully_paid', 'in_preparation'], true)) {
             return redirect()->back()->with('error', 'Only a confirmed booking with a verified payment can be marked as in progress.');
+        }
+        if ($action === 'mark_event_completed' && $booking->isDelivery()) {
+            return redirect()->back()->with('error', 'Delivery orders have no return audit. Use "Mark Item Received" once the client has the items.');
         }
         if ($action === 'mark_event_completed' && $normalizedOldStatus !== 'event_in_progress') {
             return redirect()->back()->with('error', 'Only an event in progress can be marked as completed.');
@@ -2578,7 +2590,10 @@ class BookingController extends Controller
             $hasCompletedReturn = $booking->returns()->where('status', 'Completed')->exists();
             $hasIncompleteReturn = $booking->returns()->where('status', '!=', 'Completed')->exists();
             
-            if ($hasPendingResolution) {
+            if ($booking->isDelivery()) {
+                // No return audit for delivery orders: completed once received and paid (DeliveryOrderService).
+                $booking->setNormalizedStatus(app(\App\Services\DeliveryOrderService::class)->statusAfterPayment($booking->fresh(), $normalizedOldStatus));
+            } elseif ($hasPendingResolution) {
                 $booking->setNormalizedStatus('pending_resolution');
             } elseif ($hasCompletedReturn && !$hasIncompleteReturn && $booking->fresh()->remaining_balance <= 0) {
                 $booking->setNormalizedStatus('completed');
@@ -2727,7 +2742,7 @@ class BookingController extends Controller
                 return redirect()->back()->with('error', 'Cannot complete booking: an outstanding balance of ₱' . number_format($remainingBal, 2) . ' remains.');
             }
 
-            if ($booking->hasDispatchedReusableMaterials() || $booking->returns()->exists()) {
+            if (!$booking->isDelivery() && ($booking->hasDispatchedReusableMaterials() || $booking->returns()->exists())) {
                 $hasCompletedReturn = $booking->returns()->where('status', 'Completed')->exists();
                 $hasIncompleteReturn = $booking->returns()->where('status', '!=', 'Completed')->exists();
                 if (!$hasCompletedReturn || $hasIncompleteReturn) {
@@ -2851,11 +2866,12 @@ class BookingController extends Controller
                     throw new \Exception('booking_not_found');
                 }
 
-                $isPostEvent = in_array($booking->status, ['event_completed', 'pending_return', 'pending_resolution'], true)
+                // A remaining-balance payment sent while the event runs settles money only: no stock work.
+                $isPostEvent = in_array($booking->status, ['event_in_progress', 'event_completed', 'pending_return', 'pending_resolution'], true)
                     || $booking->returns()->exists()
                     || $booking->hasDispatchedReusableMaterials();
 
-                if (!in_array($booking->status, ['payment_submitted', 'pending_resolution', 'event_completed', 'pending_return'], true)) {
+                if (!in_array($booking->status, ['payment_submitted', 'event_in_progress', 'pending_resolution', 'event_completed', 'pending_return'], true)) {
                     throw new \Exception('invalid_status');
                 }
 
@@ -2957,7 +2973,12 @@ class BookingController extends Controller
                     || $booking->returns()->exists()
                     || $booking->hasDispatchedReusableMaterials();
 
-                if ($isPostEvent) {
+                if ($oldBookingStatus === 'event_in_progress') {
+                    // Balance paid while the event runs: the event stays in progress (as with "Log Final Payment").
+                } elseif ($booking->isDelivery() && $isPostEvent) {
+                    // No return audit for delivery orders: completed once received and paid (DeliveryOrderService).
+                    $booking->setNormalizedStatus(app(\App\Services\DeliveryOrderService::class)->statusAfterPayment($booking, $oldBookingStatus));
+                } elseif ($isPostEvent) {
                     $hasPendingResolution = $booking->returns()
                         ->whereHas('returnItems', function ($q) {
                             $q->where('charge_decision', 'pending')
@@ -3112,7 +3133,7 @@ class BookingController extends Controller
                 'payment_rejected'
             );
 
-            $canResubmit = in_array($lockedBooking->status, ['admin_approved', 'event_completed', 'pending_resolution'], true);
+            $canResubmit = in_array($lockedBooking->status, ['admin_approved', 'event_in_progress', 'event_completed', 'pending_resolution'], true);
             $this->createClientNotificationForBooking(
                 $lockedBooking,
                 'Payment Not Verified',
@@ -3259,7 +3280,13 @@ class BookingController extends Controller
 
             $oldStatus = $lockedBooking->status;
 
-            if ($newRemaining <= 0.0) {
+            if ($lockedBooking->isDelivery()) {
+                // No return audit for delivery orders: completed once received and paid (DeliveryOrderService).
+                $lockedBooking->setNormalizedStatus(app(\App\Services\DeliveryOrderService::class)->statusAfterPayment($lockedBooking->fresh(), $oldStatus))->save();
+                if ($lockedBooking->status !== $oldStatus) {
+                    $this->logAuditEvent('booking', 'final_payment_status_applied', $lockedBooking, 'Delivery order settled after final payment', Auth::id(), ['booking_status' => $oldStatus], ['booking_status' => $lockedBooking->status], 'booking_completed');
+                }
+            } elseif ($newRemaining <= 0.0) {
                 if ($hasPendingResolution) {
                     $lockedBooking->setNormalizedStatus('pending_resolution')->save();
                     $this->logAuditEvent('booking', 'final_payment_status_applied', $lockedBooking, 'Booking set to pending resolution after payment because return items await adjudication', Auth::id(), ['booking_status' => $oldStatus], ['booking_status' => $lockedBooking->status], 'pending_resolution');
@@ -3405,6 +3432,68 @@ class BookingController extends Controller
     /**
      * Admin explicitly confirms fresh flower readiness for an event.
      */
+    /**
+     * Delivery orders: Admin records that the client received the items (e.g. the client
+     * confirmed by message or call without using the portal button). No return audit follows.
+     */
+    /**
+     * Accept or decline the client's schedule change request (ScheduleChangeService). Accepting
+     * moves the event date/time; the quotation is then sent with "Approve & Send Official Quote".
+     */
+    public function decideScheduleRequest(Request $request, Booking $booking, \App\Models\BookingScheduleRequest $scheduleRequest, \App\Services\ScheduleChangeService $scheduleChanges): RedirectResponse
+    {
+        $validated = $request->validate([
+            'decision' => ['required', 'in:accept,decline'],
+            'decision_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $note = trim((string) ($validated['decision_note'] ?? '')) ?: null;
+
+        try {
+            $validated['decision'] === 'accept'
+                ? $scheduleChanges->accept($booking, $scheduleRequest, Auth::id(), $note)
+                : $scheduleChanges->decline($booking, $scheduleRequest, Auth::id(), $note);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $accepted = $validated['decision'] === 'accept';
+        $quotationOpen = in_array($booking->fresh()->status, \App\Services\ScheduleChangeService::QUOTATION_STATUSES, true);
+        $this->createClientNotificationForBooking(
+            $booking,
+            $accepted ? 'Schedule change accepted' : 'Schedule change declined',
+            $accepted
+                ? 'Your event is now on ' . $scheduleRequest->fresh()->requestedLabel() . '.' . ($quotationOpen ? ' Raflora will send the updated quotation.' : '')
+                : 'Raflora could not move your event to ' . $scheduleRequest->requestedLabel() . '.' . ($note ? ' Reason: ' . $note : ''),
+            'booking_update'
+        );
+
+        return back()->with('success', $accepted
+            ? 'Schedule change accepted — the event date is updated.' . ($quotationOpen ? ' Send the updated quotation when ready.' : '')
+            : 'Schedule change declined — the client has been told.');
+    }
+
+    public function markDeliveryReceived(Booking $booking, \App\Services\DeliveryOrderService $deliveryOrders): RedirectResponse
+    {
+        try {
+            $status = $deliveryOrders->markReceived($booking, Auth::id(), \App\Services\DeliveryOrderService::VIA_ADMIN);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->createClientNotificationForBooking(
+            $booking,
+            'Delivery received',
+            $status === 'completed'
+                ? 'Raflora recorded that you received your order. Your booking is now complete.'
+                : 'Raflora recorded that you received your order. Please settle the remaining balance to close your booking.',
+            'booking_update'
+        );
+
+        return back()->with('success', $status === 'completed'
+            ? 'Item received — the delivery order is complete.'
+            : 'Item received — the order will complete once the remaining balance is paid.');
+    }
+
     public function confirmFreshFlowers(Booking $booking): RedirectResponse
     {
         if (Auth::user()?->role !== 'admin') {

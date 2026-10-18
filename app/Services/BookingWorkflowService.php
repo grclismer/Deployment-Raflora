@@ -76,7 +76,36 @@ class BookingWorkflowService
     {
         return $booking instanceof TemporaryGuestBooking
             ? $this->resolveTemporary($booking)
-            : $this->resolveBooking($booking);
+            : $this->forOrderType($booking, $this->resolveBooking($booking));
+    }
+
+    /**
+     * Delivery orders (Booking::isDelivery()) are sold, not rented: Event Execution becomes
+     * "Delivery" and there is no Material Return or Inventory Reconciliation, so those stages
+     * are left out and the remaining stages are renumbered (DeliveryOrderService).
+     */
+    private function forOrderType(Booking $booking, array $workflow): array
+    {
+        if (!$booking->isDelivery()) {
+            return $workflow;
+        }
+
+        unset($workflow['stages']['material_return'], $workflow['stages']['inventory_reconciliation']);
+        $workflow['stages']['event_execution']['label'] = 'Delivery';
+
+        $number = 0;
+        foreach ($workflow['stages'] as $key => $stage) {
+            $workflow['stages'][$key]['number'] = ++$number;
+        }
+
+        $workflow['phases'] = $this->phasesFor($workflow['stages']);
+        $workflow['total'] = count($workflow['stages']);
+        if ($workflow['current'] && isset($workflow['stages'][$workflow['current']])) {
+            $workflow['current_number'] = $workflow['stages'][$workflow['current']]['number'];
+            $workflow['current_label'] = $workflow['stages'][$workflow['current']]['label'];
+        }
+
+        return $workflow;
     }
 
     private function resolveTemporary(TemporaryGuestBooking $booking): array
@@ -198,6 +227,17 @@ class BookingWorkflowService
 
         if (in_array($status, self::CONFIRMED_STATUSES, true)) {
             return $this->operationsStage($booking, $status);
+        }
+
+        if ($booking->isDelivery() && $status === 'event_in_progress') {
+            return ['event_execution', 'Out for delivery — awaiting confirmation that the client received the items.'];
+        }
+
+        if ($booking->isDelivery() && in_array($status, self::POST_EVENT_STATUSES, true)) {
+            // No return audit for delivery orders: received and paid closes the booking.
+            return ['completion', $booking->isDeliveryReceived()
+                ? 'Items received — awaiting final balance settlement.'
+                : 'Awaiting confirmation that the client received the items.'];
         }
 
         if (in_array($status, self::POST_EVENT_STATUSES, true)) {
@@ -492,6 +532,27 @@ class BookingWorkflowService
             ];
         }
 
+        return array_merge([
+            'stages' => $stages,
+            'phases' => $this->phasesFor($stages),
+            'current' => $currentKey,
+            'current_label' => $currentKey ? self::stageLabel($currentKey) : null,
+            'current_number' => $currentKey ? self::stageNumber($currentKey) : null,
+            'current_phase' => $currentKey ? self::stagePhase($currentKey) : null,
+            'current_detail' => $currentKey ? ($details[$currentKey] ?? null) : null,
+            'total' => count(self::STAGES),
+            'finished' => false,
+            'terminal' => null,
+            'terminal_label' => null,
+            'terminal_detail' => null,
+        ], $meta);
+    }
+
+    /**
+     * @param  array<string, array>  $stages
+     */
+    private function phasesFor(array $stages): array
+    {
         $phases = [];
         foreach (self::PHASES as $phaseKey => $phaseLabel) {
             $phaseStages = array_values(array_filter($stages, fn (array $stage) => $stage['phase'] === $phaseKey));
@@ -513,19 +574,6 @@ class BookingWorkflowService
             ];
         }
 
-        return array_merge([
-            'stages' => $stages,
-            'phases' => $phases,
-            'current' => $currentKey,
-            'current_label' => $currentKey ? self::stageLabel($currentKey) : null,
-            'current_number' => $currentKey ? self::stageNumber($currentKey) : null,
-            'current_phase' => $currentKey ? self::stagePhase($currentKey) : null,
-            'current_detail' => $currentKey ? ($details[$currentKey] ?? null) : null,
-            'total' => count(self::STAGES),
-            'finished' => false,
-            'terminal' => null,
-            'terminal_label' => null,
-            'terminal_detail' => null,
-        ], $meta);
+        return $phases;
     }
 }

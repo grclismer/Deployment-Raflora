@@ -9,10 +9,92 @@ use App\Models\InventoryItem;
 use App\Models\Payment;
 use App\Models\AuditLog;
 use Carbon\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
     public function index()
+    {
+        return view('admin.reports', $this->reportData());
+    }
+
+    /**
+     * The Reports & Analytics page as a CSV: the same figures, section by section.
+     */
+    public function exportCsv(): StreamedResponse
+    {
+        $data = $this->reportData();
+        $filename = 'raflora_reports_analytics_' . now()->format('Y-m-d') . '.csv';
+        $safe = fn ($value) => preg_match('/^[=\+\-@]/', (string) $value) ? "'" . $value : (string) $value;
+        $money = fn ($value) => number_format((float) $value, 2, '.', '');
+
+        return response()->stream(function () use ($data, $safe, $money) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel shows names correctly.
+
+            fputcsv($handle, ['Raflora Enterprises - Reports & Analytics']);
+            fputcsv($handle, ['Reporting period', $data['reportPeriod']]);
+            fputcsv($handle, ['Generated', now()->format('M j, Y g:i A')]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Key performance indicators']);
+            fputcsv($handle, ['Metric', 'Value']);
+            fputcsv($handle, ['New bookings this month', $data['bookingsThisMonth']]);
+            fputcsv($handle, ['Confirmed or active this month', $data['confirmedThisMonth']]);
+            fputcsv($handle, ['Verified revenue this month (PHP)', $money($data['verifiedRevenue'])]);
+            fputcsv($handle, ['Average booking value (PHP)', $money($data['averageBookingValue'])]);
+            fputcsv($handle, ['Quoted pipeline value (PHP)', $money($data['pipelineValue'])]);
+            fputcsv($handle, ['Items below minimum stock', $data['stockAlerts']]);
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Six-month trend']);
+            fputcsv($handle, ['Month', 'Verified revenue (PHP)', 'Bookings']);
+            foreach (array_values($data['salesLabels']) as $i => $label) {
+                fputcsv($handle, [$label, $money(array_values($data['salesData'])[$i] ?? 0), array_values($data['bookingTrend'])[$i] ?? 0]);
+            }
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Booking status distribution']);
+            fputcsv($handle, ['Status', 'Bookings']);
+            foreach ($data['statusLabels'] as $i => $label) {
+                fputcsv($handle, [$safe($label), $data['statusData'][$i] ?? 0]);
+            }
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Top requested materials']);
+            fputcsv($handle, ['Material', 'Total quantity']);
+            foreach ($data['materialLabels'] as $i => $label) {
+                fputcsv($handle, [$safe($label), $data['materialData'][$i] ?? 0]);
+            }
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Low stock items']);
+            fputcsv($handle, ['Item', 'Current stock', 'Minimum stock', 'Unit']);
+            foreach ($data['lowStockItems'] as $item) {
+                fputcsv($handle, [$safe($item->name), (float) $item->current_stock, (float) $item->min_stock, $safe($item->unit)]);
+            }
+            fputcsv($handle, []);
+
+            fputcsv($handle, ['Recent activity']);
+            fputcsv($handle, ['Date', 'User', 'Action', 'Details']);
+            foreach ($data['activities'] as $activity) {
+                fputcsv($handle, [$activity['date'], $safe($activity['user']), $safe($activity['action']), $safe($activity['details'])]);
+            }
+
+            fclose($handle);
+        }, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ]);
+    }
+
+    /**
+     * Everything the Reports & Analytics page shows (also exported by exportCsv()).
+     */
+    private function reportData(): array
     {
         $now = Carbon::now();
         $startOfMonth = $now->copy()->startOfMonth();
@@ -186,7 +268,7 @@ class ReportController extends Controller
 
         $reportPeriod = $startOfMonth->format('F Y');
 
-        return view('admin.reports', compact(
+        return compact(
             'bookingsThisMonth',
             'verifiedRevenue',
             'revenueEstimate',
@@ -204,7 +286,7 @@ class ReportController extends Controller
             'materialData',
             'lowStockItems',
             'activities'
-        ));
+        );
     }
     
     public function aiAnalysis()

@@ -29,7 +29,8 @@ class ReturnTrackingController extends Controller
     protected function isEligibleForReturnAudit(Booking $booking): bool
     {
         if (in_array($booking->status, ['event_completed', 'pending_return', 'pending_resolution', 'completed'], true)) {
-            return true;
+            // Delivery orders are sold, not rented: no return audit (App\Services\DeliveryOrderService).
+            return !$booking->isDelivery();
         }
 
         return $booking->status === 'cancelled'

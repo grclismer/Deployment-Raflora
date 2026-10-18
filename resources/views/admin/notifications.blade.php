@@ -169,7 +169,18 @@
                                 <p class="mt-0.5 text-xs text-slate-500">{{ $alert->title }}</p>
                             </div>
                         </div>
-                        <button type="button" aria-label="Close notification details" class="close-modal-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" onclick="closeNotificationModal('{{ $modalId }}')"><i class="fa-solid fa-xmark"></i></button>
+                        <div class="flex shrink-0 items-center gap-2">
+                            @if($isBookingShortageAlert && $alert->booking_id)
+                                {{-- This booking's shortage list for canvassing / procurement (BookingShortageExportController). --}}
+                                <a href="{{ route('admin.notifications.booking-shortages.export', ['booking' => $alert->booking_id]) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" data-shortage-export-csv title="Download this booking's shortage list as CSV" aria-label="Export shortage list as CSV">
+                                    <i class="fa-solid fa-file-csv" aria-hidden="true"></i><span class="hidden sm:inline">Export CSV</span>
+                                </a>
+                                <a href="{{ route('admin.notifications.booking-shortages.report', ['booking' => $alert->booking_id]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" data-shortage-report title="Open the printable shortage report (Save as PDF)" aria-label="Print shortage report">
+                                    <i class="fa-solid fa-print" aria-hidden="true"></i><span class="hidden sm:inline">Print Report</span>
+                                </a>
+                            @endif
+                            <button type="button" aria-label="Close notification details" class="close-modal-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" onclick="closeNotificationModal('{{ $modalId }}')"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
                     </div>
 
                     @if($isBookingShortageAlert && $alert->booking_id)
@@ -239,21 +250,24 @@
                                 <p class="text-xs text-slate-500">Resolve &amp; Restock unlocks once every shortfall is covered.</p>
                             </div>
 
-                            <div class="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                <button type="button" class="{{ $btnSecondary }}" onclick="closeNotificationModal('{{ $modalId }}')">Cancel</button>
-                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                    <button type="button" class="{{ $btnSecondary }}" data-substitution-btn onclick="window.location.href='{{ route('admin.bookings.show', ['booking' => $alert->booking_id]) }}'">
+                            @php
+                                // Compact footer buttons, so the actions fit on one row.
+                                $btnCompactPrimary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs whitespace-nowrap'], $btnPrimary);
+                                $btnCompactSecondary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs whitespace-nowrap'], $btnSecondary);
+                                $missingBookingItemIds = collect($alert->items ?? [])->where('is_missing', true)->pluck('booking_item_id')->filter()->values();
+                            @endphp
+                            <div class="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <button type="button" class="{{ $btnCompactSecondary }}" onclick="closeNotificationModal('{{ $modalId }}')">Cancel</button>
+                                <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                                    <button type="button" class="{{ $btnCompactSecondary }}" data-substitution-btn onclick="window.location.href='{{ route('admin.bookings.show', ['booking' => $alert->booking_id]) }}'">
                                         Request Substitution / Edit Booking
                                     </button>
-                                    @php
-                                        $missingBookingItemIds = collect($alert->items ?? [])->where('is_missing', true)->pluck('booking_item_id')->filter()->values();
-                                    @endphp
                                     @if($missingBookingItemIds->isNotEmpty())
-                                        <button type="submit" form="promote-missing-ai-items-{{ $modalId }}" class="{{ $btnPrimary }}">
+                                        <button type="submit" form="promote-missing-ai-items-{{ $modalId }}" class="{{ $btnCompactPrimary }}">
                                             Add Missing AI Items to Inventory
                                         </button>
                                     @endif
-                                    <button type="submit" name="action" value="restock_and_resolve" class="{{ $btnPrimary }} disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" data-resolve-btn disabled>
+                                    <button type="submit" name="action" value="restock_and_resolve" class="{{ $btnCompactPrimary }} disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" data-resolve-btn disabled>
                                         Resolve &amp; Restock
                                     </button>
                                 </div>

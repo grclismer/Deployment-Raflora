@@ -279,6 +279,7 @@
                                     'corporate' => ['Corporate', 'bg-sky-50 text-sky-700 border-sky-200/60'],
                                     'debut' => ['Debut', 'bg-purple-50 text-purple-700 border-purple-200/60'],
                                     'birthday' => ['Birthday', 'bg-rose-50 text-rose-600 border-rose-200/60'],
+                                    'delivery' => ['Delivery · No return', 'bg-sky-50 text-sky-700 border-sky-200/60'],
                                     default => [ucfirst((string) $b->event_type), 'bg-slate-100 text-slate-700 border-slate-200']
                                 };
 

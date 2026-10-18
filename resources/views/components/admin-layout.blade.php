@@ -46,7 +46,9 @@
     $adminUser = auth()->user();
     $adminName = $adminUser->name ?? 'Raflora Admin';
     $adminInitials = strtoupper(substr($adminName ?: 'RA', 0, 2));
-    $showHeaderSearch = ! request()->routeIs('admin.bookings');
+    // Hidden on the bookings list (it has its own search) and inside a single booking.
+    // Reports & Analytics shows its Export button in this spot instead; the Dashboard has neither.
+    $showHeaderSearch = ! request()->routeIs('admin.dashboard', 'admin.bookings', 'admin.bookings.show', 'admin.bookings.edit', 'admin.reports');
 @endphp
 
 <!DOCTYPE html>

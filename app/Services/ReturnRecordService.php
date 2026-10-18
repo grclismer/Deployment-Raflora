@@ -49,6 +49,11 @@ class ReturnRecordService
                 return $existing;
             }
 
+            // Delivery orders are sold: nothing comes back unless the order was cancelled after dispatch.
+            if ($booking->isDelivery() && $booking->status !== 'cancelled') {
+                return null;
+            }
+
             $dispatched = $this->dispatchedQuantities($booking);
             if ($dispatched === [] && !$allowEmpty) {
                 return null;
