@@ -1,2 +1,7 @@
-*
-!.gitignore
+
+/*
+!/.gitignore
+!/galleries
+!/galleries/**
+!/packages
+!/packages/**
