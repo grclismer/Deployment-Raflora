@@ -149,6 +149,34 @@ class AdminReturnTrackingModernizedWorkflowTest extends TestCase
     }
 
     /**
+     * The audit screen lists items compactly (search, filters, pages) with each item's full form in
+     * a pop-up; every field is still inside the one form, so saving posts the same data as before.
+     */
+    public function test_audit_screen_keeps_every_field_in_the_form_behind_compact_rows(): void
+    {
+        [$booking, $item] = $this->createDispatchedFixture(6, 'event_completed');
+        $this->actingAs($this->admin)->post(route('admin.return-tracking.start', $booking));
+        $returnItem = $booking->fresh()->returns()->first()->returnItems()->first();
+
+        $html = $this->actingAs($this->admin)->get(route('admin.return-tracking.manage', $booking))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-return-row="' . $returnItem->id . '"', $html);
+        $this->assertStringContainsString('data-return-detail="' . $returnItem->id . '"', $html);
+        $this->assertStringContainsString('id="returnItemSearch"', $html);
+        $this->assertStringContainsString('Mark remaining as Good', $html);
+        $this->assertStringContainsString('How reconciliation works', $html);
+
+        $formStart = strpos($html, 'id="returnAuditForm"');
+        $formEnd = strpos($html, '</form>', $formStart);
+        foreach (['quantity_good', 'quantity_damaged', 'quantity_lost', 'charge_decision', 'damage_charge', 'notes', 'charge_reason'] as $field) {
+            $position = strpos($html, 'name="items[' . $returnItem->id . '][' . $field . ']"');
+            $this->assertNotFalse($position, $field . ' is missing.');
+            $this->assertTrue($position > $formStart && $position < $formEnd, $field . ' must stay inside the audit form.');
+        }
+        $this->assertStringNotContainsString('SKU:', $html);
+    }
+
+    /**
      * Scenario D: Returned quantity validation works server-side.
      */
     public function test_returned_quantity_validation_works(): void

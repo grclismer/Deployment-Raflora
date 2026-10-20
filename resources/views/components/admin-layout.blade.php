@@ -46,9 +46,6 @@
     $adminUser = auth()->user();
     $adminName = $adminUser->name ?? 'Raflora Admin';
     $adminInitials = strtoupper(substr($adminName ?: 'RA', 0, 2));
-    // Hidden on the bookings list (it has its own search) and inside a single booking.
-    // Reports & Analytics shows its Export button in this spot instead; the Dashboard has neither.
-    $showHeaderSearch = ! request()->routeIs('admin.dashboard', 'admin.bookings', 'admin.bookings.show', 'admin.bookings.edit', 'admin.reports');
 @endphp
 
 <!DOCTYPE html>
@@ -270,21 +267,7 @@
                 </div>
 
                 <div class="flex items-center gap-3 shrink-0">
-                    @if($showHeaderSearch)
-                        <form method="GET" action="{{ route('admin.bookings') }}" role="search" class="relative hidden xl:block">
-                            <label for="adminGlobalSearch" class="sr-only">Search bookings</label>
-                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none" aria-hidden="true"></i>
-                            <input
-                                id="adminGlobalSearch"
-                                type="search"
-                                name="search"
-                                placeholder="Search bookings…"
-                                autocomplete="off"
-                                class="w-72 h-9 pl-8 pr-9 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition"
-                            >
-                            <kbd class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 border border-slate-200 rounded px-1.5 py-px bg-white pointer-events-none">/</kbd>
-                        </form>
-                    @endif
+
                     @isset($actions)
                         <div class="flex items-center gap-2">{{ $actions }}</div>
                     @endisset
@@ -408,14 +391,6 @@
                     closeAdminUserMenu();
                 }
 
-                // "/" focuses the header booking search unless the admin is already typing somewhere.
-                const search = document.getElementById('adminGlobalSearch');
-                const target = event.target;
-                const isTyping = target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
-                if (event.key === '/' && search && !isTyping && search.offsetParent !== null) {
-                    event.preventDefault();
-                    search.focus();
-                }
             });
 
             // Click Outside Popover Listener

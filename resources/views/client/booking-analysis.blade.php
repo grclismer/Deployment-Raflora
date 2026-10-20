@@ -104,7 +104,7 @@
                                 @endif
                                 @if($booking->venue)
                                     <span class="text-slate-300" aria-hidden="true">|</span>
-                                    <span class="truncate max-w-[200px] sm:max-w-xs">{{ $booking->venue }}</span>
+                                    <span class="truncate max-w-[200px] sm:max-w-xs" title="{{ $booking->venue }}">{{ $booking->venue }}</span>
                                 @endif
                                 @if($booking->event_size)
                                     <span class="text-slate-300" aria-hidden="true">|</span>
@@ -123,7 +123,7 @@
                     <x-delivery-order-notice :booking="$booking" audience="client" class="mb-6" />
                 @endif
 
-                <x-booking-workflow :workflow="$bookingWorkflow" audience="client" :show-current="false" heading="Booking Progress" description="Where your booking is in Raflora's process." id="client-booking-workflow" />
+                <x-booking-workflow :workflow="$bookingWorkflow" audience="client" :show-current="false" heading="Booking Progress" description="Where your booking is in Raflora's process." id="client-booking-workflow" collapsible />
 
                 <div class="flex flex-col lg:flex-row gap-6 mb-8">
 
@@ -806,135 +806,123 @@
                     </div>
                 </div>
 
-                {{-- 11. Supporting Information --}}
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {{-- 11. Supporting information in tabs: one panel at a time keeps the page short. Event type,
+                     date, venue, guests and tables are in the header above, so they are not repeated here. --}}
+                @php
+                    $hasPackageInfo = $booking->package_id && $booking->package;
+                    $hasProposals = $presentations && $presentations->count() > 0;
+                    // Quotation lines with the same name and unit price are shown once, quantities added.
+                    $quoteRows = collect($quotationItems ?? [])->map(function ($item) use ($sharedQuotation) {
+                        $unitPrice = isset($item['selling_unit_price'])
+                            ? (float) $item['selling_unit_price']
+                            : (float) ($item['quoted_unit_price'] ?? 0) * (float) ($sharedQuotation?->multiplier ?? 3.0);
 
-                            {{-- Selected Package Information (If preset) --}}
-                            @if($booking->package_id && $booking->package)
-                            <section aria-labelledby="package-info-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                                <h2 id="package-info-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Selected Package</h2>
-                                <div class="mb-4">
-                                    <p class="text-lg font-bold text-slate-800">{{ $booking->package->title }}</p>
-                                    @if($booking->package->description)
-                                        <p class="text-sm text-slate-600 mt-1">{{ $booking->package->description }}</p>
-                                    @endif
-                                </div>
-                                
-                                @if(is_array($booking->package->included_items) && count($booking->package->included_items) > 0)
-                                    <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                        <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Package Inclusions</p>
-                                        <ul class="space-y-1.5">
-                                            @foreach($booking->package->included_items as $inc)
-                                                <li class="flex items-start gap-2 text-sm text-slate-700">
-                                                    <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                                    {{ $inc }}
-                                                </li>
-                                            @endforeach
-                                        </ul>
-                                    </div>
+                        return ['name' => (string) ($item['item_name'] ?? 'Item'), 'quantity' => (float) ($item['quantity'] ?? 0), 'unit_price' => $unitPrice];
+                    })->groupBy(fn (array $row) => mb_strtolower(trim($row['name'])) . '|' . number_format($row['unit_price'], 2, '.', ''))
+                      ->map(fn ($rows) => ['name' => $rows->first()['name'], 'quantity' => $rows->sum('quantity'), 'unit_price' => $rows->first()['unit_price']])
+                      ->values();
+                    $quotePreviewCount = 10;
+                    $detailTabs = array_filter([
+                        'quotation' => ['Quotation', 'fa-file-invoice', $quoteRows->count() ?: null],
+                        'inspiration' => ($previewImage || $hasAiAnalysis) ? ['Inspiration & AI', 'fa-wand-magic-sparkles', count($galleryPhotos) > 1 ? count($galleryPhotos) : null] : null,
+                        'materials' => $hasAiAnalysis ? ['Materials per Area', 'fa-layer-group', null] : null,
+                        'details' => ($hasPackageInfo || $booking->special_requests) ? [$hasPackageInfo ? 'Package & Requests' : 'Special Requests', 'fa-clipboard-list', null] : null,
+                        'proposals' => $hasProposals ? ['Proposals', 'fa-file-pdf', $presentations->count()] : null,
+                    ]);
+                    $defaultDetailTab = $quoteRows->isNotEmpty() || !isset($detailTabs['inspiration']) ? 'quotation' : 'inspiration';
+                @endphp
+                <section id="client-booking-tabs" aria-label="Booking information" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-booking-tabs="{{ $booking->id }}">
+                    <div class="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-slate-200 px-3 pt-2 sm:px-5" role="tablist" aria-label="Booking information">
+                        @foreach($detailTabs as $tabKey => [$tabLabel, $tabIcon, $tabCount])
+                            @php $tabSelected = $tabKey === $defaultDetailTab; @endphp
+                            <button type="button" role="tab" id="booking-tab-{{ $tabKey }}" aria-controls="booking-panel-{{ $tabKey }}" aria-selected="{{ $tabSelected ? 'true' : 'false' }}" tabindex="{{ $tabSelected ? '0' : '-1' }}" data-booking-tab="{{ $tabKey }}"
+                                    class="-mb-px inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm font-semibold text-slate-500 transition hover:text-slate-800 aria-selected:border-emerald-600 aria-selected:text-emerald-800">
+                                <i class="fa-solid {{ $tabIcon }} text-xs" aria-hidden="true"></i>{{ $tabLabel }}
+                                @if($tabCount)<span class="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">{{ $tabCount }}</span>@endif
+                            </button>
+                        @endforeach
+                    </div>
+
+                    {{-- Quotation --}}
+                    <div id="booking-panel-quotation" role="tabpanel" aria-labelledby="booking-tab-quotation" tabindex="0" class="p-4 sm:p-6 {{ $defaultDetailTab === 'quotation' ? '' : 'hidden' }}" data-booking-panel="quotation">
+                        <section aria-labelledby="breakdown-heading">
+                            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <h2 id="breakdown-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Quotation Breakdown</h2>
+                                @if($quoteRows->count() > $quotePreviewCount)
+                                    <label class="relative block sm:w-64">
+                                        <span class="sr-only">Search quotation items</span>
+                                        <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400" aria-hidden="true"></i>
+                                        <input type="search" id="quoteItemSearch" placeholder="Search items…" class="rf-input !py-2 !pl-8 text-sm" autocomplete="off">
+                                    </label>
                                 @endif
-                            </section>
+                            </div>
+
+                            @if($quoteRows->isNotEmpty())
+                                <ul class="grid grid-cols-1 gap-x-8 md:grid-cols-2" role="list" id="quoteItemList">
+                                    @foreach($quoteRows as $index => $row)
+                                        <li class="flex items-center justify-between gap-3 border-b border-slate-100 py-2 {{ $index >= $quotePreviewCount ? 'hidden' : '' }}" data-quote-row data-name="{{ mb_strtolower($row['name']) }}">
+                                            <span class="min-w-0 text-sm font-medium text-slate-700">{{ $row['name'] }}</span>
+                                            <span class="shrink-0 text-sm font-medium tabular-nums text-slate-500">{{ number_format($row['quantity'], 0) }} × ₱{{ number_format($row['unit_price'], 2) }}</span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                                <p id="quoteItemEmpty" class="hidden py-4 text-center text-sm text-slate-500">No item matches your search.</p>
+                                @if($quoteRows->count() > $quotePreviewCount)
+                                    <button type="button" id="quoteShowAll" class="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-800" aria-expanded="false" aria-controls="quoteItemList"
+                                            data-more="Show all {{ $quoteRows->count() }} items" data-less="Show fewer">
+                                        <i class="fa-solid fa-chevron-down text-xs" aria-hidden="true"></i><span>Show all {{ $quoteRows->count() }} items</span>
+                                    </button>
+                                @endif
+                            @elseif(!$sharedQuotation)
+                                <p class="text-sm text-slate-500">Item prices appear here once Raflora issues your official quotation.</p>
+                            @elseif($hasAiAnalysis)
+                                <p class="text-sm text-slate-500">Pricing is based on the reviewed event details. See the Materials per Area tab for the suggested materials.</p>
+                            @elseif($booking->package_id)
+                                <p class="text-sm text-slate-500">Pricing is based on the selected package. See the Package &amp; Requests tab.</p>
+                            @else
+                                <p class="text-sm text-slate-500">A detailed quotation breakdown is not available yet.</p>
                             @endif
+                        </section>
+                    </div>
 
-                            {{-- Event Details --}}
-                            <section aria-labelledby="event-details-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                                <h2 id="event-details-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Event Details</h2>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <p class="text-xs text-slate-400 font-semibold uppercase">Event Type</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ ucfirst($booking->event_type) }}</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-xs text-slate-400 font-semibold uppercase">Guest Count</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ $booking->event_size ? number_format($booking->event_size) . ' pax' : 'Not specified' }}</p>
-                                    </div>
-                                    @if($booking->table_count)
-                                    <div>
-                                        <p class="text-xs text-slate-400 font-semibold uppercase">Table Count</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ number_format($booking->table_count) }} tables</p>
-                                    </div>
-                                    @endif
-                                    <div>
-                                        <p class="text-xs text-slate-400 font-semibold uppercase">Date & Time</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ optional($booking->event_date)->format('F j, Y') ?? 'TBD' }} @if($eventTimeDisplay) at {{ $eventTimeDisplay }} @endif</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-xs text-slate-400 font-semibold uppercase">Venue</p>
-                                        <p class="text-sm text-slate-800 font-medium mt-0.5">{{ $booking->venue ?? 'Not specified' }}</p>
-                                    </div>
-                                </div>
-                                @if($booking->special_requests)
-                                    <div class="mt-4 pt-4 border-t border-slate-100">
-                                        <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Special Requests</p>
-                                        <p class="text-sm text-slate-700 italic">"{{ $booking->special_requests }}"</p>
-                                    </div>
-                                @endif
-                            </section>
-
-                            {{-- Quotation Breakdown --}}
-                            <section aria-labelledby="breakdown-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $booking->package_id && $booking->package ? 'lg:col-span-2' : '' }}">
-                                <h2 id="breakdown-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Quotation Breakdown</h2>
-                                
-                                @if(isset($quotationItems) && count($quotationItems) > 0)
-                                    <div class="space-y-1 overflow-x-auto w-full">
-                                        @foreach($quotationItems as $item)
-                                            @php
-                                                $qty = floatval($item['quantity'] ?? 0);
-                                                if (isset($item['selling_unit_price'])) {
-                                                    $unitPrice = floatval($item['selling_unit_price']);
-                                                } else {
-                                                    $internalCost = floatval($item['quoted_unit_price'] ?? 0);
-                                                    $multiplier = floatval($sharedQuotation?->multiplier ?? 3.0);
-                                                    $unitPrice = $internalCost * $multiplier;
-                                                }
-                                            @endphp
-                                            <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
-                                                <span class="text-sm font-medium text-slate-700 flex-1 min-w-[140px]">{{ $item['item_name'] ?? 'Item' }}</span>
-                                                <span class="text-sm text-slate-500 shrink-0 font-medium">{{ number_format($qty, 0) }} × ₱{{ number_format($unitPrice, 2) }}</span>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                @elseif(!$sharedQuotation)
-                                    <p class="text-sm text-slate-500">Item prices appear here once Raflora issues your official quotation.</p>
-                                @elseif($hasAiAnalysis)
-                                    <p class="text-sm text-slate-500">Pricing is based on the reviewed event details. See AI Visual Analysis below for suggested material context.</p>
-                                @elseif($booking->package_id)
-                                    <p class="text-sm text-slate-500">Pricing is based on the selected package. See Package Inclusions above.</p>
-                                @else
-                                    <p class="text-sm text-slate-500">A detailed quotation breakdown is not available yet.</p>
-                                @endif
-                            </section>
-
-                            {{-- Inspiration photos (every photo, the areas each is for, AI boxes, enlarged view) --}}
+                    {{-- Inspiration photos and the AI estimate, side by side --}}
+                    @isset($detailTabs['inspiration'])
+                        <div id="booking-panel-inspiration" role="tabpanel" aria-labelledby="booking-tab-inspiration" tabindex="0" class="p-4 sm:p-6 {{ $defaultDetailTab === 'inspiration' ? '' : 'hidden' }}" data-booking-panel="inspiration">
+                            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                                 @if($previewImage)
-                                <section aria-labelledby="concept-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $hasAiAnalysis ? '' : 'lg:col-span-2' }}">
-                                    <h2 id="concept-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Inspiration Image &amp; AI Recommendation</h2>
-                                    <x-inspiration-gallery id="client-inspiration-gallery"
-                                        :photos="$galleryPhotos"
-                                        :preview-image="$previewImage"
-                                        :overlay-items="$overlayItems"
-                                        :max-height="320"
-                                        :image-aspect-ratio="$imageAspectRatio"
-                                        :image-width="$imageDimensions[0] ?? null"
-                                        :image-height="$imageDimensions[1] ?? null" />
-                                </section>
+                                    <section aria-labelledby="concept-heading" class="min-w-0 {{ $hasAiAnalysis ? '' : 'lg:col-span-2' }}">
+                                        <h2 id="concept-heading" class="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Inspiration Image &amp; AI Recommendation</h2>
+                                        <x-inspiration-gallery id="client-inspiration-gallery"
+                                            :photos="$galleryPhotos"
+                                            :preview-image="$previewImage"
+                                            :overlay-items="$overlayItems"
+                                            :max-height="320"
+                                            :image-aspect-ratio="$imageAspectRatio"
+                                            :image-width="$imageDimensions[0] ?? null"
+                                            :image-height="$imageDimensions[1] ?? null" />
+                                    </section>
                                 @endif
 
-                            {{-- AI Analysis (If exists) --}}
-                            @if($hasAiAnalysis)
-                            <section aria-labelledby="ai-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 {{ $previewImage ? '' : 'lg:col-span-2' }}">
-                                <h2 id="ai-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Visual Analysis (Decision Support)</h2>
-                                <p class="text-sm text-slate-500 mb-4">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
+                                @if($hasAiAnalysis)
+                                    <section aria-labelledby="ai-heading" class="min-w-0 {{ $previewImage ? '' : 'lg:col-span-2' }}">
+                                        <h2 id="ai-heading" class="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">AI Visual Analysis (Decision Support)</h2>
+                                        <p class="mb-4 text-sm text-slate-500">Suggested materials based on Gemini AI visual analysis. These suggestions serve as decision support for Raflora florist review and quotation preparation, not final pricing.</p>
 
-                                {{-- Indicative AI ranges per area; the official quotation above is the price that applies --}}
-                                <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" />
-                            </section>
+                                        {{-- Indicative AI ranges per area; the official quotation is the price that applies --}}
+                                        <x-ai-estimate :estimate="$aiEstimate ?? null" :quotation-issued="(bool) $sharedQuotation" />
+                                    </section>
+                                @endif
+                            </div>
+                        </div>
+                    @endisset
 
-                            {{-- AI-suggested materials (same panels as before), full width so each area's list stays short --}}
-                            <section aria-labelledby="ai-materials-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
-                                <h2 id="ai-materials-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">AI Suggested Materials</h2>
+                    {{-- AI-suggested materials: one area at a time --}}
+                    @if($hasAiAnalysis)
+                        <div id="booking-panel-materials" role="tabpanel" aria-labelledby="booking-tab-materials" tabindex="0" class="hidden p-4 sm:p-6" data-booking-panel="materials">
+                            <section aria-labelledby="ai-materials-heading">
+                                <h2 id="ai-materials-heading" class="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">AI Suggested Materials</h2>
 
-                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" class="mb-5" />
+                                <x-decor-area-breakdown :materials="$analysisMaterials" :booking="$booking" view="client" compact />
 
                                 {{-- With picked areas the panel above already groups every material; this list groups by where the AI saw them. --}}
                                 @if(\App\Support\DecorAreaBreakdown::requestedAreas($booking->design_brief) === [])
@@ -964,53 +952,167 @@
                                 </div>
                                 @endif
                             </section>
-                            @endif
+                        </div>
+                    @endif
 
-                                {{-- Proposals Card (If exists) --}}
-                                @if($presentations && $presentations->count() > 0)
-                                <section aria-labelledby="proposals-heading" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:col-span-2">
-                                    <h2 id="proposals-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Proposals &amp; Feedback</h2>
-                                    
-                                    <div class="space-y-4">
-                                    @foreach($presentations as $presentation)
-                                        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                            <div class="flex items-start justify-between gap-4 mb-4">
-                                                <div class="min-w-0">
-                                                    <p class="text-sm font-semibold text-slate-800 leading-tight mb-1">Proposal {{ $presentation->version }}</p>
-                                                    @if($presentation->file_name)
-                                                        <p class="text-xs text-slate-500 truncate" title="{{ $presentation->file_name }}">{{ $presentation->file_name }}</p>
-                                                    @endif
-                                                </div>
-                                                <a
-                                                    href="{{ asset('storage/' . $presentation->file_path) }}"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    class="rf-btn rf-btn-secondary text-xs shrink-0 py-1.5 px-3"
-                                                >
-                                                    View PDF
-                                                </a>
-                                            </div>
-                                            <hr class="my-3 border-slate-200">
-                                            <form method="POST" action="{{ route('bookings.proposals.feedback', ['booking' => $booking->id, 'presentation' => $presentation->id]) }}" class="space-y-3">
-                                                @csrf
-                                                <div class="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
-                                                    <select name="approval_status" class="rf-select text-sm py-1.5">
-                                                        <option value="approved" {{ $presentation->approval_status === 'approved' ? 'selected' : '' }}>Approve Proposal</option>
-                                                        <option value="needs_revision" {{ $presentation->approval_status === 'needs_revision' ? 'selected' : '' }}>Needs Revision</option>
-                                                    </select>
-                                                    <input type="text" name="feedback_text" value="{{ old('feedback_text', $presentation->feedback_text) }}" placeholder="General Feedback (Optional)" class="rf-input text-sm py-1.5 flex-1 w-full">
-                                                </div>
-                                                <div class="flex justify-end">
-                                                    <button type="submit" class="text-xs font-medium text-emerald-600 hover:text-emerald-700">Submit Proposal Feedback</button>
-                                                </div>
-                                            </form>
+                    {{-- Package and special requests (the event basics are in the header) --}}
+                    @isset($detailTabs['details'])
+                        <div id="booking-panel-details" role="tabpanel" aria-labelledby="booking-tab-details" tabindex="0" class="hidden p-4 sm:p-6" data-booking-panel="details">
+                            <div class="grid grid-cols-1 gap-6 {{ $hasPackageInfo && $booking->special_requests ? 'lg:grid-cols-2' : '' }}">
+                                @if($hasPackageInfo)
+                                    <section aria-labelledby="package-info-heading">
+                                        <h2 id="package-info-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Selected Package</h2>
+                                        <div class="mb-4">
+                                            <p class="text-lg font-bold text-slate-800">{{ $booking->package->title }}</p>
+                                            @if($booking->package->description)
+                                                <p class="text-sm text-slate-600 mt-1">{{ $booking->package->description }}</p>
+                                            @endif
                                         </div>
-                                    @endforeach
-                                    </div>
-                                </section>
+
+                                        @if(is_array($booking->package->included_items) && count($booking->package->included_items) > 0)
+                                            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                                <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Package Inclusions</p>
+                                                <ul class="space-y-1.5">
+                                                    @foreach($booking->package->included_items as $inc)
+                                                        <li class="flex items-start gap-2 text-sm text-slate-700">
+                                                            <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                                            {{ $inc }}
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            </div>
+                                        @endif
+                                    </section>
                                 @endif
 
+                                @if($booking->special_requests)
+                                    <section aria-labelledby="special-requests-heading">
+                                        <h2 id="special-requests-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Special Requests</h2>
+                                        <p class="text-sm text-slate-700 italic">"{{ $booking->special_requests }}"</p>
+                                    </section>
+                                @endif
+                            </div>
                         </div>
+                    @endisset
+
+                    {{-- Proposals --}}
+                    @if($hasProposals)
+                        <div id="booking-panel-proposals" role="tabpanel" aria-labelledby="booking-tab-proposals" tabindex="0" class="hidden p-4 sm:p-6" data-booking-panel="proposals">
+                            <section aria-labelledby="proposals-heading">
+                                <h2 id="proposals-heading" class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400 mb-4">Proposals &amp; Feedback</h2>
+
+                                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                @foreach($presentations as $presentation)
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div class="flex items-start justify-between gap-4 mb-4">
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-semibold text-slate-800 leading-tight mb-1">Proposal {{ $presentation->version }}</p>
+                                                @if($presentation->file_name)
+                                                    <p class="text-xs text-slate-500 truncate" title="{{ $presentation->file_name }}">{{ $presentation->file_name }}</p>
+                                                @endif
+                                            </div>
+                                            <a
+                                                href="{{ asset('storage/' . $presentation->file_path) }}"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                class="rf-btn rf-btn-secondary text-xs shrink-0 py-1.5 px-3"
+                                            >
+                                                View PDF
+                                            </a>
+                                        </div>
+                                        <hr class="my-3 border-slate-200">
+                                        <form method="POST" action="{{ route('bookings.proposals.feedback', ['booking' => $booking->id, 'presentation' => $presentation->id]) }}" class="space-y-3">
+                                            @csrf
+                                            <div class="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
+                                                <select name="approval_status" class="rf-select text-sm py-1.5">
+                                                    <option value="approved" {{ $presentation->approval_status === 'approved' ? 'selected' : '' }}>Approve Proposal</option>
+                                                    <option value="needs_revision" {{ $presentation->approval_status === 'needs_revision' ? 'selected' : '' }}>Needs Revision</option>
+                                                </select>
+                                                <input type="text" name="feedback_text" value="{{ old('feedback_text', $presentation->feedback_text) }}" placeholder="General Feedback (Optional)" class="rf-input text-sm py-1.5 flex-1 w-full">
+                                            </div>
+                                            <div class="flex justify-end">
+                                                <button type="submit" class="text-xs font-medium text-emerald-600 hover:text-emerald-700">Submit Proposal Feedback</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                @endforeach
+                                </div>
+                            </section>
+                        </div>
+                    @endif
+                </section>
+
+                <script>
+                    // Booking information tabs (arrow keys move between tabs; the last tab is remembered per
+                    // booking for this browser tab, since the page reloads itself when the booking changes)
+                    // and the quotation list's search / "Show all".
+                    (() => {
+                        const root = document.getElementById('client-booking-tabs');
+                        if (!root) return;
+                        const tabs = [...root.querySelectorAll('[data-booking-tab]')];
+                        const storeKey = 'raflora.bookingTab.' + root.dataset.bookingTabs;
+                        const select = (key, focus = false) => {
+                            const tab = tabs.find((t) => t.dataset.bookingTab === key);
+                            if (!tab) return;
+                            tabs.forEach((t) => {
+                                const on = t === tab;
+                                t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                t.tabIndex = on ? 0 : -1;
+                                document.getElementById(t.getAttribute('aria-controls'))?.classList.toggle('hidden', !on);
+                            });
+                            if (focus) tab.focus();
+                            try { sessionStorage.setItem(storeKey, key); } catch (e) { /* storage unavailable */ }
+                        };
+                        tabs.forEach((tab, index) => {
+                            tab.addEventListener('click', () => select(tab.dataset.bookingTab));
+                            tab.addEventListener('keydown', (event) => {
+                                const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+                                if (event.key === 'Home' || event.key === 'End') {
+                                    event.preventDefault();
+                                    select(tabs[event.key === 'Home' ? 0 : tabs.length - 1].dataset.bookingTab, true);
+                                } else if (step) {
+                                    event.preventDefault();
+                                    select(tabs[(index + step + tabs.length) % tabs.length].dataset.bookingTab, true);
+                                }
+                            });
+                        });
+                        // A link to something inside a panel (e.g. #proposals-heading) opens that panel.
+                        const hashTarget = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+                        const hashPanel = hashTarget?.closest('[data-booking-panel]');
+                        let remembered = null;
+                        try { remembered = sessionStorage.getItem(storeKey); } catch (e) { /* storage unavailable */ }
+                        if (hashPanel) {
+                            select(hashPanel.dataset.bookingPanel);
+                            hashTarget.scrollIntoView({ block: 'start' });
+                        } else if (remembered) {
+                            select(remembered);
+                        }
+
+                        const search = document.getElementById('quoteItemSearch');
+                        const more = document.getElementById('quoteShowAll');
+                        const rows = [...root.querySelectorAll('[data-quote-row]')];
+                        let expanded = false;
+                        const filterQuote = () => {
+                            const q = (search?.value || '').trim().toLowerCase();
+                            let shown = 0;
+                            rows.forEach((row, index) => {
+                                const visible = q ? row.dataset.name.includes(q) : (expanded || index < {{ $quotePreviewCount }});
+                                row.classList.toggle('hidden', !visible);
+                                shown += visible ? 1 : 0;
+                            });
+                            document.getElementById('quoteItemEmpty')?.classList.toggle('hidden', shown > 0);
+                            if (more) more.classList.toggle('hidden', q !== '');
+                        };
+                        search?.addEventListener('input', filterQuote);
+                        more?.addEventListener('click', () => {
+                            expanded = !expanded;
+                            more.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                            more.querySelector('span').textContent = expanded ? more.dataset.less : more.dataset.more;
+                            more.querySelector('i').classList.toggle('rotate-180', expanded);
+                            filterQuote();
+                        });
+                    })();
+                </script>
                     </div>
                 </div>
 

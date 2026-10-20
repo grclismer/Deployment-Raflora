@@ -30,7 +30,7 @@ class InventoryDispatchService
         }
 
         if (in_array($booking->status, ['event_completed', 'completed', 'cancelled', 'declined', 'rejected', 'pending_return', 'pending_resolution'], true)) {
-            throw new \LogicException("Cannot dispatch items for booking #{$booking->id} with status '{$booking->status}'.");
+            throw new \LogicException("Booking #{$booking->id} cannot dispatch items while it is {$booking->status_display_label}.");
         }
 
         DB::transaction(function () use ($booking, $dispatchItems, $performedByUserId, $adminReason) {
@@ -54,7 +54,10 @@ class InventoryDispatchService
                 }
 
                 if (!$lockedItems->has($itemId)) {
-                    throw new \InvalidArgumentException("Inventory item {$itemId} not found.");
+                    $archivedName = InventoryItem::withTrashed()->find($itemId)?->name;
+                    throw new \InvalidArgumentException($archivedName
+                        ? "\"{$archivedName}\" is archived, so it cannot be dispatched. Restore it in Inventory Management first."
+                        : 'An item in this dispatch no longer exists in inventory. Refresh the page and try again.');
                 }
 
                 $item = $lockedItems->get($itemId);
@@ -64,12 +67,23 @@ class InventoryDispatchService
                 // (InventoryItem::reservedForBooking, the same rule as reserved_stock).
                 $outstandingReservation = $item->reservedForBooking($booking->id);
 
+                // Messages name the item and its unit so Admin / Staff know exactly which material it is.
                 if (round($quantityToDispatch, 4) > round($outstandingReservation, 4)) {
-                    throw new \LogicException("Cannot dispatch {$quantityToDispatch} units of item {$itemId}. Outstanding reservation is only {$outstandingReservation}.");
+                    throw new \LogicException(sprintf(
+                        'Cannot dispatch %s of "%s": only %s reserved for this booking. Reserve more under Preparation, or dispatch fewer.',
+                        $this->amount($quantityToDispatch, $item),
+                        $item->name,
+                        $this->amount($outstandingReservation, $item) . ($this->isOne($outstandingReservation) ? ' is' : ' are')
+                    ));
                 }
 
                 if (round($quantityToDispatch, 4) > round($item->current_stock, 4)) {
-                    throw new \LogicException("Cannot dispatch {$quantityToDispatch} units of item {$itemId}. Insufficient physical stock ({$item->current_stock} available).");
+                    throw new \LogicException(sprintf(
+                        'Cannot dispatch %s of "%s": only %s in stock. Receive stock in Inventory Management, or dispatch fewer.',
+                        $this->amount($quantityToDispatch, $item),
+                        $item->name,
+                        $this->amount((float) $item->current_stock, $item) . ($this->isOne((float) $item->current_stock) ? ' is' : ' are')
+                    ));
                 }
 
                 // 3. Deduct Physical Stock
@@ -88,6 +102,20 @@ class InventoryDispatchService
                 ]);
             }
         });
+    }
+
+    /** "240 stems", "1 piece", "2.5 kg": a quantity with the item's unit, without trailing zeros. */
+    private function amount(float $quantity, InventoryItem $item): string
+    {
+        $number = rtrim(rtrim(number_format($quantity, 2, '.', ','), '0'), '.');
+        $unit = trim((string) $item->unit);
+
+        return $unit === '' ? $number : $number . ' ' . $unit;
+    }
+
+    private function isOne(float $quantity): bool
+    {
+        return round($quantity, 4) == 1.0;
     }
 
     /**

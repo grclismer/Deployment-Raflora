@@ -736,26 +736,22 @@ class BookingController extends Controller
         return [round($totalCost, 2), $persistedMaterials];
     }
 
-    protected function normalizeInventoryName(?string $name): string
-    {
-        // Lower-case first: the pattern keeps only a-z and 0-9, so capitals must not be stripped.
-        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $name)) ?? '');
-    }
 
     /**
-     * The catalog item an AI suggestion names: an exact match ignoring case and punctuation, and
-     * only when one catalog item has that name. A partial name (e.g. "Tulip" inside "Handmade Pink
-     * Velvet Tulip") is never linked; the row stays unmatched for Admin to link or promote.
+     * The catalog item an AI suggestion names: the same words ignoring case, punctuation and word
+     * order (InventoryItem::wordKey), and only when one catalog item has that name. A partial name
+     * (e.g. "Tulip" inside "Handmade Pink Velvet Tulip") is never linked; the row stays unmatched
+     * for Admin to link or promote.
      */
     protected function inventoryItemNamed(string $name): ?InventoryItem
     {
-        $normalized = $this->normalizeInventoryName($name);
+        $normalized = InventoryItem::wordKey($name);
         if ($normalized === '') {
             return null;
         }
 
         $matches = InventoryItem::query()->get()
-            ->filter(fn (InventoryItem $candidate): bool => $this->normalizeInventoryName($candidate->name) === $normalized);
+            ->filter(fn (InventoryItem $candidate): bool => InventoryItem::wordKey($candidate->name) === $normalized);
 
         return $matches->count() === 1 ? $matches->first() : null;
     }

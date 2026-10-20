@@ -29,6 +29,7 @@
 
 <script>
     let currentConfirmFormId = null;
+    let currentConfirmCallback = null;
     let currentTriggerElement = null;
 
     /**
@@ -43,6 +44,8 @@
     function openConfirmModal(formId, title, message, confirmText, actionType = 'default', triggerElement = null) {
         currentConfirmFormId = formId;
         currentTriggerElement = triggerElement || document.activeElement;
+        document.getElementById('confirmModalCancelBtn').classList.remove('hidden');
+        document.getElementById('confirmModalSubmitBtn').disabled = false;
         
         const modal = document.getElementById('rafloraConfirmModal');
         const titleEl = document.getElementById('confirmModalTitle');
@@ -82,13 +85,36 @@
         const modal = document.getElementById('rafloraConfirmModal');
         modal.style.display = 'none';
         currentConfirmFormId = null;
+        currentConfirmCallback = null;
         if (currentTriggerElement && typeof currentTriggerElement.focus === 'function') {
             currentTriggerElement.focus();
             currentTriggerElement = null;
         }
     }
 
+    /**
+     * The same dialog for an on-page action instead of a form: onConfirm runs after the confirm
+     * button is pressed (Cancel, Escape or the backdrop do nothing).
+     */
+    function openConfirmAction(title, message, confirmText, actionType = 'default', onConfirm = null, triggerElement = null) {
+        openConfirmModal(null, title, message, confirmText, actionType, triggerElement);
+        currentConfirmCallback = onConfirm;
+    }
+
+    /** A message with a single OK button, instead of the browser's alert(). */
+    function showNoticeModal(title, message, actionType = 'danger', triggerElement = null) {
+        openConfirmAction(title, message, 'OK', actionType, () => {}, triggerElement);
+        document.getElementById('confirmModalCancelBtn').classList.add('hidden');
+        document.getElementById('confirmModalSubmitBtn').focus();
+    }
+
     function submitConfirmModal() {
+        if (currentConfirmCallback) {
+            const callback = currentConfirmCallback;
+            closeConfirmModal();
+            callback();
+            return;
+        }
         if (currentConfirmFormId) {
             const form = document.getElementById(currentConfirmFormId);
             if (form) {

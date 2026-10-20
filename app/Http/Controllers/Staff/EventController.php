@@ -317,15 +317,7 @@ class EventController extends Controller
 
     private function dispatchedQuantities(Booking $booking): array
     {
-        return \App\Models\InventoryTransaction::with('inventoryItem')
-            ->where('booking_id', $booking->id)
-            ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
-            ->get()
-            ->filter(fn ($tx) => $tx->inventoryItem && !$tx->inventoryItem->is_perishable)
-            ->groupBy('inventory_item_id')
-            ->map(fn ($txs) => abs((float) $txs->sum('quantity_change')))
-            ->filter(fn ($qty) => $qty > 0)
-            ->all();
+        return app(\App\Services\ReturnRecordService::class)->dispatchedQuantities($booking);
     }
 
     public function dispatchItems(Request $request, Booking $booking, \App\Services\InventoryDispatchService $dispatchService)

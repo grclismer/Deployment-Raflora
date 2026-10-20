@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminSettingsController extends Controller
 {
@@ -90,6 +91,46 @@ class AdminSettingsController extends Controller
             'activeSessions' => $sessions,
             'trustedDevices' => $trustedDevices,
             'currentSessionId' => $currentSessionId,
+        ]);
+    }
+
+    /**
+     * The whole audit log as a CSV file (newest first), from the Audit Trail dialog.
+     */
+    public function exportAuditLog(): StreamedResponse
+    {
+        $filename = 'raflora_audit_log_' . now()->format('Y-m-d') . '.csv';
+        // Cells starting with = + - @ would run as formulas in spreadsheet apps.
+        $safe = fn ($value) => preg_match('/^[=\+\-@]/', (string) $value) ? "'" . $value : (string) $value;
+
+        return response()->stream(function () use ($safe) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel shows names correctly.
+
+            fputcsv($handle, ['Raflora Enterprises - Audit Log']);
+            fputcsv($handle, ['Generated', now()->timezone('Asia/Manila')->format('M j, Y g:i A')]);
+            fputcsv($handle, []);
+            fputcsv($handle, ['Time', 'User', 'Role', 'Action', 'Module', 'Details', 'IP Address']);
+
+            AuditLog::with('user')->orderByDesc('created_at')->orderByDesc('id')->chunk(500, function ($logs) use ($handle, $safe) {
+                foreach ($logs as $log) {
+                    $details = is_array($log->details) ? ($log->details['message'] ?? json_encode($log->details)) : ($log->details ?? '');
+                    fputcsv($handle, [
+                        optional($log->created_at)->timezone('Asia/Manila')->format('Y-m-d h:i A'),
+                        $safe($log->user?->name ?? 'System'),
+                        $log->user ? ucfirst((string) $log->user->role) : '',
+                        $safe(ucwords(str_replace('_', ' ', $log->action ?? 'Activity'))),
+                        $safe((string) $log->module),
+                        $safe((string) $details),
+                        $safe((string) $log->ip_address),
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        }, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ]);
     }
 

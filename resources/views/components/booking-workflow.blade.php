@@ -14,6 +14,8 @@
     'audience' => null,
     // False where the page already shows the current status prominently (the client booking page).
     'showCurrent' => true,
+    // True keeps the step lists folded under "Show all steps" (the progress strip stays visible).
+    'collapsible' => false,
 ])
 
 @php
@@ -213,6 +215,13 @@
     </div>
     <p class="sr-only">{{ $completedStages }} of {{ $workflow['total'] }} workflow stages complete.</p>
 
+    @if($collapsible)
+        <details class="group/steps mt-4" data-workflow-steps>
+            <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg text-sm font-semibold text-emerald-700 hover:text-emerald-800 [&::-webkit-details-marker]:hidden">
+                <span class="group-open/steps:hidden">Show all steps</span><span class="hidden group-open/steps:inline">Hide steps</span>
+                <i class="fa-solid fa-chevron-down text-[10px] transition-transform group-open/steps:rotate-180" aria-hidden="true"></i>
+            </summary>
+    @endif
     {{-- Phase lists: current phase open on phones, every phase open on large screens --}}
     <div class="mt-5 grid grid-cols-1 gap-3 {{ $phaseCount === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2' }} lg:gap-4">
         @foreach($workflow['phases'] as $phase)
@@ -278,6 +287,9 @@
             </details>
         @endforeach
     </div>
+    @if($collapsible)
+        </details>
+    @endif
 </section>
 
 @once

@@ -62,7 +62,8 @@ class ClientRecordController extends Controller
 
         $hasActiveFilters = ($activity !== 'all' && !empty($activity)) || ($sort !== 'name_asc' && !empty($sort));
 
-        $clients = $query->paginate(15)->withQueryString();
+        // Five clients per page; the page links keep the search, filter and sort.
+        $clients = $query->paginate(5)->withQueryString();
 
         return view('admin.client-records', [
             'clients' => $clients,

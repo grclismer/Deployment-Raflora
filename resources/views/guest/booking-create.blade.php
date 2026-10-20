@@ -35,7 +35,7 @@
                             2
                         </div>
                         <div class="ml-2 sm:ml-2.5 hidden sm:block">
-                            <p id="title-step-2" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden md:inline">Booking Method &amp; Design</span><span class="md:hidden">Design</span></p>
+                            <p id="title-step-2" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden lg:inline">Booking Method &amp; Design</span><span class="lg:hidden">Design</span></p>
                         </div>
                     </div>
 
@@ -50,7 +50,7 @@
                             3
                         </div>
                         <div class="ml-2 sm:ml-2.5 hidden sm:block">
-                            <p id="title-step-3" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden md:inline">Contact Information</span><span class="md:hidden">Contact</span> <span class="sr-only">Contact Info</span></p>
+                            <p id="title-step-3" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden lg:inline">Contact Information</span><span class="lg:hidden">Contact</span> <span class="sr-only">Contact Info</span></p>
                         </div>
                     </div>
 
@@ -65,7 +65,7 @@
                             4
                         </div>
                         <div class="ml-2 sm:ml-2.5 hidden sm:block">
-                            <p id="title-step-4" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden md:inline">Review & Submit</span><span class="md:hidden">Review</span></p>
+                            <p id="title-step-4" class="text-xs sm:text-sm font-bold text-slate-500 whitespace-nowrap transition-colors"><span class="hidden lg:inline">Review & Submit</span><span class="lg:hidden">Review</span></p>
                         </div>
                     </div>
                 </div>

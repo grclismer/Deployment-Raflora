@@ -483,6 +483,7 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
     Route::put('/return-tracking/{return}', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'update'])->name('admin.return-tracking.update');
     Route::put('/return-tracking/{return}/assign', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'assign'])->name('admin.return-tracking.assign');
     Route::put('/return-tracking/{return}/approve', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'approve'])->name('admin.return-tracking.approve');
+    Route::put('/return-tracking/{return}/resolve', [\App\Http\Controllers\Admin\ReturnTrackingController::class, 'resolveIssues'])->name('admin.return-tracking.resolve');
     // Admin account management & settings
     Route::get('/users', function () {
         return redirect()->route('admin.settings');
@@ -492,6 +493,7 @@ Route::prefix('admin')->middleware(['auth', 'admin', 'admin.setup'])->group(func
 
     // Admin Account Settings operations
     Route::get('/settings', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'index'])->name('admin.settings');
+    Route::get('/settings/audit-log/export', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'exportAuditLog'])->name('admin.settings.audit-log.export');
     Route::post('/settings', [\App\Http\Controllers\Admin\SettingController::class, 'update'])->name('admin.settings.update');
     Route::post('/settings/profile', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'updateProfile'])->name('admin.settings.profile.update');
     Route::post('/settings/password', [\App\Http\Controllers\Admin\AdminSettingsController::class, 'updatePassword'])->name('admin.settings.password.update');

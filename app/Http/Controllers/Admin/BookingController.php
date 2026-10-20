@@ -916,38 +916,65 @@ class BookingController extends Controller
             'booking_item_ids.*' => ['integer'],
         ]);
 
+        // Names are matched ignoring case, spacing, punctuation and singular/plural
+        // (InventoryItem::catalogMatches): an item already in the catalog is linked, never added twice.
         $promoted = 0;
-        foreach ($validated['booking_item_ids'] as $bookingItemId) {
-            $bookingItem = $booking->bookingItems()
-                ->whereKey($bookingItemId)
-                ->whereNull('inventory_item_id')
-                ->first();
+        $linked = 0;
+        $skipped = [];
+        DB::transaction(function () use ($validated, $booking, &$promoted, &$linked, &$skipped): void {
+            foreach ($validated['booking_item_ids'] as $bookingItemId) {
+                $bookingItem = $booking->bookingItems()
+                    ->whereKey($bookingItemId)
+                    ->whereNull('inventory_item_id')
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$bookingItem || trim((string) $bookingItem->item_name) === '') {
-                continue;
-            }
+                $name = trim((string) $bookingItem?->item_name);
+                if (!$bookingItem || $name === '') {
+                    continue;
+                }
 
-            $inventoryItem = InventoryItem::firstOrCreate(
-                ['name' => trim($bookingItem->item_name)],
-                [
+                ['exact' => $exact, 'similar' => $similar] = InventoryItem::catalogMatches($name);
+                if ($exact && !$exact->trashed()) {
+                    $bookingItem->forceFill(['inventory_item_id' => $exact->id])->save();
+                    $linked++;
+                    continue;
+                }
+                if ($exact || $similar) {
+                    $skipped[] = $exact
+                        ? "\"{$name}\" (\"{$exact->name}\" is archived: restore it first)"
+                        : "\"{$name}\" (similar to \"{$similar->name}\": link it from the booking)";
+                    continue;
+                }
+
+                $inventoryItem = InventoryItem::create([
+                    'name' => $name,
                     'category' => 'misc',
                     'is_perishable' => false,
                     'current_stock' => 0,
                     'unit_cost' => (float) ($bookingItem->quoted_unit_price ?? 0),
                     'min_stock' => 0,
                     'unit' => 'piece',
-                ]
-            );
+                ]);
+                $bookingItem->forceFill(['inventory_item_id' => $inventoryItem->id])->save();
+                $promoted++;
+            }
+        });
 
-            $bookingItem->forceFill(['inventory_item_id' => $inventoryItem->id])->save();
-            $promoted++;
+        $parts = [];
+        if ($promoted > 0) {
+            $parts[] = $promoted . ' AI item' . ($promoted === 1 ? '' : 's') . ' added to inventory with zero stock.';
+        }
+        if ($linked > 0) {
+            $parts[] = $linked . ' already in inventory and linked instead of added again.';
+        }
+        if ($skipped) {
+            $parts[] = 'Not added: ' . implode('; ', $skipped) . '.';
         }
 
         return redirect()->route('admin.notifications')->with(
-            $promoted > 0 ? 'success' : 'error',
-            $promoted > 0
-                ? $promoted . ' AI item' . ($promoted === 1 ? '' : 's') . ' added to inventory with zero stock.'
-                : 'No eligible missing AI items were found.'
+            ($promoted + $linked) > 0 ? 'success' : 'error',
+            $parts ? implode(' ', $parts) : 'No eligible missing AI items were found.'
         );
     }
 
@@ -1296,20 +1323,30 @@ class BookingController extends Controller
 
     protected function normalizeInventoryName(?string $name): string
     {
-        // Lower-case first: the pattern keeps only a-z and 0-9, so capitals must not be stripped.
-        return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $name)) ?? '');
+        // Same words in any order, ignoring case and punctuation (InventoryItem::wordKey).
+        return InventoryItem::wordKey($name);
     }
 
     /**
      * Refuse to add a catalog item whose name already exists (ignoring case and surrounding
      * spaces); Admin links the line to that item instead. Null when the name is free.
      */
+    /**
+     * Why $name cannot be added to the catalog, or null. Names are compared ignoring case, spacing
+     * and punctuation, and singular/plural (InventoryItem::catalogMatches), archived items included.
+     */
     protected function duplicateCatalogNameError(string $name): ?string
     {
-        $existing = InventoryItem::named($name)->first();
+        ['exact' => $exact, 'similar' => $similar] = InventoryItem::catalogMatches($name);
 
-        return $existing
-            ? "An inventory item named \"{$existing->name}\" already exists. Link the material to it instead of adding a duplicate."
+        if ($exact) {
+            return $exact->trashed()
+                ? "An inventory item named \"{$exact->name}\" is archived. Restore it from Archived Items, then link the material to it."
+                : "An inventory item named \"{$exact->name}\" already exists. Link the material to it instead of adding a duplicate.";
+        }
+
+        return $similar
+            ? "A similar inventory item \"{$similar->name}\" already exists" . ($similar->trashed() ? ' (archived)' : '') . ". Link the material to it, or use a clearly different name."
             : null;
     }
 
@@ -1728,11 +1765,26 @@ class BookingController extends Controller
         }
 
         $request->validate([
-            'link_inventory_item_id' => ['required', 'exists:inventory_items,id'],
+            // Archived items are not linkable: restore them first.
+            'link_inventory_item_id' => ['required', \Illuminate\Validation\Rule::exists('inventory_items', 'id')->whereNull('deleted_at')],
+        ], [
+            'link_inventory_item_id.exists' => 'That inventory item is archived or no longer exists. Restore it from Archived Items first.',
+        ]);
+        $request->validate([
+            'ai_item_name' => ['nullable', 'string', 'max:255'],
+            'quantity' => ['nullable', 'numeric', 'min:0'],
+            'unit_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         // If booking item wasn't routed, allow resolving by ai_item_name
         $bookingItem = $this->resolveAiSuggestedBookingItem($request, $booking, $bookingItem);
+
+        // A row shown straight from the AI analysis has no booking line yet: create it for a name
+        // this booking's analysis really suggested, then link it.
+        if (!$bookingItem && !$request->filled('booking_item_id') && $request->filled('ai_item_name')
+            && ($suggestion = $this->analysisSuggestionNamed($booking, (string) $request->input('ai_item_name')))) {
+            $bookingItem = $this->createLineFromAiSuggestion($request, $booking, $suggestion);
+        }
 
         if (!$bookingItem) {
             return redirect()->back()->with('error', 'AI suggested item could not be located.');
@@ -1743,7 +1795,7 @@ class BookingController extends Controller
         $bookingItem->item_name = InventoryItem::find($linkId)?->name ?? $bookingItem->item_name;
         $bookingItem->save();
 
-        $this->logAuditEvent('booking', 'ai_item_linked', $booking, 'Linked AI item to inventory id ' . $linkId, Auth::id());
+        $this->logAuditEvent('booking', 'ai_item_linked', $booking, 'Linked AI suggestion "' . $bookingItem->item_name . '" to inventory item "' . (InventoryItem::find($linkId)?->name ?? 'unknown') . '" (#' . $linkId . ')', Auth::id());
         $this->recordReviewFromMaterialAction($booking, 'material linking');
 
         return redirect()->back()->with('success', 'AI suggestion linked to master inventory.');
@@ -1771,13 +1823,37 @@ class BookingController extends Controller
 
         $bookingItem = $this->resolveAiSuggestedBookingItem($request, $booking, $bookingItem);
 
+        // A row shown straight from the AI analysis has no booking line yet; it is created below,
+        // only for a name this booking's analysis really suggested.
+        $suggestion = (!$bookingItem && !$request->filled('booking_item_id') && $request->filled('ai_item_name'))
+            ? $this->analysisSuggestionNamed($booking, (string) $request->input('ai_item_name'))
+            : null;
+
         // A named material that is not on this booking is an invalid request, not a new item.
-        if (!$bookingItem && ($request->filled('booking_item_id') || $request->filled('ai_item_name'))) {
+        if (!$bookingItem && !$suggestion && ($request->filled('booking_item_id') || $request->filled('ai_item_name'))) {
             return redirect()->back()->with('error', 'That material is not part of this booking.');
+        }
+
+        $existing = InventoryItem::catalogMatches((string) $request->input('catalog_name'))['exact'];
+        if (($bookingItem || $suggestion) && $existing && !$existing->trashed()) {
+            $bookingItem ??= $this->createLineFromAiSuggestion($request, $booking, $suggestion);
+            // Already in the catalog: link this line to it instead of adding a duplicate item.
+            $bookingItem->inventory_item_id = $existing->id;
+            $bookingItem->item_name = $existing->name;
+            $bookingItem->save();
+
+            $this->logAuditEvent('booking', 'ai_item_linked', $booking, 'Linked AI suggestion to existing inventory item "' . $existing->name . '" (#' . $existing->id . '): Promote matched an existing catalog name', Auth::id());
+            $this->recordReviewFromMaterialAction($booking, 'material linking');
+
+            return redirect()->back()->with('success', "\"{$existing->name}\" is already in inventory, so this material was linked to it instead of adding a duplicate.");
         }
 
         if ($duplicateError = $this->duplicateCatalogNameError((string) $request->input('catalog_name'))) {
             return redirect()->back()->with('error', $duplicateError);
+        }
+
+        if (!$bookingItem && $suggestion) {
+            $bookingItem = $this->createLineFromAiSuggestion($request, $booking, $suggestion);
         }
 
         if (!$bookingItem) {
@@ -1806,7 +1882,7 @@ class BookingController extends Controller
                 'is_ai_suggested' => 1,
             ]);
 
-            $this->logAuditEvent('booking', 'ai_item_promoted', $booking, 'Promoted AI item to inventory id ' . $inventoryItem->id . ' (fallback)', Auth::id());
+            $this->logAuditEvent('booking', 'ai_item_promoted', $booking, 'Promoted AI suggestion to new inventory item "' . $inventoryItem->name . '" (#' . $inventoryItem->id . ')', Auth::id());
             $this->recordReviewFromMaterialAction($booking, 'material promotion');
 
             return redirect()->back()->with('success', 'AI suggestion promoted into inventory catalog.');
@@ -1827,7 +1903,7 @@ class BookingController extends Controller
         $bookingItem->item_name = $inventoryItem->name;
         $bookingItem->save();
 
-        $this->logAuditEvent('booking', 'ai_item_promoted', $booking, 'Promoted AI item to inventory id ' . $inventoryItem->id, Auth::id());
+        $this->logAuditEvent('booking', 'ai_item_promoted', $booking, 'Promoted AI suggestion to new inventory item "' . $inventoryItem->name . '" (#' . $inventoryItem->id . ')', Auth::id());
         $this->recordReviewFromMaterialAction($booking, 'material promotion');
 
         return redirect()->back()->with('success', 'AI suggestion promoted into inventory catalog.');
@@ -1848,10 +1924,110 @@ class BookingController extends Controller
             return redirect()->back()->with('error', 'Link or promote this AI suggestion before confirming it.');
         }
 
-        $this->confirmBookingItemRequirement($booking, $bookingItem);
+        // The Qty and Unit Cost typed in this row are saved with the confirmation.
+        $validator = \Illuminate\Support\Facades\Validator::make($request->only(['quantity', 'unit_price']), $this->typedLineRules(''), $this->typedLineMessages());
+        if ($validator->fails()) {
+            return redirect()->back()->with('error', $bookingItem->item_name . ': ' . $validator->errors()->first() . ' Nothing was saved.');
+        }
+        $typed = $validator->validated();
+        $typedLines = array_key_exists('quantity', $typed) || array_key_exists('unit_price', $typed)
+            ? [$bookingItem->id => $typed]
+            : [];
+
+        try {
+            DB::transaction(function () use ($booking, $bookingItem, $typedLines): void {
+                $this->applyTypedLineValues($booking, collect([$bookingItem]), $typedLines);
+                $this->confirmBookingItemRequirement($booking, $bookingItem);
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+
         $this->recordReviewFromMaterialAction($booking, 'material confirmation');
 
         return redirect()->back()->with('success', 'Material requirement confirmed for this booking.');
+    }
+
+    /**
+     * Validation for a quote row's typed Qty / Unit Cost ($prefix '' for one row, 'lines.*.' for many).
+     */
+    protected function typedLineRules(string $prefix): array
+    {
+        return [
+            $prefix . 'quantity' => ['sometimes', 'required', 'integer', 'min:0', 'max:1000000'],
+            $prefix . 'unit_price' => ['sometimes', 'required', 'numeric', 'min:0', 'max:99999999.99'],
+        ];
+    }
+
+    protected function typedLineMessages(): array
+    {
+        return [
+            '*.required' => 'Quantity and unit cost cannot be blank.',
+            '*.integer' => 'Quantity must be a whole number.',
+            '*.numeric' => 'Unit cost must be a number.',
+            '*.min' => 'Quantity and unit cost cannot be negative.',
+            '*.max' => 'The value is too large.',
+        ];
+    }
+
+    /**
+     * Save the Qty / Unit Cost Admin typed in the quote table onto these booking lines (used when
+     * confirming materials). Only the booking's own lines change: inventory stock and the catalog
+     * price are untouched. A quantity change is refused once stock for that item is already
+     * reserved or dispatched for this booking, so the stock hold can never disagree with the line.
+     * A refusal throws, so the caller's transaction rolls every row back (all or nothing).
+     *
+     * @param  \Illuminate\Support\Collection<int, BookingItem>  $lines
+     * @param  array<int|string, array{quantity?: int|string, unit_price?: float|string}>  $typed  keyed by booking item id
+     */
+    protected function applyTypedLineValues(Booking $booking, \Illuminate\Support\Collection $lines, array $typed): void
+    {
+        $quoteReadOnly = in_array($booking->status, ['downpayment_received', 'event_in_progress', 'event_completed', 'pending_return', 'pending_resolution', 'completed', 'cancelled', 'declined', 'rejected'], true);
+
+        foreach ($lines as $line) {
+            $values = $typed[$line->id] ?? null;
+            if (!is_array($values)) {
+                continue;
+            }
+
+            $newQuantity = array_key_exists('quantity', $values) ? (float) $values['quantity'] : (float) $line->quantity;
+            $newPrice = array_key_exists('unit_price', $values) ? round((float) $values['unit_price'], 2) : (float) $line->quoted_unit_price;
+            $quantityChanged = round($newQuantity, 4) !== round((float) $line->quantity, 4);
+            $priceChanged = round($newPrice, 2) !== round((float) $line->quoted_unit_price, 2);
+            if (!$quantityChanged && !$priceChanged) {
+                continue;
+            }
+
+            if ($quoteReadOnly) {
+                throw new \RuntimeException('Quantities and prices can no longer be changed at this booking\'s stage (' . $booking->status_display_label . '). Nothing was saved.');
+            }
+
+            if ($quantityChanged && $line->inventory_item_id) {
+                $stockMoved = InventoryTransaction::where('booking_id', $booking->id)
+                    ->where('inventory_item_id', $line->inventory_item_id)
+                    ->whereIn('transaction_type', ['booking_lock', 'dispatch', 'dispatch_correction'])
+                    ->exists();
+                if ($stockMoved) {
+                    throw new \RuntimeException('Stock for "' . $line->item_name . '" is already reserved or dispatched for this booking, so its quantity cannot be changed here. Nothing was saved.');
+                }
+            }
+
+            $old = ['quantity' => (float) $line->quantity, 'quoted_unit_price' => (float) $line->quoted_unit_price];
+            $line->quantity = $newQuantity;
+            $line->quoted_unit_price = $newPrice;
+            $line->save();
+
+            $this->logAuditEvent(
+                'booking',
+                'quote_line_updated',
+                $booking,
+                'Quote line "' . $line->item_name . '" saved on confirmation: qty ' . $old['quantity'] . ' → ' . $newQuantity . ', unit cost ₱' . number_format($old['quoted_unit_price'], 2) . ' → ₱' . number_format($newPrice, 2),
+                Auth::id(),
+                ['booking_item_id' => $line->id] + $old,
+                ['booking_item_id' => $line->id, 'quantity' => $newQuantity, 'quoted_unit_price' => $newPrice],
+                'quote_line_updated'
+            );
+        }
     }
 
     /**
@@ -1875,11 +2051,27 @@ class BookingController extends Controller
             return redirect()->back()->with('error', 'There are no linked materials waiting for confirmation.');
         }
 
-        DB::transaction(function () use ($booking, $readyItems) {
-            foreach ($readyItems as $bookingItem) {
-                $this->confirmBookingItemRequirement($booking, $bookingItem);
-            }
-        });
+        // The Qty and Unit Cost typed for these rows are saved with the confirmation; all or nothing.
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            ['lines' => (array) $request->input('lines', [])],
+            ['lines' => ['array']] + $this->typedLineRules('lines.*.'),
+            $this->typedLineMessages()
+        );
+        if ($validator->fails()) {
+            return redirect()->back()->with('error', $validator->errors()->first() . ' Nothing was saved.');
+        }
+        $typedLines = $validator->validated()['lines'] ?? [];
+
+        try {
+            DB::transaction(function () use ($booking, $readyItems, $typedLines): void {
+                $this->applyTypedLineValues($booking, $readyItems, $typedLines);
+                foreach ($readyItems as $bookingItem) {
+                    $this->confirmBookingItemRequirement($booking, $bookingItem);
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
         $this->recordReviewFromMaterialAction($booking, 'material confirmation');
 
         $unmatchedCount = $booking->bookingItems()
@@ -1915,12 +2107,56 @@ class BookingController extends Controller
             'booking',
             'material_confirmed',
             $booking,
-            'Confirmed booking material item #' . $bookingItem->id,
+            'Confirmed material "' . $bookingItem->item_name . '" (line #' . $bookingItem->id . ')',
             Auth::id(),
             ['booking_item_id' => $bookingItem->id, 'confirmed_at' => null],
             ['booking_item_id' => $bookingItem->id, 'confirmed_at' => $bookingItem->confirmed_at?->toIso8601String()],
             'material_requirement_confirmed'
         );
+    }
+
+    /**
+     * The row of this booking's latest AI analysis named $name (case, spacing and punctuation
+     * ignored), or null. The quote editor lists those rows before they have a booking line.
+     */
+    protected function analysisSuggestionNamed(Booking $booking, string $name): ?array
+    {
+        $key = InventoryItem::nameKey($name);
+        $materials = $booking->aiAnalyses()->latest('analyzed_at')->first()?->suggested_materials ?? [];
+
+        foreach ((array) $materials as $material) {
+            if (is_array($material) && $key !== '' && InventoryItem::nameKey($material['item_name'] ?? '') === $key) {
+                return $material;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The booking line for an AI analysis row, made when Admin links or promotes it: the Qty and
+     * Unit Cost typed in the row (or the AI's quantity), unconfirmed like any AI suggestion.
+     */
+    protected function createLineFromAiSuggestion(Request $request, Booking $booking, array $suggestion): BookingItem
+    {
+        $typedQuantity = $request->input('quantity');
+        $aiQuantity = $suggestion['quantity'] ?? $suggestion['estimated_quantity'] ?? null;
+        $quantity = is_numeric($typedQuantity) && (float) $typedQuantity > 0
+            ? (float) $typedQuantity
+            : (is_numeric($aiQuantity) && (float) $aiQuantity > 0 ? (float) $aiQuantity : 1.0);
+        $typedPrice = $request->input('unit_price');
+        $aiPrice = $suggestion['unit_cost_php'] ?? $suggestion['estimated_unit_cost_php'] ?? null;
+
+        return BookingItem::create([
+            'booking_id' => $booking->id,
+            'item_name' => trim((string) $suggestion['item_name']),
+            'quantity' => $quantity,
+            'quoted_unit_price' => is_numeric($typedPrice) && (float) $typedPrice >= 0 ? round((float) $typedPrice, 2) : 0,
+            'ai_recommended_price' => is_numeric($aiPrice) && (float) $aiPrice > 0 ? round((float) $aiPrice, 2) : null,
+            'is_ai_suggested' => true,
+            'procurement_status' => 'pending',
+            'notes' => 'AI suggested',
+        ]);
     }
 
     protected function resolveAiSuggestedBookingItem(Request $request, Booking $booking, ?BookingItem $bookingItem = null): ?BookingItem
@@ -1987,7 +2223,8 @@ class BookingController extends Controller
      */
     protected function refuseBookingUpdate(string $message): never
     {
-        throw new HttpResponseException(redirect()->back()->with('error', $message));
+        // withInput(): the quote editor refills the Qty / Unit Cost Admin typed, so nothing is retyped.
+        throw new HttpResponseException(redirect()->back()->withInput()->with('error', $message));
     }
 
     /**
@@ -2293,7 +2530,7 @@ class BookingController extends Controller
                                         'booking',
                                         'material_substituted',
                                         $booking,
-                                        'Substituted booking material item #' . $bookingItem->id,
+                                        'Substituted material on line #' . $bookingItem->id . ' with "' . $bookingItem->item_name . '"',
                                         Auth::id(),
                                         $substitution,
                                         array_merge($substitution, [

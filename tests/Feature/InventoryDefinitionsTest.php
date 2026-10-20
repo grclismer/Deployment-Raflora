@@ -86,7 +86,7 @@ class InventoryDefinitionsTest extends TestCase
             $service->dispatchItems($booking, [['inventory_item_id' => $arch->id, 'quantity' => 2]], $this->adminUser()->id, 'Too many');
             $this->fail('Dispatching more than is still held must be refused.');
         } catch (\LogicException $e) {
-            $this->assertStringContainsString('Outstanding reservation is only 1', $e->getMessage());
+            $this->assertMatchesRegularExpression('/only 1( \S+)? is reserved for this booking/', $e->getMessage());
         }
 
         $released = $service->releaseUnfulfilledReservations($booking, $this->adminUser()->id, 'Event over');

@@ -225,6 +225,83 @@ class InventoryItem extends Model
         return $query->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($name))]);
     }
 
+    /**
+     * A catalog name in comparable form: case, spacing and punctuation are ignored, so
+     * "Stage / Backdrop", "stage backdrop" and "STAGE-BACKDROP" are the same name.
+     */
+    public static function nameKey(?string $name): string
+    {
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower((string) $name)) ?? '');
+    }
+
+    /**
+     * nameKey() with simple plurals made singular word by word ("Pink Roses" → "pink rose",
+     * "Lilies" → "lily", "Boxes" → "box"); words ending in ss/us/is ("Glass") are left alone.
+     */
+    public static function singularNameKey(?string $name): string
+    {
+        $words = explode(' ', self::nameKey($name));
+
+        return implode(' ', array_map(function (string $word): string {
+            if (strlen($word) <= 3 || preg_match('/(ss|us|is)$/', $word)) {
+                return $word;
+            }
+
+            return preg_replace(['/ies$/', '/(sh|ch|x|z)es$/', '/s$/'], ['y', '$1', ''], $word, 1);
+        }, $words));
+    }
+
+    /**
+     * nameKey() with its words sorted, so word order is ignored: "Entrance Arch Floral Arrangement"
+     * and "Entrance Floral Arch Arrangement" are the same name. Different words stay different.
+     */
+    public static function wordKey(?string $name): string
+    {
+        $words = array_filter(explode(' ', self::nameKey($name)), 'strlen');
+        sort($words);
+
+        return implode(' ', $words);
+    }
+
+    /**
+     * singularNameKey() with its words sorted: ignores word order and singular/plural.
+     */
+    public static function singularWordKey(?string $name): string
+    {
+        $words = array_filter(explode(' ', self::singularNameKey($name)), 'strlen');
+        sort($words);
+
+        return implode(' ', $words);
+    }
+
+    /**
+     * Existing catalog items (archived included) that a new item called $name would duplicate:
+     * 'exact' has the same words in any order (wordKey(); an active item is preferred over an
+     * archived one); 'similar' differs only by singular/plural. Used by every path that adds
+     * catalog items, so the same material is never added twice.
+     *
+     * @return array{exact: ?self, similar: ?self}
+     */
+    public static function catalogMatches(string $name, ?int $ignoreId = null): array
+    {
+        $key = self::wordKey($name);
+        $singular = self::singularWordKey($name);
+        if ($key === '') {
+            return ['exact' => null, 'similar' => null];
+        }
+
+        $candidates = self::withTrashed()
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->get(['id', 'name', 'item_code', 'deleted_at'])
+            ->sortBy(fn (self $item) => $item->deleted_at ? 1 : 0)
+            ->values();
+
+        return [
+            'exact' => $candidates->first(fn (self $item) => self::wordKey($item->name) === $key),
+            'similar' => $candidates->first(fn (self $item) => self::singularWordKey($item->name) === $singular),
+        ];
+    }
+
     public function getAvailableStockAttribute(): float
     {
         return $this->net_available;

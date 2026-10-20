@@ -260,33 +260,6 @@
                         </form>
                     </div>
 
-                    <!-- Business Information Card -->
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
-                        <div class="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-                            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
-                                <i class="fa-solid fa-building text-sm" aria-hidden="true"></i>
-                            </span>
-                            <div>
-                                <h2 class="text-sm font-bold text-slate-900 sm:text-base">Business Information</h2>
-                                <p class="text-[11px] text-slate-500 sm:text-xs">This information may be used for official communications.</p>
-                            </div>
-                        </div>
-
-                        <div class="mt-3.5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div class="rounded-xl bg-slate-50/70 p-3 border border-slate-100">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Company / Branch</span>
-                                <p class="mt-0.5 text-xs sm:text-sm font-bold text-slate-800">Raflora Enterprises</p>
-                            </div>
-                            <div class="rounded-xl bg-slate-50/70 p-3 border border-slate-100">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Email</span>
-                                <p class="mt-0.5 text-xs sm:text-sm font-semibold text-slate-800 truncate">{{ $user->email }}</p>
-                            </div>
-                            <div class="rounded-xl bg-slate-50/70 p-3 border border-slate-100">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Number</span>
-                                <p class="mt-0.5 text-xs sm:text-sm font-semibold text-slate-800">{{ $user->mobile_number ?: '0917 123 4567' }}</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Side Content (Right: 4 cols) -->
@@ -300,41 +273,20 @@
                             <h3 class="text-sm font-bold text-slate-900">Account Overview</h3>
                         </div>
 
-                        <div class="mt-3.5 flex items-start gap-3.5">
-                            <div class="relative shrink-0">
-                                <div class="h-16 w-16 rounded-full overflow-hidden border-2 border-rose-200 bg-rose-50 flex items-center justify-center shadow-2xs">
-                                    @if($hasProfileImage)
-                                        <img src="{{ asset('storage/' . $user->profile_image) }}" alt="{{ $user->name }}" class="h-full w-full object-cover">
-                                    @else
-                                        <span class="text-xl font-bold text-rose-700">{{ $userInitials }}</span>
-                                    @endif
-                                </div>
+                        <dl class="mt-3 space-y-2 text-[11px]">
+                            <div class="flex items-center justify-between gap-3">
+                                <dt class="flex items-center gap-2 text-slate-600"><i class="fa-solid fa-building text-[10px] text-slate-400" aria-hidden="true"></i> Company</dt>
+                                <dd class="font-semibold text-slate-800">Raflora Enterprises</dd>
                             </div>
-
-                            <div class="min-w-0 flex-1 space-y-0.5">
-                                <h4 class="text-sm font-bold text-slate-900 truncate">{{ $user->name }}</h4>
-                                <div>
-                                    <span class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold capitalize text-rose-700 border border-rose-100">
-                                        {{ $user->role === 'admin' ? 'Administrator' : ucfirst($user->role) }}
-                                    </span>
-                                </div>
-                                <p class="text-[11px] text-slate-600 truncate flex items-center gap-1.5 pt-0.5">
-                                    <i class="fa-regular fa-envelope text-slate-400 text-[10px]" aria-hidden="true"></i>
-                                    <span class="truncate">{{ $user->email }}</span>
-                                </p>
-                                @if($user->mobile_number)
-                                    <p class="text-[11px] text-slate-600 flex items-center gap-1.5">
-                                        <i class="fa-solid fa-phone text-slate-400 text-[9px]" aria-hidden="true"></i>
-                                        <span>{{ $user->mobile_number }}</span>
-                                    </p>
-                                @endif
-                                <p class="text-[10px] text-slate-400 flex items-center gap-1.5 pt-0.5">
-                                    <i class="fa-regular fa-calendar text-slate-400 text-[10px]" aria-hidden="true"></i>
-                                    <span>Joined: {{ optional($user->created_at)->format('M d, Y') ?? 'N/A' }}</span>
-                                </p>
+                            <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-1.5">
+                                <dt class="flex items-center gap-2 text-slate-600"><i class="fa-regular fa-id-badge text-[10px] text-slate-400" aria-hidden="true"></i> Role</dt>
+                                <dd><span class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold capitalize text-rose-700 border border-rose-100">{{ $user->role === 'admin' ? 'Administrator' : ucfirst($user->role) }}</span></dd>
                             </div>
-                        </div>
-
+                            <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-1.5">
+                                <dt class="flex items-center gap-2 text-slate-600"><i class="fa-regular fa-calendar text-[10px] text-slate-400" aria-hidden="true"></i> Joined</dt>
+                                <dd class="font-semibold text-slate-800">{{ optional($user->created_at)->format('M d, Y') ?? 'N/A' }}</dd>
+                            </div>
+                        </dl>
                         <div class="mt-3.5 border-t border-slate-100 pt-2.5">
                             <div class="flex items-center justify-between text-xs">
                                 <span class="text-slate-400 text-[11px] font-semibold">Account Status</span>
@@ -411,9 +363,8 @@
         <!-- TAB PANE 2: SECURITY                                     -->
         <!-- ======================================================= -->
         <div id="tab-pane-security" role="tabpanel" aria-labelledby="tab-btn-security" class="tab-pane {{ $activeTab === 'security' ? '' : 'hidden' }}">
-            <div class="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-12">
-                <!-- Main Content (Left: 8 cols) -->
-                <div class="space-y-4 xl:col-span-8 sm:space-y-5">
+            {{-- Change Password and Email Security side by side; devices and sessions share one card below. --}}
+            <div class="grid grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-2 xl:items-start">
                     <!-- Change Password Card (Matches Visual Mockup) -->
                     <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
                         <div class="flex items-center gap-2.5 border-b border-slate-100 pb-3">
@@ -518,7 +469,7 @@
                         <div class="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div class="flex items-center gap-2.5">
                                 <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
-                                    <i class="fa-solid fa-envelope-shield text-sm" aria-hidden="true"></i>
+                                    <i class="fa-solid fa-envelope-circle-check text-sm" aria-hidden="true"></i>
                                 </span>
                                 <div>
                                     <h2 class="text-sm font-bold text-slate-900 sm:text-base">Email Security</h2>
@@ -545,8 +496,21 @@
                         </div>
                     </div>
 
+                    <!-- Trusted Devices / Active Sessions: one at a time -->
+                    @php $deviceTab = str_contains(session('success') ?? '', 'sessions') ? 'sessions' : 'devices'; @endphp
+                    <div class="space-y-3 xl:col-span-2" data-device-panels>
+                        <div class="inline-flex rounded-xl border border-slate-200/80 bg-white p-1 shadow-2xs" role="tablist" aria-label="Devices and sessions">
+                            <button type="button" role="tab" data-device-tab="devices" aria-selected="{{ $deviceTab === 'devices' ? 'true' : 'false' }}" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 aria-selected:bg-rose-600 aria-selected:text-white">
+                                <i class="fa-solid fa-laptop-code" aria-hidden="true"></i> Trusted Devices
+                                <span class="rounded-full bg-black/10 px-1.5 text-[10px]">{{ $trustedDevices->where('is_usable', true)->count() }}</span>
+                            </button>
+                            <button type="button" role="tab" data-device-tab="sessions" aria-selected="{{ $deviceTab === 'sessions' ? 'true' : 'false' }}" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:text-slate-900 aria-selected:bg-rose-600 aria-selected:text-white">
+                                <i class="fa-solid fa-network-wired" aria-hidden="true"></i> Active Sessions
+                                <span class="rounded-full bg-black/10 px-1.5 text-[10px]">{{ $activeSessions->count() }}</span>
+                            </button>
+                        </div>
                     <!-- Trusted Devices Card -->
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $deviceTab === 'devices' ? '' : 'hidden' }}" data-device-panel="devices">
                         <div class="flex items-center justify-between border-b border-slate-100 pb-3">
                             <div class="flex items-center gap-2.5">
                                 <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -637,7 +601,7 @@
                     </div>
 
                     <!-- Active Sessions Card -->
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $deviceTab === 'sessions' ? '' : 'hidden' }}" data-device-panel="sessions">
                         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 border-b border-slate-100 pb-3">
                             <div class="flex items-center gap-2.5">
                                 <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -689,123 +653,7 @@
                             @endforelse
                         </div>
                     </div>
-                </div>
-
-                <!-- Side Content (Right: 4 cols) -->
-                <div class="space-y-4 xl:col-span-4 sm:space-y-5">
-                    <!-- Compact Security Summary Card -->
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
-                        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div class="flex items-center gap-2">
-                                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                                    <i class="fa-solid fa-shield-halved text-xs" aria-hidden="true"></i>
-                                </span>
-                                <h3 class="text-sm font-bold text-slate-900">Security Summary</h3>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 space-y-2 text-xs">
-                            <div class="flex items-center justify-between py-0.5">
-                                <span class="text-slate-600 flex items-center gap-2 text-[11px]">
-                                    <i class="fa-solid fa-key text-slate-400 text-[10px]" aria-hidden="true"></i> Password
-                                </span>
-                                <span class="font-semibold text-emerald-700 text-[11px]">Protected</span>
-                            </div>
-                            <div class="flex items-center justify-between py-0.5 border-t border-slate-100 pt-1.5">
-                                <span class="text-slate-600 flex items-center gap-2 text-[11px]">
-                                    <i class="fa-solid fa-envelope-circle-check text-slate-400 text-[10px]" aria-hidden="true"></i> Email Verification
-                                </span>
-                                <span class="font-semibold {{ $user->email_verified_at ? 'text-emerald-700' : 'text-amber-700' }} text-[11px]">
-                                    {{ $user->email_verified_at ? 'Verified' : 'Unverified' }}
-                                </span>
-                            </div>
-                            <div class="flex items-center justify-between py-0.5 border-t border-slate-100 pt-1.5">
-                                <span class="text-slate-600 flex items-center gap-2 text-[11px]">
-                                    <i class="fa-solid fa-laptop text-slate-400 text-[10px]" aria-hidden="true"></i> Trusted Devices
-                                </span>
-                                <span class="font-semibold text-slate-800 text-[11px]">
-                                    {{ $trustedDevices->where('is_usable', true)->count() }} active
-                                </span>
-                            </div>
-                            <div class="flex items-center justify-between py-0.5 border-t border-slate-100 pt-1.5">
-                                <span class="text-slate-600 flex items-center gap-2 text-[11px]">
-                                    <i class="fa-solid fa-desktop text-slate-400 text-[10px]" aria-hidden="true"></i> Active Sessions
-                                </span>
-                                <span class="font-semibold text-slate-800 text-[11px]">
-                                    {{ $activeSessions->count() }} active
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="mt-3.5 border-t border-slate-100 pt-3">
-                            <button
-                                type="button"
-                                onclick="document.getElementById('sec_current_password')?.focus();"
-                                class="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
-                            >
-                                <span>Update Security Details</span>
-                                <i class="fa-solid fa-key text-[9px]" aria-hidden="true"></i>
-                            </button>
-                        </div>
                     </div>
-
-                    <!-- Compact Account Overview Card -->
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
-                        <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
-                            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
-                                <i class="fa-regular fa-id-badge text-xs" aria-hidden="true"></i>
-                            </span>
-                            <h3 class="text-sm font-bold text-slate-900">Account Overview</h3>
-                        </div>
-
-                        <div class="mt-3.5 flex items-start gap-3.5">
-                            <div class="relative shrink-0">
-                                <div class="h-16 w-16 rounded-full overflow-hidden border-2 border-rose-200 bg-rose-50 flex items-center justify-center shadow-2xs">
-                                    @if($hasProfileImage)
-                                        <img src="{{ asset('storage/' . $user->profile_image) }}" alt="{{ $user->name }}" class="h-full w-full object-cover">
-                                    @else
-                                        <span class="text-xl font-bold text-rose-700">{{ $userInitials }}</span>
-                                    @endif
-                                </div>
-                            </div>
-
-                            <div class="min-w-0 flex-1 space-y-0.5">
-                                <h4 class="text-sm font-bold text-slate-900 truncate">{{ $user->name }}</h4>
-                                <div>
-                                    <span class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold capitalize text-rose-700 border border-rose-100">
-                                        {{ $user->role === 'admin' ? 'Administrator' : ucfirst($user->role) }}
-                                    </span>
-                                </div>
-                                <p class="text-[11px] text-slate-600 truncate flex items-center gap-1.5 pt-0.5">
-                                    <i class="fa-regular fa-envelope text-slate-400 text-[10px]" aria-hidden="true"></i>
-                                    <span class="truncate">{{ $user->email }}</span>
-                                </p>
-                                @if($user->mobile_number)
-                                    <p class="text-[11px] text-slate-600 flex items-center gap-1.5">
-                                        <i class="fa-solid fa-phone text-slate-400 text-[9px]" aria-hidden="true"></i>
-                                        <span>{{ $user->mobile_number }}</span>
-                                    </p>
-                                @endif
-                                <p class="text-[10px] text-slate-400 flex items-center gap-1.5 pt-0.5">
-                                    <i class="fa-regular fa-calendar text-slate-400 text-[10px]" aria-hidden="true"></i>
-                                    <span>Joined: {{ optional($user->created_at)->format('M d, Y') ?? 'N/A' }}</span>
-                                </p>
-                            </div>
-                        </div>
-
-                        <div class="mt-3.5 border-t border-slate-100 pt-2.5">
-                            <div class="flex items-center justify-between text-xs">
-                                <span class="text-slate-400 text-[11px] font-semibold">Account Status</span>
-                                <span class="inline-flex items-center gap-1 font-bold text-emerald-700 text-xs">
-                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Active
-                                </span>
-                            </div>
-                            <p class="mt-0.5 text-[10px] text-slate-400">
-                                Your account is active and has full access to the system.
-                            </p>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -813,8 +661,35 @@
         <!-- TAB PANE 3: ADMINISTRATION                               -->
         <!-- ======================================================= -->
         <div id="tab-pane-administration" role="tabpanel" aria-labelledby="tab-btn-administration" class="tab-pane {{ $activeTab === 'administration' ? '' : 'hidden' }} space-y-4 sm:space-y-5">
+            {{-- Administration sections, one at a time. A failed save opens its own section; otherwise the
+                 last section used (or a link such as #audit-trail) is reopened by the script below. --}}
+            @php
+                $adminSections = array_filter([
+                    'team' => ['Team Accounts', 'fa-users'],
+                    'business' => $isAdmin ? ['Business Configuration', 'fa-sliders'] : null,
+                    'ai' => $isAdmin ? ['AI Estimate Pricing', 'fa-wand-magic-sparkles'] : null,
+                    'audit' => ['Audit Trail', 'fa-list-check'],
+                    'data' => $isAdmin ? ['System Data', 'fa-database'] : null,
+                ]);
+                $forcedAdminSection = match (true) {
+                    $accountFormFailed || str_contains(session('success') ?? '', 'Account created') => 'team',
+                    $isAdmin && (session('impact_preview') || $errors->hasAny(['downpayment_percentage', 'long_term_booking_threshold_days', 'price_reconfirmation_threshold_days'])) => 'business',
+                    $isAdmin && $errors->hasAny(['ai_estimate_markup', 'ai_labour_type', 'ai_labour_value']) => 'ai',
+                    default => null,
+                };
+                $adminSection = $forcedAdminSection ?? 'team';
+            @endphp
+            <nav class="flex gap-1.5 overflow-x-auto rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-2xs" role="tablist" aria-label="Administration sections" data-admin-nav data-forced="{{ $forcedAdminSection ? '1' : '0' }}">
+                @foreach($adminSections as $sectionKey => [$sectionLabel, $sectionIcon])
+                    <button type="button" role="tab" data-admin-section-tab="{{ $sectionKey }}" aria-selected="{{ $sectionKey === $adminSection ? 'true' : 'false' }}"
+                            class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 aria-selected:bg-rose-600 aria-selected:text-white aria-selected:hover:bg-rose-600">
+                        <i class="fa-solid {{ $sectionIcon }}" aria-hidden="true"></i>{{ $sectionLabel }}
+                    </button>
+                @endforeach
+            </nav>
+
             <!-- Team Accounts Card -->
-            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $adminSection === 'team' ? '' : 'hidden' }}" data-admin-section="team">
                 <div class="mb-3.5 flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                     <div class="flex items-center gap-2.5">
                         <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -877,7 +752,7 @@
 
             <!-- Business Configuration Card -->
             @if($isAdmin)
-            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $adminSection === 'business' ? '' : 'hidden' }}" data-admin-section="business">
                 <div class="mb-3.5 flex items-center gap-2.5 border-b border-slate-100 pb-3">
                     <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
                         <i class="fa-solid fa-sliders text-sm" aria-hidden="true"></i>
@@ -967,7 +842,7 @@
                 $aiLabour = \App\Models\Setting::aiLabourAllowance();
                 $aiLabourMode = old('ai_labour_mode', in_array($aiLabour['mode'], ['fixed', 'percentage'], true) ? $aiLabour['mode'] : 'fixed');
             @endphp
-            <div id="ai-estimate-settings" class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+            <div id="ai-estimate-settings" class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $adminSection === 'ai' ? '' : 'hidden' }}" data-admin-section="ai">
                 <div class="mb-3.5 flex items-center gap-2.5 border-b border-slate-100 pb-3">
                     <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
                         <i class="fa-solid fa-wand-magic-sparkles text-sm" aria-hidden="true"></i>
@@ -1030,7 +905,7 @@
             @endif
 
             <!-- Audit Trail Card -->
-            <div id="audit-trail" class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+            <div id="audit-trail" class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $adminSection === 'audit' ? '' : 'hidden' }}" data-admin-section="audit">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 border-b border-slate-100 pb-3">
                     <div class="flex items-center gap-2.5">
                         <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -1084,7 +959,7 @@
 
             <!-- System Data Management Card -->
             @if($isAdmin)
-            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+            <div class="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs {{ $adminSection === 'data' ? '' : 'hidden' }}" data-admin-section="data">
                 <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-3">
                     <div class="flex items-center gap-2.5">
                         <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
@@ -1379,9 +1254,14 @@
                 <div class="flex items-start justify-between">
                     <div>
                         <h3 id="auditModalTitle" class="text-base font-bold text-slate-900 sm:text-lg">Audit Trail</h3>
-                        <p class="mt-0.5 text-xs text-slate-500">The latest {{ $auditLogs->count() }} recorded system events.</p>
+                        <p class="mt-0.5 text-xs text-slate-500">The latest {{ $auditLogs->count() }} recorded system events. The CSV has the whole log.</p>
                     </div>
-                    <button type="button" data-close-modal="auditModal" class="text-xl leading-none text-slate-400 hover:text-slate-700" aria-label="Close">&times;</button>
+                    <div class="flex shrink-0 items-center gap-3">
+                        <a href="{{ route('admin.settings.audit-log.export') }}" class="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-slate-700">
+                            <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Export CSV
+                        </a>
+                        <button type="button" data-close-modal="auditModal" class="text-xl leading-none text-slate-400 hover:text-slate-700" aria-label="Close">&times;</button>
+                    </div>
                 </div>
                 <div class="mt-4 max-h-[65vh] overflow-auto">
                     <table class="w-full min-w-[640px] text-left text-xs">
@@ -1552,7 +1432,7 @@
                     if (!file) return;
 
                     if (file.size > 2 * 1024 * 1024) {
-                        alert('Image must be 2MB or less.');
+                        showNoticeModal('Image too large', 'The profile photo must be 2 MB or less. Choose a smaller image.', 'danger', this);
                         this.value = '';
                         return;
                     }
@@ -1576,14 +1456,49 @@
 
             if (removeBtn) {
                 removeBtn.addEventListener('click', function () {
-                    if (confirm('Are you sure you want to remove your profile photo?')) {
+                    openConfirmAction('Remove profile photo?', 'Your profile photo will be removed and your initials shown instead.', 'Remove photo', 'danger', () => {
                         if (removeInput) removeInput.value = '1';
                         if (fileInput) fileInput.value = '';
                         const form = document.getElementById('adminProfileForm');
                         if (form) form.submit();
-                    }
+                    }, removeBtn);
                 });
             }
+        };
+
+        // Security: Trusted Devices / Active Sessions, one at a time.
+        const initDevicePanels = () => {
+            const buttons = [...document.querySelectorAll('[data-device-tab]')];
+            buttons.forEach((button) => button.addEventListener('click', () => {
+                buttons.forEach((b) => b.setAttribute('aria-selected', b === button ? 'true' : 'false'));
+                document.querySelectorAll('[data-device-panel]').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.devicePanel !== button.dataset.deviceTab));
+            }));
+        };
+
+        // Administration: one section at a time. A failed save opens its section (data-forced); otherwise
+        // a link to a section (e.g. #audit-trail) or the last section used in this browser tab.
+        const initAdminSections = () => {
+            const nav = document.querySelector('[data-admin-nav]');
+            if (!nav) return;
+            const buttons = [...nav.querySelectorAll('[data-admin-section-tab]')];
+            const show = (key) => {
+                if (!buttons.some((b) => b.dataset.adminSectionTab === key)) return;
+                buttons.forEach((b) => b.setAttribute('aria-selected', b.dataset.adminSectionTab === key ? 'true' : 'false'));
+                document.querySelectorAll('[data-admin-section]').forEach((section) => section.classList.toggle('hidden', section.dataset.adminSection !== key));
+                try { sessionStorage.setItem('raflora.adminSettingsSection', key); } catch (e) { /* storage unavailable */ }
+            };
+            buttons.forEach((button) => button.addEventListener('click', () => show(button.dataset.adminSectionTab)));
+            if (nav.dataset.forced === '1') return;
+            const linked = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1)))?.closest('[data-admin-section]') : null;
+            if (linked) {
+                switchSettingsTab('administration', false);
+                show(linked.dataset.adminSection);
+                linked.scrollIntoView({ block: 'start' });
+                return;
+            }
+            let remembered = null;
+            try { remembered = sessionStorage.getItem('raflora.adminSettingsSection'); } catch (e) { /* storage unavailable */ }
+            if (remembered) show(remembered);
         };
 
         const initSystemDataImport = () => {
@@ -1603,7 +1518,7 @@
 
             btnPreview.addEventListener('click', async () => {
                 if (!fileInput.files || fileInput.files.length === 0) {
-                    alert('Please select a system data ZIP archive first.');
+                    showNoticeModal('No file selected', 'Choose a system data ZIP archive first, then preview it.', 'danger', btnPreview);
                     return;
                 }
 
@@ -1697,6 +1612,8 @@
             initializeAccountModals();
             initializeProfileImageUpload();
             initSystemDataImport();
+            initDevicePanels();
+            initAdminSections();
             setupTabKeyboardNavigation();
             setupInitialTab();
         };

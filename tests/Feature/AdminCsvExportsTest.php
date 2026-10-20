@@ -111,8 +111,8 @@ class AdminCsvExportsTest extends TestCase
             $this->assertStringContainsString($section, $csv);
         }
 
-        // Other pages keep the booking search.
-        $this->actingAs($this->admin)->get(route('admin.notifications'))->assertSee('id="adminGlobalSearch"', false);
+        // No Admin page has the header booking search (Booking Management has its own search).
+        $this->actingAs($this->admin)->get(route('admin.notifications'))->assertDontSee('id="adminGlobalSearch"', false);
     }
 
     private function shortageBooking(): Booking

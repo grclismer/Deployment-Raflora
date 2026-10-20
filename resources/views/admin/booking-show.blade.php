@@ -826,9 +826,16 @@
                     @if($readyToConfirm->isNotEmpty())
                         <form id="confirmAllMaterialsForm" method="POST" action="{{ route('admin.bookings.items.confirm-all', $booking) }}"
                               data-confirm="Confirm {{ $readyToConfirm->count() }} {{ \Illuminate\Support\Str::plural('material', $readyToConfirm->count()) }}?"
-                              data-confirm-message="Every linked AI suggestion awaiting confirmation is confirmed at its saved quantity and unit cost.{{ $readyZeroPriceCount > 0 ? ' ' . $readyZeroPriceCount . ' of them still have a ₱0.00 unit cost.' : '' }} Unmatched suggestions still need Link or Promote."
+                              data-confirm-message="Every linked AI suggestion awaiting confirmation is confirmed with the quantity and unit cost shown in the table, and those values are saved.{{ $readyZeroPriceCount > 0 ? ' ' . $readyZeroPriceCount . ' of them still have a ₱0.00 unit cost.' : '' }} Unmatched suggestions still need Link or Promote."
                               data-confirm-label="Confirm all">
                             @csrf
+                            @unless($quoteReadOnly)
+                                {{-- Kept in step with the table by syncConfirmLineValues(); saved with the confirmation. --}}
+                                @foreach($readyToConfirm as $readyItem)
+                                    <input type="hidden" name="lines[{{ $readyItem->id }}][quantity]" value="{{ (int) $readyItem->quantity }}" data-sync-item="{{ $readyItem->id }}" data-sync-field="quantity">
+                                    <input type="hidden" name="lines[{{ $readyItem->id }}][unit_price]" value="{{ number_format((float) $readyItem->quoted_unit_price, 2, '.', '') }}" data-sync-item="{{ $readyItem->id }}" data-sync-field="unit_price">
+                                @endforeach
+                            @endunless
                             <button type="submit" class="{{ $btnPrimary }} py-1.5 text-xs">
                                 <i class="fa-solid fa-check-double" aria-hidden="true"></i>Confirm all linked ({{ $readyToConfirm->count() }})
                             </button>
@@ -860,18 +867,23 @@
                             @php
                                 $itemsToDisplay = [];
                                 $seenItemKeys = [];
+                                // Every saved booking line is listed, even two with the same name: each one is
+                                // quoted, so each must be visible to price or remove. Unsaved AI suggestions and
+                                // fallback rows are skipped when a line with that name is already listed.
                                 $addDisplayItem = function ($id, $name, $qty, $unitPrice, $inventoryId = null, $isAiSuggested = false, $notes = null, $confirmedAt = null) use (&$itemsToDisplay, &$seenItemKeys) {
                                     $normalizedName = strtolower(trim((string) $name));
                                     if ($normalizedName === '') {
                                         return;
                                     }
 
-                                    if (isset($seenItemKeys[$normalizedName])) {
+                                    $alreadyListed = isset($seenItemKeys[$normalizedName]);
+                                    if ($alreadyListed && empty($id)) {
                                         return;
                                     }
 
                                     $seenItemKeys[$normalizedName] = true;
                                     $itemsToDisplay[] = [
+                                        'duplicate' => $alreadyListed,
                                         'id' => $id,
                                         'name' => $name,
                                         'qty' => $qty,
@@ -929,8 +941,17 @@
                                 }
                             @endphp
 
+                            @php
+                                // After a refused save, refill each line's typed Qty / Unit Cost (flashed input, keyed by line).
+                                $typedLines = collect(old('items', []))
+                                    ->filter(fn ($line) => is_array($line) && !empty($line['booking_item_id']))
+                                    ->keyBy('booking_item_id');
+                            @endphp
                             @forelse($itemsToDisplay as $idx => $item)
                                 @php
+                                    $typedLine = !empty($item['id']) ? $typedLines->get((string) $item['id']) : null;
+                                    $shownQty = (is_array($typedLine) && is_numeric($typedLine['quantity'] ?? null)) ? $typedLine['quantity'] : $item['qty'];
+                                    $shownPrice = (is_array($typedLine) && is_numeric($typedLine['unit_price'] ?? null)) ? $typedLine['unit_price'] : $item['unit_price'];
                                     $invData = isset($allInventoryItems) ? $allInventoryItems->firstWhere('name', $item['name']) : null;
                                     $isOutOfStock = $invData ? ($item['qty'] > $invData->current_stock) : false;
                                     $stockStr = $invData ? floatval($invData->current_stock) : 0;
@@ -945,6 +966,9 @@
                                     <td class="py-3 pl-5 pr-4">
                                         <span class="block font-medium text-slate-900" id="display_name_{{ $idx }}">{{ $item['name'] }}</span>
                                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                            @if(!empty($item['duplicate']))
+                                                <span class="{{ $pill }} bg-sky-100 text-sky-800" title="Another line above has the same name (e.g. suggested for a second photo or area). Both are quoted: price both, or tick Remove on one.">Listed twice</span>
+                                            @endif
                                             @if($isUnmatchedSuggestion)
                                                 <span class="{{ $pill }} bg-amber-100 text-amber-800">Unmatched / AI Suggestion</span>
                                             @elseif($isConfirmed)
@@ -982,7 +1006,7 @@
                                             <div class="pt-1.5 text-sm text-slate-800 tabular-nums">{{ (int) $item['qty'] }}</div>
                                         @else
                                             <label class="sr-only" for="input_qty_{{ $idx }}">Quantity for {{ $item['name'] }}</label>
-                                            <input type="number" id="input_qty_{{ $idx }}" name="items[{{ $idx }}][quantity]" min="0" step="1" inputmode="numeric" value="{{ (int) $item['qty'] }}" class="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
+                                            <input type="number" id="input_qty_{{ $idx }}" name="items[{{ $idx }}][quantity]" min="0" step="1" inputmode="numeric" value="{{ (int) $shownQty }}" class="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
                                         @endif
                                     </td>
                                     <td class="px-4 py-3">
@@ -992,7 +1016,7 @@
                                             <div class="relative">
                                                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">₱</span>
                                                 <label class="sr-only" for="input_price_{{ $idx }}">Unit cost for {{ $item['name'] }}</label>
-                                                <input type="number" step="0.01" id="input_price_{{ $idx }}" name="items[{{ $idx }}][unit_price]" min="0" value="{{ number_format((float) $item['unit_price'], 2, '.', '') }}" class="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-7 pr-2.5 text-sm tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
+                                                <input type="number" step="0.01" id="input_price_{{ $idx }}" name="items[{{ $idx }}][unit_price]" min="0" value="{{ number_format((float) $shownPrice, 2, '.', '') }}" class="w-full rounded-md border border-slate-300 bg-white py-1.5 pl-7 pr-2.5 text-sm tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
                                             </div>
                                         @endif
                                     </td>
@@ -1222,6 +1246,11 @@
                     @csrf
                     @if(!empty($item['id']))
                         <input type="hidden" name="booking_item_id" value="{{ $item['id'] }}">
+                    @else
+                        {{-- Shown from the AI analysis with no booking line yet: the server creates the line. --}}
+                        <input type="hidden" name="ai_item_name" value="{{ $item['name'] }}">
+                        <input type="hidden" name="quantity" data-ai-row-field="quantity">
+                        <input type="hidden" name="unit_price" data-ai-row-field="unit_price">
                     @endif
                     <input type="hidden" name="link_inventory_item_id" id="aiLinkInventory_{{ $idx }}">
                 </form>
@@ -1229,6 +1258,11 @@
                     @csrf
                     @if(!empty($item['id']))
                         <input type="hidden" name="booking_item_id" value="{{ $item['id'] }}">
+                    @else
+                        {{-- Shown from the AI analysis with no booking line yet: the server creates the line. --}}
+                        <input type="hidden" name="ai_item_name" value="{{ $item['name'] }}">
+                        <input type="hidden" name="quantity" data-ai-row-field="quantity">
+                        <input type="hidden" name="unit_price" data-ai-row-field="unit_price">
                     @endif
                     <input type="hidden" name="catalog_name" id="aiPromoteName_{{ $idx }}">
                     <input type="hidden" name="category" id="aiPromoteCategory_{{ $idx }}">
@@ -1243,6 +1277,11 @@
                 {{-- The visible "Confirm Material" button submits this form through form="confirmMaterial_{idx}" --}}
                 <form id="confirmMaterial_{{ $idx }}" method="POST" action="{{ route('admin.bookings.items.confirm', ['booking' => $booking->id, 'bookingItem' => $item['id']]) }}" class="hidden">
                     @csrf
+                    @unless($quoteReadOnly)
+                        {{-- Kept in step with the row by syncConfirmLineValues(); saved with the confirmation. --}}
+                        <input type="hidden" name="quantity" value="{{ (int) $item['qty'] }}" data-sync-item="{{ $item['id'] }}" data-sync-field="quantity">
+                        <input type="hidden" name="unit_price" value="{{ number_format((float) $item['unit_price'], 2, '.', '') }}" data-sync-item="{{ $item['id'] }}" data-sync-field="unit_price">
+                    @endunless
                 </form>
             @endif
         @endforeach
@@ -1988,13 +2027,29 @@
                 <button type="button" onclick="closeAiMaterialModal()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close material review"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div id="aiMaterialLinkFields" class="mt-5 hidden">
-                <label for="aiMaterialInventorySelect" class="{{ $fieldLabel }}">Existing inventory item</label>
-                <select id="aiMaterialInventorySelect" class="{{ $fieldInput }}">
-                    <option value="">Select an inventory item</option>
-                    @foreach($allInventoryItems as $inventoryItem)
-                        <option value="{{ $inventoryItem->id }}">{{ $inventoryItem->name }} ({{ $inventoryItem->current_stock }} {{ $inventoryItem->unit }})</option>
-                    @endforeach
-                </select>
+                {{-- Search by name (starts with the material's own name); pick the matching record. --}}
+                <label for="aiMaterialInventorySearch" class="{{ $fieldLabel }}">Find the inventory item</label>
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400" aria-hidden="true"></i>
+                    <input id="aiMaterialInventorySearch" type="search" autocomplete="off" placeholder="Type an item name…" aria-controls="aiMaterialInventoryResults" class="{{ $fieldInput }} !pl-8">
+                </div>
+                <input type="hidden" id="aiMaterialInventorySelect" value="">
+                <p class="mt-1.5 text-xs text-slate-500">Check the match before continuing (e.g. Floral Foam vs Floral Spray).</p>
+                <p id="aiMaterialInventoryPartial" class="mt-2 hidden text-xs font-medium text-amber-700">No item matches every word — closest matches:</p>
+                <ul id="aiMaterialInventoryResults" role="listbox" aria-label="Matching inventory items" class="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200"></ul>
+                <p id="aiMaterialInventoryEmpty" class="mt-2 hidden text-sm text-slate-500">No inventory item matches. Try fewer words, or use Promote to Catalog instead.</p>
+                @php
+                    $inventoryForLink = $allInventoryItems->map(fn ($inventoryItem) => [
+                        'id' => $inventoryItem->id,
+                        'name' => $inventoryItem->name,
+                        'code' => $inventoryItem->item_code,
+                        'category' => $inventoryItem->category,
+                        'stock' => (float) $inventoryItem->current_stock,
+                        'unit' => $inventoryItem->unit,
+                        'perishable' => (bool) $inventoryItem->is_perishable,
+                    ])->values();
+                @endphp
+                <script type="application/json" id="aiMaterialInventoryData">@json($inventoryForLink)</script>
             </div>
             <div id="aiMaterialPromoteFields" class="mt-5 hidden space-y-3">
                 <div>
@@ -2264,13 +2319,123 @@
             error.classList.add('hidden');
             linkFields.classList.toggle('hidden', mode !== 'link');
             promoteFields.classList.toggle('hidden', mode !== 'promote');
+            const itemName = document.getElementById(`display_name_${index}`)?.textContent.trim() || '';
+            if (mode === 'promote') {
+                // Start from the item's own name; Admin can still edit it.
+                document.getElementById('aiMaterialCatalogName').value = itemName;
+            } else {
+                // Start the search from the item's own name; Admin picks the right record.
+                document.getElementById('aiMaterialInventorySearch').value = itemName;
+                pickInventoryForLink(null);
+                renderInventorySearch();
+            }
             description.textContent = mode === 'link'
                 ? 'Choose the existing inventory record that represents this AI suggestion.'
                 : 'Provide the catalog details required to create this AI suggestion as a new inventory item.';
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            (mode === 'link' ? document.getElementById('aiMaterialInventorySelect') : document.getElementById('aiMaterialCatalogName')).focus();
+            (mode === 'link' ? document.getElementById('aiMaterialInventorySearch') : document.getElementById('aiMaterialCatalogName')).focus();
         }
+
+        // Link to Existing Inventory: search active inventory by name. Matches are ranked: the same
+        // name first (case, spacing and punctuation ignored), then singular/plural, then names
+        // containing every typed word, then names sharing a word.
+        const inventoryForLink = JSON.parse(document.getElementById('aiMaterialInventoryData')?.textContent || '[]');
+        const nameKey = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const singularKey = (text) => nameKey(text).split(' ').map((word) => (word.length <= 3 || /(ss|us|is)$/.test(word))
+            ? word
+            : word.replace(/ies$/, 'y').replace(/(sh|ch|x|z)es$/, '$1').replace(/s$/, '')).join(' ');
+
+        function inventoryMatchScore(item, query) {
+            const key = nameKey(item.name);
+            const typed = nameKey(query);
+            if (!typed) return 1;
+            if (key === typed) return 100;
+            const sortedWords = (text) => text.split(' ').filter(Boolean).sort().join(' ');
+            if (sortedWords(key) === sortedWords(typed)) return 95;
+            if (singularKey(item.name) === singularKey(query)) return 90;
+            if (sortedWords(singularKey(item.name)) === sortedWords(singularKey(query))) return 88;
+            const words = singularKey(query).split(' ').filter(Boolean);
+            const itemWords = singularKey(item.name).split(' ');
+            const shared = words.filter((word) => itemWords.some((itemWord) => itemWord.startsWith(word))).length;
+            if (shared === words.length) return 60 + (key.startsWith(typed.split(' ')[0]) ? 5 : 0);
+            return shared > 0 ? 10 * shared : 0;
+        }
+
+        function pickInventoryForLink(id) {
+            document.getElementById('aiMaterialInventorySelect').value = id ? String(id) : '';
+            document.querySelectorAll('#aiMaterialInventoryResults [role="option"]').forEach((option) => {
+                const selected = option.dataset.id === String(id);
+                option.setAttribute('aria-selected', selected ? 'true' : 'false');
+                option.classList.toggle('bg-brand-50', selected);
+                option.querySelector('[data-picked]')?.classList.toggle('invisible', !selected);
+            });
+            if (id) document.getElementById('aiMaterialModalError').classList.add('hidden');
+        }
+
+        function renderInventorySearch() {
+            const query = document.getElementById('aiMaterialInventorySearch').value;
+            const list = document.getElementById('aiMaterialInventoryResults');
+            const picked = document.getElementById('aiMaterialInventorySelect').value;
+            const matches = inventoryForLink
+                .map((item) => ({ item, score: inventoryMatchScore(item, query) }))
+                .filter((match) => match.score > 0)
+                .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name))
+                .slice(0, 30);
+
+            list.replaceChildren(...matches.map(({ item, score }) => {
+                const option = document.createElement('li');
+                option.setAttribute('role', 'option');
+                option.tabIndex = 0;
+                option.dataset.id = String(item.id);
+                option.setAttribute('aria-selected', String(item.id) === picked ? 'true' : 'false');
+                option.className = 'flex cursor-pointer items-start gap-2.5 px-3 py-2.5 text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none' + (String(item.id) === picked ? ' bg-brand-50' : '');
+
+                const check = document.createElement('i');
+                check.dataset.picked = '';
+                check.className = 'fa-solid fa-circle-check mt-0.5 text-brand-700' + (String(item.id) === picked ? '' : ' invisible');
+                check.setAttribute('aria-hidden', 'true');
+
+                const text = document.createElement('div');
+                text.className = 'min-w-0 flex-1';
+                const name = document.createElement('p');
+                name.className = 'font-medium text-slate-900';
+                name.textContent = item.name;
+                if (score >= 90) {
+                    const badge = document.createElement('span');
+                    badge.className = 'ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800';
+                    badge.textContent = score === 100 ? 'Same name' : 'Singular/plural';
+                    name.append(badge);
+                }
+                const meta = document.createElement('p');
+                meta.className = 'text-xs text-slate-500';
+                meta.textContent = [item.code, item.category, `${item.stock} ${item.unit || ''} in stock`.trim(), item.perishable ? 'Fresh / perishable' : 'Non-perishable'].filter(Boolean).join(' · ');
+                text.append(name, meta);
+
+                option.append(check, text);
+                option.addEventListener('click', () => pickInventoryForLink(item.id));
+                option.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pickInventoryForLink(item.id); }
+                    if (event.key === 'ArrowDown') { event.preventDefault(); option.nextElementSibling?.focus(); }
+                    if (event.key === 'ArrowUp') { event.preventDefault(); (option.previousElementSibling || document.getElementById('aiMaterialInventorySearch')).focus(); }
+                });
+                return option;
+            }));
+
+            document.getElementById('aiMaterialInventoryEmpty').classList.toggle('hidden', matches.length > 0);
+            // Only partial word matches: say so, so a near name (Floral Foam vs Floral Spray) is not picked by mistake.
+            document.getElementById('aiMaterialInventoryPartial').classList.toggle('hidden', !matches.length || matches[0].score >= 60 || !nameKey(query));
+            list.classList.toggle('hidden', matches.length === 0);
+        }
+
+        document.getElementById('aiMaterialInventorySearch')?.addEventListener('input', renderInventorySearch);
+        document.getElementById('aiMaterialInventorySearch')?.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                document.querySelector('#aiMaterialInventoryResults [role="option"]')?.focus();
+            }
+            if (event.key === 'Enter') event.preventDefault();
+        });
 
         function closeAiMaterialModal() {
             const modal = document.getElementById('aiMaterialModal');
@@ -2285,10 +2450,17 @@
             const index = activeAiMaterialIndex;
             if (index === null) return;
 
+            ['aiLinkForm_', 'aiPromoteForm_'].forEach((prefix) => {
+                document.getElementById(prefix + index)?.querySelectorAll('[data-ai-row-field]').forEach((hidden) => {
+                    const source = document.getElementById((hidden.dataset.aiRowField === 'quantity' ? 'input_qty_' : 'input_price_') + index);
+                    hidden.value = source ? source.value : '';
+                });
+            });
+
             if (activeAiMaterialMode === 'link') {
                 const inventoryId = document.getElementById('aiMaterialInventorySelect').value;
                 if (!inventoryId) {
-                    error.textContent = 'Select an existing inventory item before continuing.';
+                    error.textContent = 'Pick the matching inventory item from the list before continuing.';
                     error.classList.remove('hidden');
                     return;
                 }
@@ -2368,6 +2540,8 @@
                 }
             });
 
+            syncConfirmLineValues();
+
             const rawSubtotalValue = document.getElementById('raw-wholesale-subtotal');
             const calculatedTotalValue = document.getElementById('calculated-quotation-total');
             const multiplierInput = document.getElementById('markup-multiplier');
@@ -2410,13 +2584,15 @@
                 }
             });
 
-            // "Confirm all" reloads the page, so warn when typed quantities or prices would be discarded.
+            // "Confirm all" saves the rows it confirms; warn when edits in any other row would be discarded.
             const confirmAllForm = document.getElementById('confirmAllMaterialsForm');
             if (confirmAllForm) {
                 const baseMessage = confirmAllForm.dataset.confirmMessage;
                 document.querySelectorAll('tr[id^="row_"] input[name$="[quantity]"], tr[id^="row_"] input[name$="[unit_price]"]').forEach((input) => {
                     input.addEventListener('input', () => {
-                        confirmAllForm.dataset.confirmMessage = 'Quantities or prices you typed in the table are not saved yet and will be discarded. ' + baseMessage;
+                        const itemId = input.closest('tr')?.querySelector('input[name$="[booking_item_id]"]')?.value;
+                        if (itemId && confirmAllForm.querySelector(`input[data-sync-item="${CSS.escape(itemId)}"]`)) return;
+                        confirmAllForm.dataset.confirmMessage = 'Quantities or prices you typed in rows that are already confirmed are not saved by Confirm all and will be discarded (Approve & Send saves them). ' + baseMessage;
                     });
                 });
             }
@@ -2455,6 +2631,23 @@
                     updateLineTotals();
                 });
             }
+        }
+
+        // Confirm Material / Confirm all post the Qty and Unit Cost typed in the table for the rows
+        // they confirm (the server saves them with the confirmation): copy each row's current values
+        // into those forms' hidden fields.
+        function syncConfirmLineValues() {
+            const rowIndexByItem = {};
+            document.querySelectorAll('tr[id^="row_"] input[name$="[booking_item_id]"]').forEach((hidden) => {
+                const match = hidden.name.match(/^items\[(\d+)\]/);
+                if (match) rowIndexByItem[hidden.value] = match[1];
+            });
+            document.querySelectorAll('input[data-sync-item]').forEach((hidden) => {
+                const rowIndex = rowIndexByItem[hidden.dataset.syncItem];
+                if (rowIndex === undefined) return;
+                const source = document.getElementById((hidden.dataset.syncField === 'quantity' ? 'input_qty_' : 'input_price_') + rowIndex);
+                if (source && !source.disabled) hidden.value = source.value;
+            });
         }
 
         function escapeSubstituteText(text) {

@@ -22,7 +22,7 @@
         @endif
 
         <!-- Operational Summary Metric Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="rf-stat-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Card 1: Total Returns -->
             <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center gap-4">
                 <div class="w-12 h-12 rounded-xl bg-brand-50 text-brand-700 flex items-center justify-center text-xl shrink-0">
@@ -248,7 +248,7 @@
         <section class="bg-white rounded-2xl shadow-xs border border-gray-100 overflow-hidden" aria-labelledby="returns-table-heading">
             <h2 id="returns-table-heading" class="sr-only">Return tracking records</h2>
             <div class="overflow-x-auto w-full">
-                <table class="w-full text-left border-collapse">
+                <table class="rf-table--stack w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/80 border-b border-slate-200">
                             <th scope="col" class="px-4 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Return</th>
@@ -280,7 +280,7 @@
                                 </td>
 
                                 <!-- CLIENT / BOOKING -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Client / Booking" class="px-4 py-3.5 whitespace-nowrap">
                                     <div class="font-bold text-slate-900 truncate max-w-[170px]" title="{{ $return->booking?->client?->full_name ?? $return->booking?->guest_name ?? 'N/A' }}">
                                         {{ $return->booking?->client?->full_name ?? $return->booking?->guest_name ?? 'N/A' }}
                                     </div>
@@ -290,7 +290,7 @@
                                 </td>
 
                                 <!-- EVENT -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Event" class="px-4 py-3.5 whitespace-nowrap">
                                     <div class="font-medium text-slate-800">
                                         {{ ucfirst($return->booking?->event_type ?? 'Event') }}
                                     </div>
@@ -300,7 +300,7 @@
                                 </td>
 
                                 <!-- STATUS -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Status" class="px-4 py-3.5 whitespace-nowrap">
                                     @if($return->status == 'Completed')
                                         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                             <i class="fa-regular fa-circle-check text-[10px]"></i>
@@ -320,7 +320,7 @@
                                 </td>
 
                                 <!-- STAFF -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Staff" class="px-4 py-3.5 whitespace-nowrap">
                                     @if($staffUser)
                                         <div class="flex items-center gap-1.5">
                                             <div class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px] shrink-0">
@@ -336,7 +336,7 @@
                                 </td>
 
                                 <!-- INSPECTOR -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Inspector" class="px-4 py-3.5 whitespace-nowrap">
                                     @if($inspectorUser)
                                         <div class="flex items-center gap-1.5">
                                             <div class="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-[10px] shrink-0">
@@ -352,7 +352,7 @@
                                 </td>
 
                                 <!-- APPROVAL -->
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td data-label="Approval" class="px-4 py-3.5 whitespace-nowrap">
                                     @if($return->approval_status === 'approved')
                                         <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                             <i class="fa-solid fa-circle-check text-[10px]"></i>

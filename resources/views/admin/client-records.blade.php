@@ -117,7 +117,7 @@
         <!-- Client Data Table -->
         <section class="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden" aria-label="Client records directory">
             <div class="overflow-x-auto w-full">
-                <table class="w-full min-w-[760px] text-left text-sm border-collapse" aria-label="Client records table">
+                <table class="rf-table--stack w-full min-w-[760px] text-left text-sm border-collapse" aria-label="Client records table">
                     <thead class="border-b border-slate-200 bg-slate-50/80 text-[11px] uppercase tracking-[0.14em] text-slate-500">
                         <tr>
                             <th scope="col" class="px-6 py-4 font-semibold">Client</th>
@@ -166,7 +166,7 @@
                                 </td>
 
                                 <!-- CONTACT Column -->
-                                <td class="px-6 py-4">
+                                <td data-label="Contact" class="px-6 py-4">
                                     <div class="text-sm text-slate-700 font-medium flex items-center gap-1.5">
                                         <i class="fa-regular fa-envelope text-slate-400 text-xs"></i>
                                         <span>{{ $client->email }}</span>
@@ -185,7 +185,7 @@
                                 </td>
 
                                 <!-- BOOKING ACTIVITY Column -->
-                                <td class="px-6 py-4">
+                                <td data-label="Booking Activity" class="px-6 py-4">
                                     @if($client->bookings_count > 0)
                                         <span class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200/70 px-3 py-1 text-xs font-semibold">
                                             <i class="fa-solid fa-calendar-check text-[10px]"></i>
@@ -200,7 +200,7 @@
                                 </td>
 
                                 <!-- LAST ACTIVITY Column -->
-                                <td class="px-6 py-4">
+                                <td data-label="Last Activity" class="px-6 py-4">
                                     @if($client->bookings->first())
                                         <div class="text-sm font-semibold text-slate-800">
                                             {{ $client->bookings->first()->created_at?->format('M d, Y') }}

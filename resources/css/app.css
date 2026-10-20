@@ -94,6 +94,24 @@
 @layer base {
     html {
         scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+
+    /*
+     * Phones and tablets: the whole interface is sized in rem, so a smaller root size scales text,
+     * spacing, cards and icons together instead of showing desktop sizes on a small screen.
+     */
+    @media (max-width: 639.98px) {
+        html {
+            font-size: 87.5%; /* 14px */
+        }
+    }
+
+    @media (min-width: 640px) and (max-width: 1023.98px) {
+        html {
+            font-size: 93.75%; /* 15px */
+        }
     }
 
     body {
@@ -101,6 +119,29 @@
         font-family: 'Inter', sans-serif;
         text-rendering: optimizeLegibility;
         -webkit-tap-highlight-color: transparent;
+        /* Nothing may push the page sideways; wide content scrolls inside its own box. */
+        overflow-x: clip;
+    }
+
+    /*
+     * Screen-reader-only labels inside scrolling tables sit where their cell is, which can be far
+     * beyond the screen and widen the whole page. Pin them to the corner instead; they stay invisible.
+     */
+    table .sr-only,
+    .overflow-x-auto .sr-only {
+        top: 0;
+        left: 0;
+    }
+
+    /* iPhones zoom into form fields under 16px; keep typing comfortable without the zoom. */
+    @supports (-webkit-touch-callout: none) {
+        @media (max-width: 1023.98px) {
+            input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+            select,
+            textarea {
+                font-size: 16px !important;
+            }
+        }
     }
 
     h1, h2, h3, h4, h5, h6 {
@@ -1152,6 +1193,40 @@
     .rf-stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 0.75rem !important;
+    }
+
+    /* Half-width tiles: tighter padding, icon above the text, values that wrap instead of spilling. */
+    .rf-stat-grid > * {
+        min-width: 0;
+        padding: 0.875rem !important;
+    }
+
+    .rf-stat-grid > .flex.items-center:not(.flex-col) {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .rf-stat-grid > .flex.items-center.justify-between:not(.flex-col) {
+        flex-direction: column-reverse;
+    }
+
+    .rf-stat-grid p,
+    .rf-stat-grid h3 {
+        overflow-wrap: anywhere;
+    }
+
+    .rf-stat-grid .rf-admin-kpi-value {
+        font-size: 1.25rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .rf-stat-grid .text-2xl,
+    .rf-stat-grid .text-3xl {
+        font-size: 1.375rem;
+        line-height: 1.2;
     }
 }
 

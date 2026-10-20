@@ -150,7 +150,8 @@ class ReturnTrackingController extends Controller
                 break;
         }
 
-        $returns = $query->paginate(15)->withQueryString();
+        // Five returns per page (as on Client Records); the page links keep the search, filters and sort.
+        $returns = $query->paginate(5)->withQueryString();
 
         // Operational metrics
         $totalReturnsCount = AssetReturn::count();
@@ -237,7 +238,9 @@ class ReturnTrackingController extends Controller
             return view('admin.return-tracking-start', compact('booking', 'dispatchedQuantities'));
         }
 
-        return view('admin.return-tracking-manage', compact('booking', 'return', 'dispatchedQuantities'));
+        $resolutionBlockers = $this->resolutionBlockers($return, $booking);
+
+        return view('admin.return-tracking-manage', compact('booking', 'return', 'dispatchedQuantities', 'resolutionBlockers'));
     }
 
     /**
@@ -275,7 +278,9 @@ class ReturnTrackingController extends Controller
         
         $dispatchedQuantities = $this->dispatchedQuantitiesForBooking($booking);
 
-        return view('admin.return-tracking-manage', compact('booking', 'return', 'dispatchedQuantities'));
+        $resolutionBlockers = $this->resolutionBlockers($return, $booking);
+
+        return view('admin.return-tracking-manage', compact('booking', 'return', 'dispatchedQuantities', 'resolutionBlockers'));
     }
 
     public function update(Request $request, AssetReturn $return)
@@ -863,6 +868,108 @@ class ReturnTrackingController extends Controller
      * Whether every dispatched unit on the return is accounted for and no charge decision is
      * pending — the rule update() applies when the audit is saved.
      */
+    /**
+     * What still stands between a return with damaged/lost items and completion: items without a
+     * charge decision, items not fully accounted, unpaid balance (charges included) and payments
+     * awaiting verification. Empty when the issues can be marked resolved.
+     *
+     * @return list<string>
+     */
+    public function resolutionBlockers(AssetReturn $return, Booking $booking): array
+    {
+        $blockers = [];
+        $items = $return->returnItems()->with('inventoryItem')->get();
+
+        $undecided = $items->filter(fn (ReturnItem $item): bool => $this->awaitsChargeDecision($item));
+        if ($undecided->isNotEmpty()) {
+            $blockers[] = 'Choose Charge Client or No Charge for: ' . $undecided->map(fn ($item) => $item->inventoryItem?->name ?? 'Unknown item')->implode(', ') . ', then Save & Reconcile.';
+        }
+
+        $dispatched = $this->dispatchedQuantitiesForBooking($booking);
+        $short = $items->filter(function (ReturnItem $item) use ($dispatched): bool {
+            $accounted = (float) $item->accounted_quantity;
+            if ($accounted == 0 && in_array($item->condition, ['good', 'damaged', 'lost'], true)) {
+                $accounted = (float) $item->quantity_returned;
+            }
+
+            return $accounted < (float) ($dispatched[$item->inventory_item_id] ?? 0);
+        });
+        if ($short->isNotEmpty()) {
+            $blockers[] = 'Not fully accounted yet: ' . $short->map(fn ($item) => $item->inventoryItem?->name ?? 'Unknown item')->implode(', ') . '.';
+        }
+
+        if ($booking->status !== 'cancelled') {
+            $fresh = $booking->fresh();
+            if ((float) $fresh->remaining_balance > 0) {
+                $blockers[] = '₱' . number_format((float) $fresh->remaining_balance, 2) . ' is still unpaid (damage/loss charges included). Log or verify the payment first.';
+            }
+            if ($fresh->payments()->where('status', 'pending')->exists()) {
+                $blockers[] = 'A client payment reference is waiting for verification. Verify or reject it first.';
+            }
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * "Mark Issues Resolved": once every damaged/lost item has a charge decision, every item is
+     * accounted and all charges are paid, approve the adjudication, complete the return and move
+     * the booking on (completed; the client is notified). Nothing is decided on Admin's behalf.
+     */
+    public function resolveIssues(AssetReturn $return)
+    {
+        [$level, $message] = DB::transaction(function () use ($return): array {
+            $booking = $return->booking_id ? Booking::whereKey($return->booking_id)->lockForUpdate()->first() : null;
+            $return = AssetReturn::whereKey($return->id)->lockForUpdate()->firstOrFail();
+
+            if (!$booking) {
+                return ['error', 'This return is not linked to a booking.'];
+            }
+            if ($return->status === 'Completed' && $return->approval_status === 'approved' && in_array($booking->status, ['completed', 'cancelled'], true)) {
+                return ['info', 'The damage and loss issues on this return are already resolved.'];
+            }
+
+            $hasIssues = $return->returnItems()->where(function ($q) {
+                $q->where('quantity_damaged', '>', 0)->orWhere('quantity_lost', '>', 0)->orWhereIn('condition', ['damaged', 'lost', 'mixed']);
+            })->exists();
+            if (!$hasIssues) {
+                return ['error', 'No item on this return is damaged or lost, so there is nothing to resolve. Save & Reconcile completes it.'];
+            }
+
+            if ($blockers = $this->resolutionBlockers($return, $booking)) {
+                return ['error', 'Cannot resolve yet: ' . implode(' ', $blockers)];
+            }
+
+            $return->update([
+                'approval_status' => 'approved',
+                'approved_by' => $return->approval_status === 'approved' ? $return->approved_by : auth()->id(),
+                'approved_at' => $return->approval_status === 'approved' ? $return->approved_at : now(),
+                'status' => 'Completed',
+                'total_damage_charge' => (float) $return->returnItems()->sum('damage_charge'),
+            ]);
+
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'return_issues_resolved',
+                'module' => 'return_tracking',
+                'details' => "Damage/loss issues on return {$return->reference} marked resolved by " . auth()->user()->name
+                    . ' (charges ₱' . number_format((float) $return->total_damage_charge, 2) . ' settled).',
+                'entity_type' => AssetReturn::class,
+                'entity_id' => $return->id,
+            ]);
+
+            if ($booking->status === 'cancelled') {
+                return ['success', 'Damage and loss issues resolved. The return audit is completed; the booking stays Cancelled.'];
+            }
+
+            $this->applyReturnOutcomeToBooking($booking, 'Completed');
+
+            return ['success', 'Damage and loss issues resolved. Booking #' . $booking->id . ' is now ' . $booking->fresh()->status_display_label . '.'];
+        });
+
+        return back()->with($level, $message);
+    }
+
     protected function returnIsComplete(AssetReturn $return, ?Booking $booking): bool
     {
         $dispatchedQuantities = $booking ? $this->dispatchedQuantitiesForBooking($booking) : [];

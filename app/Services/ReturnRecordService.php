@@ -17,16 +17,25 @@ class ReturnRecordService
 {
     /**
      * Net dispatched quantity per reusable (non-perishable) inventory item, keyed by item id.
+     * An item already listed on the booking's return keeps its quantity even if it is perishable
+     * now (its type was edited, or a duplicate was merged into a perishable item), so the audit
+     * line stays editable.
      *
      * @return array<int, float>
      */
     public function dispatchedQuantities(Booking $booking): array
     {
+        $onReturn = ReturnItem::query()
+            ->whereIn('return_id', AssetReturn::where('booking_id', $booking->id)->select('id'))
+            ->pluck('inventory_item_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
         return InventoryTransaction::with('inventoryItem')
             ->where('booking_id', $booking->id)
             ->whereIn('transaction_type', ['dispatch', 'dispatch_correction'])
             ->get()
-            ->filter(fn ($tx) => $tx->inventoryItem && !$tx->inventoryItem->is_perishable)
+            ->filter(fn ($tx) => $tx->inventoryItem && (!$tx->inventoryItem->is_perishable || in_array((int) $tx->inventory_item_id, $onReturn, true)))
             ->groupBy('inventory_item_id')
             ->map(fn ($txs) => abs((float) $txs->sum('quantity_change')))
             ->filter(fn ($qty) => $qty > 0)

@@ -4,7 +4,7 @@
 >
 
     <!-- 4 KPI Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="rf-stat-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <!-- Card 1: TOTAL ITEMS -->
         <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-xs flex items-center justify-between hover:border-slate-200 transition">
             <div>
@@ -344,7 +344,7 @@
 
         <!-- Main Scannable Table Container -->
         <div class="overflow-x-auto">
-            <table class="w-full table-auto text-left min-w-[850px]">
+            <table class="rf-table--stack w-full table-auto text-left min-w-[850px]">
                 <thead class="bg-slate-50/80 border-b border-slate-100">
                     <tr>
                         <th class="px-5 py-3.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">ITEM</th>
@@ -387,19 +387,19 @@
                             </td>
 
                             <!-- CATEGORY Column -->
-                            <td class="px-5 py-3.5">
+                            <td data-label="Category" class="px-5 py-3.5">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
                                     {{ $item->category }}
                                 </span>
                             </td>
 
                             <!-- CURRENT Column -->
-                            <td class="px-5 py-3.5 text-right font-semibold text-slate-700 text-sm">
+                            <td data-label="On Hand" class="px-5 py-3.5 text-right font-semibold text-slate-700 text-sm">
                                 {{ (float) $item->current_stock }}
                             </td>
 
                             <!-- BOOKED DEMAND Column -->
-                            <td class="px-5 py-3.5 text-right text-sm">
+                            <td data-label="Booked Demand" class="px-5 py-3.5 text-right text-sm">
                                 @if($item->reserved_stock > 0)
                                     <span class="text-amber-600 font-bold">{{ (float) $item->reserved_stock }}</span>
                                 @else
@@ -408,17 +408,17 @@
                             </td>
 
                             <!-- TO PROCURE Column -->
-                            <td class="px-5 py-3.5 text-right text-sm font-bold {{ $item->to_procure > 0 ? 'text-rose-600' : 'text-slate-900' }}">
+                            <td data-label="To Procure" class="px-5 py-3.5 text-right text-sm font-bold {{ $item->to_procure > 0 ? 'text-rose-600' : 'text-slate-900' }}">
                                 {{ (float) $item->to_procure }}
                             </td>
 
                             <!-- MINIMUM Column -->
-                            <td class="px-5 py-3.5 text-right text-sm text-slate-500 font-medium">
+                            <td data-label="Minimum" class="px-5 py-3.5 text-right text-sm text-slate-500 font-medium">
                                 {{ (float) $item->min_stock }}
                             </td>
 
                             <!-- STATUS Column -->
-                            <td class="px-5 py-3.5 text-center">
+                            <td data-label="Status" class="px-5 py-3.5 text-center">
                                 @if($item->warning_level === 'shortage')
                                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                                         <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>

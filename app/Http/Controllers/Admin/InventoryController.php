@@ -206,6 +206,10 @@ class InventoryController extends Controller
             'image' => 'nullable|image|max:5120',
         ]);
 
+        if ($duplicate = $this->duplicateNameMessage($validated['name'])) {
+            return back()->withInput()->withErrors(['name' => $duplicate]);
+        }
+
         $initialQuantity = (float) ($validated['initial_quantity'] ?? $validated['current_stock'] ?? 0);
         $minStock = (float) ($validated['reorder_level'] ?? $validated['min_stock'] ?? 0);
 
@@ -378,6 +382,12 @@ class InventoryController extends Controller
             'substitute_ids.*' => 'exists:inventory_items,id',
             'image' => 'nullable|image|max:5120',
         ]);
+
+        // Renaming must not create a duplicate (an unchanged name is always allowed).
+        if (InventoryItem::nameKey($validated['name']) !== InventoryItem::nameKey($inventoryItem->name)
+            && ($duplicate = $this->duplicateNameMessage($validated['name'], $inventoryItem->id))) {
+            return back()->withInput()->withErrors(['name' => $duplicate]);
+        }
 
         $minStock = (float) ($validated['reorder_level'] ?? $validated['min_stock'] ?? $inventoryItem->min_stock);
 
@@ -822,6 +832,24 @@ class InventoryController extends Controller
     /**
      * Import inventory items from an uploaded CSV file with transactional upsert.
      */
+    /**
+     * Why $name would duplicate an existing catalog item, or null. Names are compared ignoring
+     * case, spacing and punctuation, and singular/plural (InventoryItem::catalogMatches).
+     */
+    protected function duplicateNameMessage(string $name, ?int $ignoreId = null): ?string
+    {
+        ['exact' => $exact, 'similar' => $similar] = InventoryItem::catalogMatches($name, $ignoreId);
+
+        if ($exact) {
+            return $exact->trashed()
+                ? "\"{$exact->name}\" is in Archived Items. Restore it instead of adding it again."
+                : "\"{$exact->name}\"" . ($exact->item_code ? " ({$exact->item_code})" : '') . ' is already in inventory. Open it and use Receive Stock to add stock instead of adding it again.';
+        }
+
+        return $similar
+            ? "A similar item \"{$similar->name}\"" . ($similar->trashed() ? ' (archived)' : '') . ' is already in inventory. Use it, or give this item a clearly different name.'
+            : null;
+    }
     public function importCsv(Request $request)
     {
         $request->validate([
@@ -1068,7 +1096,11 @@ class InventoryController extends Controller
                 $adminId = Auth::id() ?? auth()->id();
 
                 foreach ($rows as $row) {
-                    $item = InventoryItem::withTrashed()->where('name', $row['name'])->first();
+                    // Same item when the name matches ignoring case, spacing and punctuation.
+                    ['exact' => $item, 'similar' => $similar] = InventoryItem::catalogMatches($row['name']);
+                    if (!$item && $similar) {
+                        throw new \DomainException("\"{$row['name']}\" is too similar to the existing item \"{$similar->name}\". Use the existing name to update it, or a clearly different name.");
+                    }
 
                     if ($item) {
                         if ($item->trashed()) {
@@ -1140,6 +1172,10 @@ class InventoryController extends Controller
                     ['created' => $createdCount, 'updated' => $updatedCount]
                 );
             });
+        } catch (\DomainException $e) {
+            return redirect()->route('admin.inventory.index')
+                ->with('error', 'Inventory CSV import failed. No changes were made.')
+                ->withErrors(['csv_file' => $e->getMessage()]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Inventory CSV import transaction failed: ' . $e->getMessage());
             return redirect()->route('admin.inventory.index')

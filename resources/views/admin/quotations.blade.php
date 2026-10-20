@@ -1,7 +1,7 @@
 <x-admin-layout title="Quotations">
     <!-- Filter & Search Controls -->
-    <form method="GET" action="{{ route('admin.quotations') }}" class="mb-6 flex flex-col items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+    <form method="GET" action="{{ route('admin.quotations') }}" class="mb-6 flex flex-col items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
             <!-- Status Filter -->
             <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <label for="status" class="text-xs font-semibold text-gray-700 sm:text-sm">Status</label>
@@ -30,7 +30,7 @@
 
         <!-- Search Input -->
         <div class="flex w-full items-center gap-2 sm:w-auto">
-            <div class="relative w-full sm:w-64">
+            <div class="relative w-full min-w-0 sm:w-64">
                 <input type="text" 
                        id="search"
                        name="search" 

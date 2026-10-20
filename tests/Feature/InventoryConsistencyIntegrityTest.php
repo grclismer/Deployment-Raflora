@@ -124,14 +124,16 @@ class InventoryConsistencyIntegrityTest extends TestCase
     public function test_promote_refuses_duplicate_names_and_still_creates_new_items(): void
     {
         $booking = $this->booking('pending');
-        $this->item('Gold Arch', 2, false);
-        $line = $this->line($booking, null, 1, ['item_name' => 'golden arch frame', 'is_ai_suggested' => true, 'confirmed_at' => null]);
+        $goldArch = $this->item('Gold Arch', 2, false);
+        $existingName = $this->line($booking, null, 1, ['item_name' => 'golden arch', 'is_ai_suggested' => true, 'confirmed_at' => null]);
 
-        $this->admin()->post(route('admin.bookings.ai.promote', $booking), ['booking_item_id' => $line->id, 'catalog_name' => '  gold ARCH '])
-            ->assertSessionHas('error');
+        // A name already in the catalog (any case / spacing) is linked to that item, never added again.
+        $this->admin()->post(route('admin.bookings.ai.promote', $booking), ['booking_item_id' => $existingName->id, 'catalog_name' => '  gold ARCH '])
+            ->assertSessionHas('success');
         $this->assertSame(1, InventoryItem::where('name', 'like', '%arch%')->count());
-        $this->assertNull($line->fresh()->inventory_item_id);
+        $this->assertSame($goldArch->id, (int) $existingName->fresh()->inventory_item_id);
 
+        $line = $this->line($booking, null, 1, ['item_name' => 'golden arch frame', 'is_ai_suggested' => true, 'confirmed_at' => null]);
         $this->admin()->post(route('admin.bookings.ai.promote', $booking), ['booking_item_id' => $line->id, 'catalog_name' => 'Golden Arch Frame', 'is_perishable' => 0])
             ->assertSessionHas('success');
         $created = InventoryItem::where('name', 'Golden Arch Frame')->sole();

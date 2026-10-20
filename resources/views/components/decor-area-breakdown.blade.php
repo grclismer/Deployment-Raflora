@@ -7,7 +7,7 @@
       staff   quantities only
       client  quantities only until a quotation is issued, then each area's share of it
 --}}
-@props(['materials' => [], 'booking' => null, 'brief' => null, 'view' => 'client'])
+@props(['materials' => [], 'booking' => null, 'brief' => null, 'view' => 'client', 'compact' => false])
 @use('App\Support\DecorAreaBreakdown')
 
 @php
@@ -41,9 +41,24 @@
             @endif
         </div>
 
-        <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+        @if($compact)
+            {{-- Compact: pick an area, see only its materials. --}}
+            <div class="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="Areas">
+                @foreach($breakdown['areas'] as $area)
+                    <button type="button" role="tab" aria-selected="{{ $loop->first ? 'true' : 'false' }}" tabindex="{{ $loop->first ? '0' : '-1' }}" data-area-pick="{{ $area['key'] }}"
+                            class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 aria-selected:border-emerald-600 aria-selected:bg-emerald-50 aria-selected:text-emerald-900">
+                        <span class="h-2 w-2 shrink-0 rounded-full" style="background-color: {{ $area['color'] }};" aria-hidden="true"></span>
+                        {{ $area['label'] }}
+                        @unless($area['missing'])
+                            <span class="font-normal text-slate-500">{{ $showShare ? $peso($area['share_php']) : $area['item_count'] }}</span>
+                        @endunless
+                    </button>
+                @endforeach
+            </div>
+        @endif
+        <div class="mt-3 grid grid-cols-1 gap-3 {{ $compact ? '' : 'lg:grid-cols-2' }}">
             @foreach($breakdown['areas'] as $area)
-                <div class="min-w-0 rounded-lg border border-slate-200 bg-slate-50/60 p-3" data-area="{{ $area['key'] }}" @if($area['missing']) data-area-missing @endif>
+                <div class="min-w-0 rounded-lg border border-slate-200 bg-slate-50/60 p-3 {{ $compact && !$loop->first ? 'hidden' : '' }}" data-area="{{ $area['key'] }}" @if($compact) role="tabpanel" @endif @if($area['missing']) data-area-missing @endif>
                     <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
                         <div class="flex min-w-0 items-start gap-2">
                             <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: {{ $area['color'] }};" aria-hidden="true"></span>
@@ -70,7 +85,7 @@
                     @if($area['missing'])
                         <p class="mt-2 rounded-md border border-dashed border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">{{ DecorAreaBreakdown::MISSING_MESSAGE }}</p>
                     @else
-                        <ul class="mt-2 divide-y divide-slate-200/70">
+                        <ul class="mt-2 {{ $compact ? 'grid grid-cols-1 gap-x-6 md:grid-cols-2 [&>li]:border-b [&>li]:border-slate-200/70' : 'divide-y divide-slate-200/70' }}">
                             @foreach($area['items'] as $item)
                                 @php
                                     $changed = $item['ai_quantity'] !== null && $item['quantity'] !== null && abs($item['quantity'] - $item['ai_quantity']) > 0.001;
@@ -120,4 +135,23 @@
             <p class="mt-3 text-[11px] text-slate-500">Each area's share of the price appears here once Raflora sends your quotation.</p>
         @endif
     </section>
+
+    @if($compact)
+        @once
+            <script>
+                // Compact materials per area: the picked area's materials only.
+                document.addEventListener('click', (event) => {
+                    const pick = event.target.closest('[data-area-pick]');
+                    if (!pick) return;
+                    const root = pick.closest('[data-area-breakdown]');
+                    root.querySelectorAll('[data-area-pick]').forEach((b) => {
+                        const on = b === pick;
+                        b.setAttribute('aria-selected', on ? 'true' : 'false');
+                        b.tabIndex = on ? 0 : -1;
+                    });
+                    root.querySelectorAll('[data-area]').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.area !== pick.dataset.areaPick));
+                });
+            </script>
+        @endonce
+    @endif
 @endif

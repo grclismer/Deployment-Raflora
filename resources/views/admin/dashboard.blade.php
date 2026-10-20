@@ -89,7 +89,7 @@
     </div>
 
     <!-- KPI tiles -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" aria-label="Key metrics">
+    <section class="rf-stat-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6" aria-label="Key metrics">
         @foreach($kpis as $kpi)
             <div class="rf-admin-card p-5 flex flex-col">
                 <div class="flex items-center justify-between gap-3">
@@ -373,7 +373,7 @@
                 <a href="{{ route('admin.bookings') }}" class="rf-admin-card__link">View All</a>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-[13px] min-w-[640px]">
+                <table class="rf-table--stack w-full text-left text-[13px] min-w-[640px]">
                     <thead class="rf-admin-thead">
                         <tr>
                             <th scope="col" class="!pl-5">Client</th>
@@ -392,16 +392,16 @@
                                     <p class="font-medium text-slate-900 truncate max-w-[14rem]">{{ $booking->client?->full_name ?? $booking->guest_name ?? 'Guest Client' }}</p>
                                     <p class="text-xs text-slate-500">#{{ $booking->id }}</p>
                                 </td>
-                                <td class="px-4 py-3">{{ ucfirst($booking->event_type) }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ optional($booking->event_date)->format('M j, Y') ?? 'N/A' }}</td>
-                                <td class="px-4 py-3 text-right font-medium text-slate-900 tabular-nums whitespace-nowrap">
+                                <td data-label="Event" class="px-4 py-3">{{ ucfirst($booking->event_type) }}</td>
+                                <td data-label="Event Date" class="px-4 py-3 whitespace-nowrap text-slate-600">{{ optional($booking->event_date)->format('M j, Y') ?? 'N/A' }}</td>
+                                <td data-label="Amount" class="px-4 py-3 text-right font-medium text-slate-900 tabular-nums whitespace-nowrap">
                                     @if($amt > 0)
                                         {{ $peso($amt) }}
                                     @else
                                         <span class="text-slate-400 font-normal">Not quoted</span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-3 whitespace-nowrap"><x-badge :status="$booking->status">{{ $booking->status_display_label }}</x-badge></td>
+                                <td data-label="Status" class="px-4 py-3 whitespace-nowrap"><x-badge :status="$booking->status">{{ $booking->status_display_label }}</x-badge></td>
                                 <td class="pl-4 pr-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('admin.bookings.show', $booking->id) }}" class="rf-admin-card__link">Review</a>
                                 </td>
@@ -458,7 +458,7 @@
                 <a href="{{ route('admin.inventory.index', ['stock_level' => 'low']) }}" class="rf-admin-card__link">View All</a>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-[13px] min-w-[520px]">
+                <table class="rf-table--stack w-full text-left text-[13px] min-w-[520px]">
                     <thead class="rf-admin-thead">
                         <tr>
                             <th scope="col" class="!pl-5">Item</th>
@@ -472,9 +472,9 @@
                         @forelse($lowStockItems as $item)
                             <tr class="hover:bg-slate-50/70 transition">
                                 <td class="pl-5 pr-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
-                                <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap font-medium text-slate-900">{{ $item->current_stock }} <span class="text-slate-500 font-normal">{{ $item->unit ?? 'units' }}</span></td>
-                                <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap text-slate-500">{{ $item->min_stock }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">
+                                <td data-label="On Hand" class="px-4 py-3 text-right tabular-nums whitespace-nowrap font-medium text-slate-900">{{ $item->current_stock }} <span class="text-slate-500 font-normal">{{ $item->unit ?? 'units' }}</span></td>
+                                <td data-label="Minimum" class="px-4 py-3 text-right tabular-nums whitespace-nowrap text-slate-500">{{ $item->min_stock }}</td>
+                                <td data-label="Status" class="px-4 py-3 whitespace-nowrap">
                                     @if($item->current_stock <= 0)
                                         <x-badge variant="danger">Out of Stock</x-badge>
                                     @else
@@ -535,7 +535,7 @@
     <!-- Shortcuts -->
     <section aria-labelledby="shortcuts-heading">
         <h3 id="shortcuts-heading" class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 mb-3">Shortcuts</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="rf-stat-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             @foreach($shortcuts as $shortcut)
                 <a href="{{ $shortcut['href'] }}" class="rf-admin-card group flex flex-col gap-2.5 p-4 hover:border-brand-300 hover:shadow-sm transition">
                     <span class="flex items-center justify-between">

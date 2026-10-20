@@ -319,7 +319,7 @@ class PartialDispatchReservationReleaseTest extends TestCase
         $booking->update(['status' => 'event_completed']);
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage("Cannot dispatch items for booking #{$booking->id} with status 'event_completed'.");
+        $this->expectExceptionMessage("Booking #{$booking->id} cannot dispatch items while it is Event Completed.");
 
         $this->dispatchService->dispatchItems($booking, [
             ['inventory_item_id' => $this->item->id, 'quantity' => 5],

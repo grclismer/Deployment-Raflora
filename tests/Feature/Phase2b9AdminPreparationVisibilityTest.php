@@ -407,7 +407,7 @@ class Phase2b9AdminPreparationVisibilityTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHas('error');
-        $this->assertStringContainsString('Outstanding reservation is only 5', session('error'));
+        $this->assertMatchesRegularExpression('/only 5( \S+)? are reserved for this booking/', session('error'));
 
         // Current stock untouched
         $this->assertEquals(50, (float) $item->fresh()->current_stock);
@@ -436,7 +436,7 @@ class Phase2b9AdminPreparationVisibilityTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHas('error');
-        $this->assertStringContainsString('Insufficient physical stock', session('error'));
+        $this->assertStringContainsString('in stock. Receive stock in Inventory Management, or dispatch fewer.', session('error'));
 
         // Current stock untouched
         $this->assertEquals(3, (float) $item->fresh()->current_stock);
@@ -494,7 +494,7 @@ class Phase2b9AdminPreparationVisibilityTest extends TestCase
 
             $response->assertRedirect();
             $response->assertSessionHas('error');
-            $this->assertStringContainsString("Cannot dispatch items for booking #{$booking->id} with status '{$status}'", session('error'));
+            $this->assertStringContainsString("Booking #{$booking->id} cannot dispatch items while it is {$booking->fresh()->status_display_label}.", session('error'));
             $this->assertEquals(20, (float) $item->fresh()->current_stock);
         }
     }

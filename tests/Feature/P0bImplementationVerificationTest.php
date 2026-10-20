@@ -125,7 +125,7 @@ class P0bImplementationVerificationTest extends TestCase
         ]);
 
         $response->assertSessionHas('error');
-        $this->assertStringContainsString('Outstanding reservation is only 10', session('error'));
+        $this->assertMatchesRegularExpression('/only 10( \S+)? are reserved for this booking/', session('error'));
         $this->assertEquals(100, $this->item->fresh()->current_stock);
     }
 
@@ -139,7 +139,7 @@ class P0bImplementationVerificationTest extends TestCase
         ]);
 
         $response->assertSessionHas('error');
-        $this->assertStringContainsString('Insufficient physical stock', session('error'));
+        $this->assertStringContainsString('in stock. Receive stock in Inventory Management, or dispatch fewer.', session('error'));
         $this->assertEquals(5, $this->item->fresh()->current_stock);
     }
 

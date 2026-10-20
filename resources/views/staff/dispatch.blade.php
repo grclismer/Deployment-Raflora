@@ -89,7 +89,7 @@
 
                         {{-- Items Table --}}
                         <div class="overflow-x-auto">
-                            <table class="w-full text-left text-xs">
+                            <table class="rf-table--stack w-full text-left text-xs">
                                 <thead class="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100">
                                     <tr>
                                         <th class="py-3 px-6">Material Item</th>
@@ -110,10 +110,10 @@
                                                 <p class="font-bold text-navy-900">{{ $item->name }}</p>
                                                 <p class="text-[11px] text-slate-400">{{ ucfirst($item->category ?? 'decor') }} · {{ $item->unit }}</p>
                                             </td>
-                                            <td class="py-3 px-4 text-right tabular-nums">{{ rtrim(rtrim(number_format($r['reserved'], 2), '0'), '.') }}</td>
-                                            <td class="py-3 px-4 text-right tabular-nums text-emerald-600 font-semibold">{{ rtrim(rtrim(number_format($r['dispatched'], 2), '0'), '.') }}</td>
-                                            <td class="py-3 px-4 text-right tabular-nums {{ $isDone ? 'text-slate-400' : 'text-rose-600 font-bold' }}">{{ rtrim(rtrim(number_format($r['outstanding'], 2), '0'), '.') }}</td>
-                                            <td class="py-3 px-6 text-center">
+                                            <td data-label="Reserved" class="py-3 px-4 text-right tabular-nums">{{ rtrim(rtrim(number_format($r['reserved'], 2), '0'), '.') }}</td>
+                                            <td data-label="Dispatched" class="py-3 px-4 text-right tabular-nums text-emerald-600 font-semibold">{{ rtrim(rtrim(number_format($r['dispatched'], 2), '0'), '.') }}</td>
+                                            <td data-label="Outstanding" class="py-3 px-4 text-right tabular-nums {{ $isDone ? 'text-slate-400' : 'text-rose-600 font-bold' }}">{{ rtrim(rtrim(number_format($r['outstanding'], 2), '0'), '.') }}</td>
+                                            <td data-label="Status" class="py-3 px-6 text-center">
                                                 @if($isDone)
                                                     <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
                                                         <i class="fa-solid fa-check"></i> Dispatched

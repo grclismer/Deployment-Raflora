@@ -59,7 +59,7 @@
         </div>
 
         <!-- Controls: Show Filters, Package Tools, and Grid/Table View Toggle -->
-        <div class="flex items-center gap-2.5 shrink-0 self-end lg:self-center">
+        <div class="flex max-w-full flex-wrap items-center justify-end gap-2.5 self-end lg:shrink-0 lg:self-center">
             @php
                 $hasActivePackageFilters = (($currentCategory ?? 'all') !== 'all') || (($currentSort ?? 'latest') !== 'latest') || (($currentStatus ?? 'active') !== 'active') || !empty($currentSearch);
                 $isPackageFilterOpen = request('filter_expanded') === '1' || $hasActivePackageFilters;
