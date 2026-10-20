@@ -1,0 +1,22 @@
+# Nixpacks Build & Startup Specification for Raflora
+# Reference: https://nixpacks.com/docs/configuration/file
+
+providers = ["node", "php"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_PHP_ROOT_DIR = "/app/public"
+
+[phases.install]
+cmds = [
+    "composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader",
+    "npm ci --include=dev"
+]
+
+[phases.build]
+cmds = [
+    "npm run build"
+]
+
+[start]
+cmd = "sh scripts/container-startup.sh php artisan serve --host=0.0.0.0 --port=${PORT:-8080}"
