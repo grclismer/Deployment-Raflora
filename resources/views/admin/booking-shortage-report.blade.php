@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Booking Shortage Report · Booking #{{ $booking->id }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ asset('rafloralogo.ico') }}">
     <style>
         @page {
             size: A4 landscape;

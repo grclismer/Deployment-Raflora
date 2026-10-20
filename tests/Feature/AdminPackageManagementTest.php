@@ -13,6 +13,8 @@ class AdminPackageManagementTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
