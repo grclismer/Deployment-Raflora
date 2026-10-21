@@ -207,31 +207,6 @@
                 </div>
             </div>
 
-            <!-- Grid / Table View Switcher -->
-            <div class="inline-flex rounded-xl p-1 bg-gray-100 border border-gray-200 md:ml-auto" role="group" aria-label="View toggle">
-                <button
-                    type="button"
-                    id="viewGridBtn"
-                    onclick="setViewMode('grid')"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer bg-brand-700 text-white shadow-2xs"
-                    aria-pressed="true"
-                    title="Grid View"
-                >
-                    <i class="fa-solid fa-table-cells-large text-xs"></i>
-                    <span>Grid</span>
-                </button>
-                <button
-                    type="button"
-                    id="viewTableBtn"
-                    onclick="setViewMode('table')"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-white/60"
-                    aria-pressed="false"
-                    title="Table View"
-                >
-                    <i class="fa-solid fa-table-list text-xs"></i>
-                    <span>Table</span>
-                </button>
-            </div>
         </div>
     </div>
 
@@ -241,35 +216,64 @@
             <input type="hidden" name="filter_expanded" id="packageFilterExpandedInput" value="{{ $isPackageFilterOpen ? '1' : '0' }}">
             <input type="hidden" name="view" id="packageViewModeInput" value="{{ $currentView ?? 'grid' }}">
 
-            <!-- Seamless Single-Pill Search Bar -->
-            <div class="bg-white border border-gray-200/90 rounded-2xl shadow-xs p-1.5 pl-4 flex items-center gap-3 transition-all focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-600">
-                <span class="text-gray-400 shrink-0 flex items-center">
-                    <i class="fa-solid fa-magnifying-glass text-sm"></i>
-                </span>
-                <input
-                    type="text"
-                    name="search"
-                    id="packageSearchInput"
-                    value="{{ $currentSearch ?? request('search') }}"
-                    placeholder="Search package name, category, or keyword..."
-                    class="w-full bg-transparent border-0 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
-                >
-                <div class="flex items-center gap-2 shrink-0 pr-1">
-                    @if(!empty($currentSearch))
-                        <a
-                            href="{{ route('admin.packages.index', array_merge(request()->except('search'))) }}"
-                            class="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
-                        >
-                            Clear
-                        </a>
-                    @endif
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Grid / Table View Switcher -->
+                <div class="inline-flex shrink-0 rounded-xl border border-gray-200 bg-gray-100 p-1" role="group" aria-label="View toggle">
                     <button
-                        type="submit"
-                        class="inline-flex items-center justify-center gap-2 px-5 py-2 bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold rounded-xl transition shadow-xs focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+                        type="button"
+                        id="viewGridBtn"
+                        onclick="setViewMode('grid')"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition cursor-pointer"
+                        aria-pressed="true"
+                        title="Grid View"
                     >
-                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
-                        <span>Search</span>
+                        <i class="fa-solid fa-table-cells-large text-xs"></i>
+                        <span>Grid</span>
                     </button>
+                    <button
+                        type="button"
+                        id="viewTableBtn"
+                        onclick="setViewMode('table')"
+                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-600 transition cursor-pointer hover:bg-white/60 hover:text-gray-900"
+                        aria-pressed="false"
+                        title="Table View"
+                    >
+                        <i class="fa-solid fa-table-list text-xs"></i>
+                        <span>Table</span>
+                    </button>
+                </div>
+
+                <!-- Seamless Single-Pill Search Bar -->
+                <div class="max-[375px]:basis-full min-w-[190px] flex-1 rounded-2xl border border-gray-200/90 bg-white p-1.5 pl-3 shadow-xs flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-600 sm:pl-4 sm:gap-3">
+                    <span class="text-gray-400 shrink-0 flex items-center">
+                        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                    </span>
+                    <input
+                        type="text"
+                        name="search"
+                        id="packageSearchInput"
+                        value="{{ $currentSearch ?? request('search') }}"
+                        placeholder="Search package name, category, or keyword..."
+                        class="w-full bg-transparent border-0 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0"
+                    >
+                    <div class="flex items-center gap-2 shrink-0 pr-1">
+                        @if(!empty($currentSearch))
+                            <a
+                                href="{{ route('admin.packages.index', array_merge(request()->except('search'))) }}"
+                                class="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                            >
+                                Clear
+                            </a>
+                        @endif
+                        <button
+                            type="submit"
+                            aria-label="Search packages"
+                            class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-700 px-3 py-2 text-sm font-semibold text-white shadow-xs transition hover:bg-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer sm:px-5"
+                        >
+                            <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                            <span class="hidden sm:inline">Search</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
