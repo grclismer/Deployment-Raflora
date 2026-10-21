@@ -1577,8 +1577,37 @@
             const chevron = document.getElementById('packageToolsChevron');
             if (!menu || !btn) return;
             menu.style.display = 'block';
+            positionPackageToolsDropdown();
             btn.setAttribute('aria-expanded', 'true');
             if (chevron) chevron.classList.add('rotate-180');
+        }
+
+        function positionPackageToolsDropdown() {
+            const menu = document.getElementById('packageToolsMenu');
+            const btn = document.getElementById('packageToolsButton');
+            if (!menu || !btn || menu.style.display === 'none') return;
+
+            if (window.matchMedia('(max-width: 1023px)').matches) {
+                const buttonRect = btn.getBoundingClientRect();
+                const margin = 8;
+                const menuHeight = Math.min(menu.scrollHeight, window.innerHeight - margin * 2);
+                const top = Math.max(margin, Math.min(buttonRect.bottom + margin, window.innerHeight - menuHeight - margin));
+
+                menu.style.position = 'fixed';
+                menu.style.left = `${margin}px`;
+                menu.style.right = `${margin}px`;
+                menu.style.top = `${top}px`;
+                menu.style.width = 'auto';
+                menu.style.maxWidth = 'none';
+                menu.style.maxHeight = `${Math.max(0, window.innerHeight - top - margin * 3)}px`;
+                menu.style.overflowY = 'auto';
+            } else {
+                ['position', 'left', 'right', 'top', 'maxHeight', 'overflowY'].forEach(property => {
+                    menu.style[property] = '';
+                });
+                menu.style.width = '660px';
+                menu.style.maxWidth = 'calc(100vw - 2rem)';
+            }
         }
 
         function closePackageToolsDropdown() {
@@ -1590,6 +1619,8 @@
             btn.setAttribute('aria-expanded', 'false');
             if (chevron) chevron.classList.remove('rotate-180');
         }
+
+        window.addEventListener('resize', positionPackageToolsDropdown);
 
         function togglePackageCategoryDropdown() {
             const menu = document.getElementById('packageCategoryMenu');

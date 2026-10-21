@@ -336,6 +336,9 @@ class AdminPackageFilterAndNotificationTest extends TestCase
         $this->assertStringContainsString('max-[375px]:basis-full', $content);
         $this->assertStringContainsString('aria-label="Search packages"', $content);
         $this->assertLessThan(strpos($content, 'id="packageSearchInput"'), strpos($content, 'id="viewGridBtn"'));
+        $this->assertStringContainsString("window.matchMedia('(max-width: 1023px)').matches", $content);
+        $this->assertStringContainsString("menu.style.position = 'fixed'", $content);
+        $this->assertStringContainsString('window.addEventListener(\'resize\', positionPackageToolsDropdown)', $content);
         $this->assertStringContainsString('id="packageToggleFiltersBtn"', $content);
         $this->assertStringContainsString('Show Filters', $content);
 
