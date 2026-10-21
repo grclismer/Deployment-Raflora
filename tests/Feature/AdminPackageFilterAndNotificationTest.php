@@ -34,6 +34,29 @@ class AdminPackageFilterAndNotificationTest extends TestCase
         $response->assertSee('Search');
     }
 
+    public function test_admin_package_table_has_mobile_card_labels_for_every_column(): void
+    {
+        Package::create([
+            'package_code' => 'PKG-MOBILE-01',
+            'title' => 'Mobile Table Package',
+            'category' => 'Wedding',
+            'price' => 12000,
+            'is_active' => true,
+            'is_archived' => false,
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.packages.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="packagesTableView"', $html);
+        $this->assertStringContainsString('class="rf-table--stack w-full text-left text-sm border-collapse"', $html);
+        foreach (['Package', 'Category', 'Price', 'Inclusions', 'BOM Items', 'Status', 'Updated', 'Actions'] as $label) {
+            $this->assertStringContainsString('data-label="' . $label . '"', $html);
+        }
+    }
+
     public function test_admin_package_categories_render_in_counted_dropdown_with_selected_category_highlighted(): void
     {
         Package::create([

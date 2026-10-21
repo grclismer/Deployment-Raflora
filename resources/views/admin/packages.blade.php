@@ -545,7 +545,7 @@
         <!-- 2. TABLE VIEW (Responsive Data Table) -->
         <div id="packagesTableView" style="display:none;" class="bg-white rounded-2xl shadow-xs border border-gray-200 overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm border-collapse">
+                <table class="rf-table--stack w-full text-left text-sm border-collapse">
                     <thead class="bg-gray-50/80 text-gray-600 font-semibold text-xs border-b border-gray-200 uppercase tracking-wider">
                         <tr>
                             <th class="px-5 py-3.5">Package</th>
@@ -566,7 +566,7 @@
                                 $bomCount = $package->inventoryItems->count();
                             @endphp
                             <tr class="hover:bg-brand-50/30 transition-colors group">
-                                <td class="px-5 py-3.5">
+                                <td class="px-5 py-3.5" data-label="Package">
                                     <div class="flex items-center gap-3">
                                         <div class="w-11 h-11 rounded-xl bg-gray-100 overflow-hidden shrink-0 border border-gray-200 flex items-center justify-center">
                                             @if($thumbImage)
@@ -581,27 +581,27 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td class="px-4 py-3.5 whitespace-nowrap" data-label="Category">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-100">
                                         {{ $package->category ?: 'Uncategorized' }}
                                     </span>
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td class="px-4 py-3.5 whitespace-nowrap" data-label="Price">
                                     <span class="font-extrabold text-brand-700">₱{{ number_format($package->price, 2) }}</span>
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600">
+                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600" data-label="Inclusions">
                                     <span class="inline-flex items-center gap-1">
                                         <i class="fa-solid fa-gift text-brand-400"></i>
                                         <span>{{ $inclusionsCount }} items</span>
                                     </span>
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600">
+                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600" data-label="BOM Items">
                                     <span class="inline-flex items-center gap-1">
                                         <i class="fa-solid fa-boxes-stacked text-brand-400"></i>
                                         <span>{{ $bomCount }} items</span>
                                     </span>
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap">
+                                <td class="px-4 py-3.5 whitespace-nowrap" data-label="Status">
                                     @if(!$package->is_archived && $package->is_active)
                                         <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
@@ -616,10 +616,10 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-500">
+                                <td class="px-4 py-3.5 whitespace-nowrap text-xs text-gray-500" data-label="Updated">
                                     {{ $package->updated_at?->format('M d, Y') }}
                                 </td>
-                                <td class="px-5 py-3.5 whitespace-nowrap text-right">
+                                <td class="px-5 py-3.5 whitespace-nowrap text-right" data-label="Actions">
                                     <div class="flex items-center justify-end gap-2">
                                         <button
                                             type="button"
