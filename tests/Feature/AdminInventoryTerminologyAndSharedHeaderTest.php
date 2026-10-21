@@ -84,10 +84,20 @@ class AdminInventoryTerminologyAndSharedHeaderTest extends TestCase
         // Primary row action is View
         $response->assertSee('openItemDrawer(' . $item->id . ')', false);
         $response->assertSee('View');
+        $response->assertSee('class="inventory-item-action px-5 py-3.5 text-right"', false);
 
         // Drawer contains the detailed actions including Receive Stock
         $response->assertSee('Receive Stock');
-        $response->assertSee('Edit Item');
+        $response->assertSee('href="' . route('admin.inventory.edit', $item) . '"', false);
+        $response->assertSee('class="grid grid-cols-2 gap-2.5"', false);
+        $html = $response->getContent();
+        $quickActionsPosition = strpos($html, 'QUICK ACTIONS');
+        $editActionPosition = strpos($html, 'inventory-edit-action');
+        $this->assertNotFalse($quickActionsPosition);
+        $this->assertNotFalse($editActionPosition);
+        $this->assertGreaterThan($quickActionsPosition, $editActionPosition);
+        $this->assertSame(1, substr_count($html, 'inventory-edit-action'));
+        $response->assertDontSee('Edit Item');
         $response->assertSee('Adjust Stock');
         $response->assertSee('Archive Item');
     }

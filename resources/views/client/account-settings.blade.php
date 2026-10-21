@@ -4,14 +4,13 @@
             $profileImage = $user->profile_image && \Storage::disk('public')->exists($user->profile_image)
                 ? asset('storage/' . $user->profile_image)
                 : null;
-            $initials = collect(preg_split('/\s+/', trim((string) $user->name)))
-                ->filter()
-                ->take(2)
-                ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))
-                ->implode('');
             $nameParts = preg_split('/\s+/', trim((string) $user->name), 2);
             $firstName = $user->first_name ?: ($nameParts[0] ?? '');
             $lastName = $user->last_name ?: ($nameParts[1] ?? '');
+            $initials = collect([$firstName, $lastName])
+                ->filter()
+                ->map(fn ($part) => mb_strtoupper(mb_substr(trim($part), 0, 1)))
+                ->implode('');
             $openSecurity = $errors->hasAny(['current_password', 'new_password']);
         @endphp
 
@@ -19,13 +18,12 @@
             <section class="rf-panel p-5 sm:p-8" aria-labelledby="account-heading">
                 <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-center gap-4">
-                        @if($profileImage)
-                            <img src="{{ $profileImage }}" alt="Profile image for {{ $user->name }}" class="h-16 w-16 shrink-0 rounded-full border border-slate-200 object-cover shadow-sm">
-                        @else
-                            <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-lg font-bold text-emerald-700 ring-1 ring-emerald-100" aria-hidden="true">
+                        <div class="relative h-16 w-16 shrink-0">
+                            <img @if($profileImage) src="{{ $profileImage }}" @endif data-profile-image-preview alt="Profile image for {{ $user->name }}" class="h-16 w-16 rounded-full border border-slate-200 object-cover shadow-sm {{ $profileImage ? '' : 'hidden' }}">
+                            <div data-profile-image-fallback class="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-lg font-bold text-emerald-700 ring-1 ring-emerald-100 {{ $profileImage ? 'hidden' : '' }}" aria-hidden="true">
                                 {{ $initials ?: 'R' }}
                             </div>
-                        @endif
+                        </div>
                         <div class="min-w-0">
                             <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Your account</p>
                             <h1 id="account-heading" class="rf-page-title truncate text-2xl font-bold text-slate-900 sm:text-3xl">{{ $user->name }}</h1>
@@ -96,11 +94,13 @@
 
                         <label class="rf-field md:col-span-2">
                             <span class="rf-label">Profile photo</span>
-                            <input id="profile_image" type="file" name="profile_image" accept="image/*" class="form-control file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700" @error('profile_image') aria-invalid="true" @enderror />
-                            <span class="rf-help-text">Optional. JPG, PNG or WEBP up to 2 MB.</span>
+                            <input id="profile_image" data-profile-image-input type="file" name="profile_image" accept="image/jpeg,image/png,image/webp" class="form-control file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700" @error('profile_image') aria-invalid="true" @enderror />
+                            <span class="rf-help-text">Optional. Choose a JPG, PNG or WEBP up to 2 MB, then crop it before saving.</span>
+                            <span data-profile-image-input-error class="text-sm text-red-600" role="alert"></span>
                         </label>
                     </div>
                 </section>
+                <x-profile-image-cropper />
 
                 <details class="rf-panel group p-5 sm:p-8" @if($openSecurity) open @endif>
                     <summary class="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">

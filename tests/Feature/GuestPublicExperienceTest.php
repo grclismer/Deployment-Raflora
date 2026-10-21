@@ -39,6 +39,7 @@ class GuestPublicExperienceTest extends TestCase
         $response->assertSee('ABOUT');
         $response->assertSee('BOOKING');
         $response->assertSee('id="mobileMenuToggle"', false);
+        $response->assertSee('href="#home-hero" data-target="home-hero" class="mobile-nav-link mobile-scrollspy-link', false);
     }
 
     /** On the Home page, GALLERY/PACKAGES/ABOUT nav links must use anchor hrefs. */

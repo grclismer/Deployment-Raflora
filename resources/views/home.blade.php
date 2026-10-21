@@ -189,10 +189,10 @@
             <!-- High-contrast overlay to soften dense floral areas behind content -->
             <div class="absolute inset-0 bg-white/90 sm:bg-white/85 backdrop-blur-[2px]"></div>
 
-            <div class="max-w-[1150px] mx-auto px-8 sm:px-12 lg:px-16 xl:px-20 relative z-10">
+            <div class="max-w-[1150px] mx-auto px-4 sm:px-8 lg:px-16 xl:px-20 relative z-10">
                 
                 <!-- Main Footer Content Grid -->
-                <div class="flex flex-wrap lg:flex-nowrap justify-between items-center w-full gap-3 xl:gap-4 pb-8 lg:pb-12">
+                <div class="flex w-full flex-wrap items-center justify-between gap-3 pb-8 lg:flex-nowrap xl:gap-4 lg:pb-12">
                     
                     <!-- 1. Raflora branding -->
                     <div class="flex flex-col items-center lg:items-start text-center lg:text-left w-full lg:w-auto lg:max-w-[300px] flex-shrink-0 mb-8 lg:mb-0">
@@ -208,19 +208,19 @@
                     <div class="hidden lg:block w-px bg-slate-300 h-24 xl:h-28 flex-shrink-0"></div>
 
                     <!-- 2. Contact Us -->
-                    <div class="flex flex-col items-center lg:items-start text-center lg:text-left w-1/2 sm:w-1/3 lg:w-auto mb-6 lg:mb-0">
+                    <div class="flex w-[calc(50%-0.375rem)] flex-col items-center text-center sm:w-[calc(33.333%-0.5rem)] lg:w-auto lg:items-start lg:text-left mb-6 lg:mb-0">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background-color: #E8F3EA; color: #1E7E34;">
                             <i class="fa-solid fa-phone text-sm"></i>
                         </div>
                         <h4 class="font-serif font-bold text-base tracking-wide mb-2 text-[#0F2E58]">Contact Us</h4>
-                        <p class="text-sm text-slate-700 font-medium">0919 008 9881<br>raflora18@gmail.com</p>
+                        <p class="break-all text-sm text-slate-700 font-medium">0919 008 9881<br>raflora18@gmail.com</p>
                     </div>
 
                     <!-- Divider -->
                     <div class="hidden lg:block w-px bg-slate-300 h-24 xl:h-28 flex-shrink-0"></div>
 
                     <!-- 3. Our Location -->
-                    <div class="flex flex-col items-center lg:items-start text-center lg:text-left w-1/2 sm:w-1/3 lg:w-auto mb-6 lg:mb-0">
+                    <div class="flex w-[calc(50%-0.375rem)] flex-col items-center text-center sm:w-[calc(33.333%-0.5rem)] lg:w-auto lg:items-start lg:text-left mb-6 lg:mb-0">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background-color: #E8F3EA; color: #1E7E34;">
                             <i class="fa-solid fa-location-dot text-sm"></i>
                         </div>
@@ -232,7 +232,7 @@
                     <div class="hidden lg:block w-px bg-slate-300 h-24 xl:h-28 flex-shrink-0"></div>
 
                     <!-- 4. Business Hours -->
-                    <div class="flex flex-col items-center lg:items-start text-center lg:text-left w-1/2 sm:w-1/3 lg:w-auto mb-6 lg:mb-0">
+                    <div class="flex w-[calc(50%-0.375rem)] flex-col items-center text-center sm:w-[calc(33.333%-0.5rem)] lg:w-auto lg:items-start lg:text-left mb-6 lg:mb-0">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background-color: #E8F3EA; color: #1E7E34;">
                             <i class="fa-regular fa-clock text-sm"></i>
                         </div>
@@ -244,7 +244,7 @@
                     <div class="hidden lg:block w-px bg-slate-300 h-24 xl:h-28 flex-shrink-0"></div>
 
                     <!-- 5. Quick Links -->
-                    <div class="flex flex-col items-center lg:items-start text-center lg:text-left w-1/2 sm:w-auto lg:w-auto mb-6 lg:mb-0">
+                    <div class="flex w-[calc(50%-0.375rem)] flex-col items-center text-center sm:w-auto lg:items-start lg:text-left mb-6 lg:mb-0">
                         <h4 class="font-serif font-bold text-base tracking-wide mb-4 mt-2 lg:mt-0 text-[#0F2E58]">Quick Links</h4>
                         <div class="flex flex-col gap-2 text-sm text-slate-700 font-medium">
                             <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">

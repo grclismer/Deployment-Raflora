@@ -144,10 +144,10 @@
                                 <div class="relative shrink-0">
                                     <div id="avatarPreviewContainer" class="h-20 w-20 rounded-full overflow-hidden border-2 border-rose-200 bg-rose-50 flex items-center justify-center shadow-xs">
                                         @if($hasProfileImage)
-                                            <img id="avatarPreviewImg" src="{{ asset('storage/' . $user->profile_image) }}" alt="{{ $user->name }}" class="h-full w-full object-cover">
+                                            <img id="avatarPreviewImg" data-profile-image-preview src="{{ asset('storage/' . $user->profile_image) }}" alt="{{ $user->name }}" class="h-full w-full object-cover">
                                         @else
-                                            <div id="avatarInitialsFallback" class="text-2xl font-bold text-rose-700">{{ $userInitials }}</div>
-                                            <img id="avatarPreviewImg" src="" alt="Profile Preview" class="h-full w-full object-cover hidden">
+                                            <div id="avatarInitialsFallback" data-profile-image-fallback class="text-2xl font-bold text-rose-700">{{ $userInitials }}</div>
+                                            <img id="avatarPreviewImg" data-profile-image-preview alt="Profile Preview" class="h-full w-full object-cover hidden">
                                         @endif
                                     </div>
                                     <div class="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full bg-white border border-slate-200 text-slate-500 shadow-2xs">
@@ -158,9 +158,10 @@
                                 <div class="flex-1 text-center sm:text-left">
                                     <label for="profile_image_input" class="group flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200/90 bg-slate-50/60 px-4 py-3 cursor-pointer hover:border-rose-400 hover:bg-rose-50/30 transition">
                                         <i class="fa-solid fa-cloud-arrow-up text-base text-slate-400 group-hover:text-rose-500 transition" aria-hidden="true"></i>
-                                        <span class="mt-1 text-xs font-bold text-slate-700 group-hover:text-rose-700 transition">Upload New Photo</span>
+                                        <span class="mt-1 text-xs font-bold text-slate-700 group-hover:text-rose-700 transition">Choose Photo to Crop</span>
                                         <span class="text-[10px] text-slate-400">JPG, PNG or WebP. Max size 2MB.</span>
-                                        <input type="file" id="profile_image_input" name="profile_image" accept="image/jpeg,image/png,image/jpg,image/webp" class="hidden">
+                                        <input type="file" id="profile_image_input" data-profile-image-input name="profile_image" accept="image/jpeg,image/png,image/jpg,image/webp" class="hidden">
+                                        <span data-profile-image-input-error class="mt-1 text-xs text-red-600" role="alert"></span>
                                     </label>
                                     @if($hasProfileImage)
                                         <div class="mt-2 text-center sm:text-left">
@@ -257,6 +258,7 @@
                                     <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save Changes
                                 </button>
                             </div>
+                            <x-profile-image-cropper />
                         </form>
                     </div>
 
@@ -1421,38 +1423,8 @@
 
         const initializeProfileImageUpload = () => {
             const fileInput = document.getElementById('profile_image_input');
-            const previewImg = document.getElementById('avatarPreviewImg');
-            const initialsFallback = document.getElementById('avatarInitialsFallback');
             const removeInput = document.getElementById('remove_profile_image');
             const removeBtn = document.getElementById('removePhotoBtn');
-
-            if (fileInput) {
-                fileInput.addEventListener('change', function () {
-                    const file = this.files[0];
-                    if (!file) return;
-
-                    if (file.size > 2 * 1024 * 1024) {
-                        showNoticeModal('Image too large', 'The profile photo must be 2 MB or less. Choose a smaller image.', 'danger', this);
-                        this.value = '';
-                        return;
-                    }
-
-                    const reader = new FileReader();
-                    reader.onload = function (e) {
-                        if (previewImg) {
-                            previewImg.src = e.target.result;
-                            previewImg.classList.remove('hidden');
-                        }
-                        if (initialsFallback) {
-                            initialsFallback.classList.add('hidden');
-                        }
-                        if (removeInput) {
-                            removeInput.value = '0';
-                        }
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
 
             if (removeBtn) {
                 removeBtn.addEventListener('click', function () {

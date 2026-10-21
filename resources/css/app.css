@@ -1157,6 +1157,13 @@
         border-top: 1px solid var(--rf-border) !important;
     }
 
+    .rf-table--stack tbody .inventory-item-action {
+        grid-column: 1 / -1;
+        padding-top: 0.75rem !important;
+        border-top: 1px solid var(--rf-border) !important;
+        text-align: right !important;
+    }
+
     .rf-table--stack tbody td[colspan] {
         border-top: 0 !important;
     }
@@ -1199,6 +1206,82 @@
     .rf-stat-grid > * {
         min-width: 0;
         padding: 0.875rem !important;
+    }
+
+    .booking-shortage-table,
+    .booking-shortage-table tbody {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .booking-shortage-table thead {
+        display: none;
+    }
+
+    .booking-shortage-table tbody tr {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.625rem;
+        padding: 0.75rem;
+        border-top: 1px solid var(--rf-border);
+    }
+
+    .booking-shortage-table tbody tr:first-child {
+        border-top: 0;
+    }
+
+    .booking-shortage-table tbody td {
+        display: block;
+        min-width: 0;
+        padding: 0 !important;
+        text-align: left !important;
+        border: 0 !important;
+        white-space: normal;
+    }
+
+    .booking-shortage-table tbody td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.2rem;
+        color: var(--rf-text-muted, #64748b);
+        font-size: 0.625rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        line-height: 1.25;
+        text-transform: uppercase;
+    }
+
+    .booking-shortage-table tbody td:first-child {
+        grid-column: 1 / -1;
+        padding-bottom: 0.625rem !important;
+        border-bottom: 1px solid var(--rf-border) !important;
+    }
+
+    .booking-shortage-table tbody td:first-child > p:first-child {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        overflow-wrap: anywhere;
+    }
+
+    .booking-shortage-table tbody td:nth-child(2),
+    .booking-shortage-table tbody td:nth-child(3),
+    .booking-shortage-table tbody td:nth-child(4) {
+        padding: 0.5rem !important;
+        border: 1px solid var(--rf-border) !important;
+        border-radius: 0.625rem;
+        background: var(--color-slate-50);
+    }
+
+    .booking-shortage-table tbody td:last-child {
+        grid-column: 1 / -1;
+        padding-top: 0.625rem !important;
+        border-top: 1px solid var(--rf-border) !important;
+    }
+
+    .booking-shortage-table .add-stock-input {
+        width: min(100%, 12rem);
+        text-align: left;
     }
 
     .rf-stat-grid > .flex.items-center:not(.flex-col) {

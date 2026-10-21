@@ -215,8 +215,8 @@
 
     <!-- Booking Navigation Tabs: Overview is the page; every other section opens as a pop-up over it. -->
     <div class="rf-admin-card mb-6 overflow-hidden">
-      <div class="relative overflow-hidden px-2">
-        <nav class="-mb-px flex flex-wrap gap-1" role="tablist" aria-label="Booking sections">
+      <div class="px-2 py-2">
+        <nav class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" role="tablist" aria-label="Booking sections">
             @foreach($tabs as $tab)
                 @php
                     $isFirstTab = $loop->first;
@@ -233,14 +233,14 @@
                     aria-selected="{{ $isFirstTab ? 'true' : 'false' }}"
                     tabindex="{{ $isFirstTab ? '0' : '-1' }}"
                     onclick="switchTab('{{ $tab['id'] }}')"
-                    class="tab-button group mt-1.5 inline-flex items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 px-3.5 py-3 text-sm font-medium transition focus:outline-none focus-visible:bg-slate-50 {{ $tabStyle['tab'] ?? '' }} {{ $isFirstTab ? 'border-brand-600 text-brand-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800' }}"
+                    class="tab-button group inline-flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2.5 text-left text-sm font-medium leading-snug transition focus:outline-none focus-visible:bg-slate-50 {{ $tabStyle['tab'] ?? '' }} {{ $isFirstTab ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800' }}"
                     data-target="{{ $tab['id'] }}"
                 >
                     @if($tabStyle)
                         <span class="h-2 w-2 shrink-0 rounded-full {{ $tabStyle['dot'] }}" aria-hidden="true"></span>
                     @endif
                     <i class="{{ $tab['icon'] }} text-[13px] opacity-80" aria-hidden="true"></i>
-                    <span>{{ $tab['label'] }}</span>
+                    <span class="min-w-0">{{ $tab['label'] }}</span>
                     @if(!empty($tab['badge']))
                         <span class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums {{ $tab['tone'] }}">{{ $tab['badge'] }}</span>
                     @endif
@@ -716,7 +716,7 @@
                 </div>
                 <x-decor-area-breakdown :materials="$aiSuggestions->all()" :booking="$booking" view="admin" class="mx-5 my-4" />
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[720px] text-left text-[13px]">
+                    <table class="rf-table--stack w-full min-w-[720px] text-left text-[13px]">
                         <thead class="rf-admin-thead">
                             <tr>
                                 <th scope="col" class="!pl-5">Material</th>
@@ -734,7 +734,7 @@
                                     $confidence = isset($suggestion['confidence']) && is_numeric($suggestion['confidence']) ? (float) $suggestion['confidence'] : null;
                                 @endphp
                                 <tr class="align-top hover:bg-slate-50/70">
-                                    <td class="py-3 pl-5 pr-4">
+                                    <td class="py-3 pl-5 pr-4" data-label="Material">
                                         <p class="font-medium text-slate-900">{{ $suggestion['item_name'] ?? 'Unnamed material' }}</p>
                                         @if(!empty($suggestion['note']))
                                             <p class="mt-0.5 text-xs text-slate-500">{{ $suggestion['note'] }}</p>
@@ -743,17 +743,17 @@
                                             <p class="mt-0.5 text-xs text-slate-500">Alternative: {{ $suggestion['suggested_alternative'] }}</p>
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3">{{ !empty($suggestion['category']) ? ucfirst($suggestion['category']) : '—' }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                                    <td class="px-4 py-3" data-label="Category">{{ !empty($suggestion['category']) ? ucfirst($suggestion['category']) : '—' }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums whitespace-nowrap" data-label="Est. Quantity">
                                         @if(is_numeric($suggestedQty))
                                             {{ $formatMaterialQty($suggestedQty) }} <span class="text-slate-500">{{ $suggestion['unit_type'] ?? '' }}</span>
                                         @else
                                             —
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3">{{ !empty($suggestion['area']) ? ucfirst($suggestion['area']) : '—' }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums">{{ $confidence !== null ? round($confidence * 100) . '%' : '—' }}</td>
-                                    <td class="py-3 pl-4 pr-5">
+                                    <td class="px-4 py-3" data-label="Placement">{{ !empty($suggestion['area']) ? ucfirst($suggestion['area']) : '—' }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Confidence">{{ $confidence !== null ? round($confidence * 100) . '%' : '—' }}</td>
+                                    <td class="py-3 pl-4 pr-5" data-label="Review">
                                         @if(!empty($suggestion['needs_review']))
                                             <span class="{{ $pill }} bg-amber-100 text-amber-800" title="{{ $suggestion['review_message'] ?? '' }}"><i class="fa-solid fa-flag" aria-hidden="true"></i>Needs review</span>
                                         @elseif(!empty($suggestion['is_recommendation']))
@@ -853,7 +853,7 @@
                 <input type="hidden" name="status" value="{{ $booking->status }}">
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[760px] text-left text-sm">
+                    <table class="rf-table--stack w-full min-w-[760px] text-left text-sm">
                         <thead class="rf-admin-thead">
                             <tr>
                                 <th scope="col" class="!pl-5">Item Name</th>
@@ -963,7 +963,7 @@
                                     $stockTitle = $isOutOfStock ? 'Only ' . $stockStr . ' left in master inventory' : 'Inventory remains available for this item';
                                 @endphp
                                 <tr class="{{ $rowClass }} align-top transition hover:bg-slate-50/80" id="row_{{ $idx }}">
-                                    <td class="py-3 pl-5 pr-4">
+                                    <td class="py-3 pl-5 pr-4" data-label="Item Name">
                                         <span class="block font-medium text-slate-900" id="display_name_{{ $idx }}">{{ $item['name'] }}</span>
                                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                                             @if(!empty($item['duplicate']))
@@ -1001,7 +1001,7 @@
                                             <input type="hidden" name="items[{{ $idx }}][booking_item_id]" value="{{ $item['id'] }}">
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3" data-label="Qty">
                                         @if($quoteReadOnly)
                                             <div class="pt-1.5 text-sm text-slate-800 tabular-nums">{{ (int) $item['qty'] }}</div>
                                         @else
@@ -1009,7 +1009,7 @@
                                             <input type="number" id="input_qty_{{ $idx }}" name="items[{{ $idx }}][quantity]" min="0" step="1" inputmode="numeric" value="{{ (int) $shownQty }}" class="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm tabular-nums focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 focus:outline-none" @if($bookingLocked) disabled @endif>
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3">
+                                    <td class="px-4 py-3" data-label="Unit Cost (₱)">
                                         @if($quoteReadOnly)
                                             <div class="pt-1.5 text-sm text-slate-800 tabular-nums">₱ {{ number_format((float) $item['unit_price'], 2) }}</div>
                                         @else
@@ -1020,10 +1020,10 @@
                                             </div>
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3 pt-4 text-right text-sm font-medium text-slate-900 tabular-nums whitespace-nowrap" id="total_cost_{{ $idx }}">
+                                    <td class="px-4 py-3 pt-4 text-right text-sm font-medium text-slate-900 tabular-nums whitespace-nowrap" id="total_cost_{{ $idx }}" data-label="Total Cost (₱)">
                                         ₱ {{ number_format((float) $item['qty'] * (float) $item['unit_price'], 2) }}
                                     </td>
-                                    <td class="py-3 pl-4 pr-5 text-center">
+                                    <td class="py-3 pl-4 pr-5 text-center" data-label="Actions">
                                         @if(!$quoteReadOnly)
                                             <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-700">
                                                 <input type="checkbox" name="items[{{ $idx }}][remove]" value="1" class="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500" @if($bookingLocked) disabled @endif>
@@ -1371,7 +1371,7 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto pt-4">
-                    <table class="w-full min-w-[560px] text-left text-sm text-slate-700">
+                    <table class="rf-table--stack w-full min-w-[560px] text-left text-sm text-slate-700">
                         <thead class="rf-admin-thead">
                             <tr>
                                 <th scope="col" class="!pl-5">Material</th>
@@ -1383,16 +1383,16 @@
                         <tbody class="divide-y divide-slate-100">
                             @foreach($materialItems as $materialItem)
                                 <tr class="hover:bg-slate-50/70">
-                                    <td class="py-3 pl-5 pr-4 font-medium text-slate-900">{{ $materialItem->item_name ?? $materialItem->inventoryItem?->name ?? 'Material' }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums">{{ $formatMaterialQty($materialItem->quantity) }}</td>
-                                    <td class="px-4 py-3 text-[13px] text-slate-600">
+                                    <td class="py-3 pl-5 pr-4 font-medium text-slate-900" data-label="Material">{{ $materialItem->item_name ?? $materialItem->inventoryItem?->name ?? 'Material' }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Qty">{{ $formatMaterialQty($materialItem->quantity) }}</td>
+                                    <td class="px-4 py-3 text-[13px] text-slate-600" data-label="Source">
                                         @if($materialItem->is_ai_suggested)
                                             <span class="inline-flex items-center gap-1.5"><i class="fa-solid fa-wand-magic-sparkles text-[11px] text-slate-400" aria-hidden="true"></i>AI suggestion</span>
                                         @else
                                             <span class="inline-flex items-center gap-1.5"><i class="fa-solid fa-gift text-[11px] text-slate-400" aria-hidden="true"></i>Package / Admin</span>
                                         @endif
                                     </td>
-                                    <td class="py-3 pl-4 pr-5">
+                                    <td class="py-3 pl-4 pr-5" data-label="Validation">
                                         @if($materialItem->confirmed_at)
                                             <span class="{{ $pill }} bg-emerald-100 text-emerald-800"><i class="fa-solid fa-check" aria-hidden="true"></i>Validated</span>
                                         @elseif(!$materialItem->inventory_item_id)
@@ -1424,7 +1424,7 @@
                 <p class="px-5 py-6 text-sm text-slate-500">No confirmed reusable materials require reservation.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[560px] text-left text-sm text-slate-700">
+                    <table class="rf-table--stack w-full min-w-[560px] text-left text-sm text-slate-700">
                         <thead class="rf-admin-thead">
                             <tr>
                                 <th scope="col" class="!pl-5">Item</th>
@@ -1437,11 +1437,11 @@
                         <tbody class="divide-y divide-slate-100">
                             @foreach($reusableStatusList as $reusableRow)
                                 <tr class="hover:bg-slate-50/70">
-                                    <td class="py-3 pl-5 pr-4 font-medium text-slate-900">{{ $reusableRow['inventory_item']->name }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums">{{ $formatMaterialQty($reusableRow['required']) }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums">{{ $formatMaterialQty($reusableRow['locked']) }}</td>
-                                    <td class="px-4 py-3 text-right tabular-nums {{ $reusableRow['has_shortage'] ? 'font-semibold text-rose-700' : '' }}">{{ $formatMaterialQty($reusableRow['available']) }}</td>
-                                    <td class="py-3 pl-4 pr-5">
+                                    <td class="py-3 pl-5 pr-4 font-medium text-slate-900" data-label="Item">{{ $reusableRow['inventory_item']->name }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Required">{{ $formatMaterialQty($reusableRow['required']) }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Reserved">{{ $formatMaterialQty($reusableRow['locked']) }}</td>
+                                    <td class="px-4 py-3 text-right tabular-nums {{ $reusableRow['has_shortage'] ? 'font-semibold text-rose-700' : '' }}" data-label="Available">{{ $formatMaterialQty($reusableRow['available']) }}</td>
+                                    <td class="py-3 pl-4 pr-5" data-label="Status">
                                         @if($reusableRow['is_reserved'])
                                             <span class="{{ $pill }} bg-emerald-100 text-emerald-800"><i class="fa-solid fa-lock" aria-hidden="true"></i>Reserved</span>
                                         @elseif($reusableRow['has_shortage'])
@@ -1631,7 +1631,7 @@
                                 <input type="hidden" name="reason" value="Dispatch for Event #{{ $booking->id }}">
 
                                 <div class="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table class="w-full min-w-[560px] text-left text-sm text-slate-700">
+                                    <table class="rf-table--stack w-full min-w-[560px] text-left text-sm text-slate-700">
                                         <thead class="rf-admin-thead">
                                             <tr>
                                                 <th scope="col">Item</th>
@@ -1647,11 +1647,11 @@
                                         <tbody class="divide-y divide-slate-100">
                                             @foreach($dispatchRows as $index => $row)
                                                 <tr>
-                                                    <td class="px-4 py-3 font-medium text-slate-900">{{ $row['item']->name }}</td>
-                                                    <td class="px-4 py-3 text-right tabular-nums">{{ $formatQty($row['reserved']) }}</td>
-                                                    <td class="px-4 py-3 text-right tabular-nums">{{ $formatQty($row['dispatched']) }}</td>
-                                                    <td class="px-4 py-3 text-right font-semibold tabular-nums {{ $row['outstanding'] > 0 ? 'text-amber-700' : 'text-slate-500' }}">{{ $formatQty($row['outstanding']) }}</td>
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3 font-medium text-slate-900" data-label="Item">{{ $row['item']->name }}</td>
+                                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Reserved">{{ $formatQty($row['reserved']) }}</td>
+                                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Dispatched">{{ $formatQty($row['dispatched']) }}</td>
+                                                    <td class="px-4 py-3 text-right font-semibold tabular-nums {{ $row['outstanding'] > 0 ? 'text-amber-700' : 'text-slate-500' }}" data-label="Outstanding">{{ $formatQty($row['outstanding']) }}</td>
+                                                    <td class="px-4 py-3" data-label="Status">
                                                         @if($row['outstanding'] <= 0)
                                                             <span class="{{ $pill }} bg-emerald-100 text-emerald-800">Fully Dispatched</span>
                                                         @elseif($row['dispatched'] > 0)
@@ -1661,7 +1661,7 @@
                                                         @endif
                                                     </td>
                                                     @if($canDispatch)
-                                                        <td class="px-4 py-3 text-right">
+                                                        <td class="px-4 py-3 text-right" data-label="Qty to Dispatch">
                                                             @if($row['outstanding'] > 0)
                                                                 <input type="hidden" name="items[{{ $index }}][inventory_item_id]" value="{{ $row['item']->id }}">
                                                                 <label class="sr-only" for="dispatch-qty-{{ $index }}">Quantity to dispatch for {{ $row['item']->name }}</label>
@@ -2097,8 +2097,8 @@
 
     <script>
         (function () {
-            const ACTIVE = ['border-brand-600', 'text-brand-800'];
-            const INACTIVE = ['border-transparent', 'text-slate-500', 'hover:border-slate-300', 'hover:text-slate-800'];
+            const ACTIVE = ['border-brand-600', 'bg-brand-50', 'text-brand-800'];
+            const INACTIVE = ['border-slate-200', 'bg-brand-50', 'text-brand-800', 'text-slate-600', 'hover:border-slate-300', 'hover:text-slate-800'];
             const storageKey = 'raflora_admin_booking_tab_{{ $booking->id }}';
 
             const sectionModal = document.getElementById('booking-section-modal');

@@ -66,14 +66,14 @@
                 </div>
 
                 @if($notifications->count())
-                    <div class="flex items-center gap-2">
-                        <span id="clientUnreadSummary" class="rf-badge rf-badge--primary" data-unread="{{ $unreadCount }}">
+                    <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                        <span id="clientUnreadSummary" class="rf-badge rf-badge--primary self-start" data-unread="{{ $unreadCount }}">
                             {{ $unreadCount }} New Update{{ $unreadCount === 1 ? '' : 's' }}
                         </span>
                         @if($unreadCount > 0)
                             <form method="POST" action="{{ route('client.notifications.read-all') }}">
                                 @csrf
-                                <button type="submit" class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+                                <button type="submit" class="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto">
                                     <i class="fa-solid fa-check-double text-xs" aria-hidden="true"></i> Mark all as read
                                 </button>
                             </form>
@@ -117,11 +117,11 @@
                                         </span>
 
                                         <div class="min-w-0 flex-1">
-                                            <div class="flex items-start justify-between gap-3">
-                                                <p class="text-[15px] {{ $isUnread ? 'font-bold text-slate-900' : 'font-semibold text-slate-800' }}">
+                                            <div class="flex min-w-0 items-start justify-between gap-3">
+                                                <p class="min-w-0 break-words text-[15px] [overflow-wrap:anywhere] {{ $isUnread ? 'font-bold text-slate-900' : 'font-semibold text-slate-800' }}">
                                                     {{ $notification['title'] ?: ucwords(str_replace('_', ' ', $notification['booking_event'])) }}
                                                 </p>
-                                                <time class="shrink-0 text-xs text-slate-400" datetime="{{ $notification['created_at'] ?? '' }}" title="{{ $notification['timestamp'] }}">{{ $notification['time_ago'] ?? $notification['timestamp'] }}</time>
+                                                <time class="shrink-0 whitespace-nowrap text-xs text-slate-400" datetime="{{ $notification['created_at'] ?? '' }}" title="{{ $notification['timestamp'] }}">{{ $notification['time_ago'] ?? $notification['timestamp'] }}</time>
                                             </div>
                                             <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-slate-500">
                                                 @if($notification['booking_id'])

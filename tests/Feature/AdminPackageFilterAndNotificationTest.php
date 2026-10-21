@@ -34,6 +34,47 @@ class AdminPackageFilterAndNotificationTest extends TestCase
         $response->assertSee('Search');
     }
 
+    public function test_admin_package_categories_render_in_counted_dropdown_with_selected_category_highlighted(): void
+    {
+        Package::create([
+            'package_code' => 'PKG-CAT-A',
+            'title' => 'Corporate Gala',
+            'category' => 'Corporate Event',
+            'price' => 12000,
+            'is_active' => true,
+            'is_archived' => false,
+        ]);
+        Package::create([
+            'package_code' => 'PKG-CAT-B',
+            'title' => 'Corporate Dinner',
+            'category' => 'Corporate Event',
+            'price' => 15000,
+            'is_active' => true,
+            'is_archived' => false,
+        ]);
+        Package::create([
+            'package_code' => 'PKG-CAT-C',
+            'title' => 'Garden Debut',
+            'category' => 'Debut',
+            'price' => 18000,
+            'is_active' => true,
+            'is_archived' => false,
+        ]);
+
+        $response = $this->actingAs($this->admin)->get(route('admin.packages.index', [
+            'category' => 'Corporate Event',
+        ]));
+
+        $response->assertOk();
+        $response->assertSee('id="packageCategoryButton"', false);
+        $response->assertSee('Corporate Event</span>', false);
+        $response->assertSee('Corporate Event (2)');
+        $response->assertSee('Debut (1)');
+        $response->assertSee('id="packageCategoryMenu"', false);
+        $response->assertSee('bg-brand-700 text-white font-bold shadow-xs', false);
+        $response->assertSee(route('admin.packages.index', ['category' => 'Corporate Event']), false);
+    }
+
     public function test_admin_packages_search_filters_by_keyword(): void
     {
         Package::create([
@@ -311,4 +352,3 @@ class AdminPackageFilterAndNotificationTest extends TestCase
         $this->assertStringNotContainsString('Archived Galleries', $tabNavContent);
     }
 }
-

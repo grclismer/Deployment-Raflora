@@ -4,6 +4,9 @@
     $staffUser = auth()->user();
     $staffUnread = app(\App\Services\StaffWorkspaceService::class)->unreadMessageCount($staffUser);
     $staffInitials = collect(preg_split('/\s+/', trim($staffUser->name ?? 'S')))->filter()->map(fn ($p) => mb_substr($p, 0, 1))->take(2)->implode('');
+    $staffProfileImage = $staffUser->profile_image && \Storage::disk('public')->exists($staffUser->profile_image)
+        ? asset('storage/' . $staffUser->profile_image)
+        : null;
 
     // Single source for the sidebar matching the Admin sidebar layout & conventions
     $staffNav = [
@@ -161,6 +164,10 @@
                     <p class="font-semibold text-slate-900 truncate">{{ $staffUser->name }}</p>
                     <p class="text-xs text-slate-500 truncate">{{ $staffUser->email ?? 'staff@raflora.com' }}</p>
                 </div>
+                <a href="{{ route('staff.profile.edit') }}" class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 hover:text-slate-900 font-medium transition">
+                    <i class="fa-solid fa-user-gear w-4 text-center text-slate-400"></i>
+                    <span>Account Settings</span>
+                </a>
                 <a href="{{ route('staff.activity') }}" class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 hover:text-slate-900 font-medium transition">
                     <i class="fa-solid fa-clock-rotate-left w-4 text-center text-slate-400"></i>
                     <span>My Activity</span>
@@ -189,9 +196,13 @@
                     title="{{ $staffUser->name }} (Staff - Floral Team)"
                 >
                     <div class="relative shrink-0">
-                        <div class="w-9 h-9 rounded-full bg-rose-500/20 text-rose-200 ring-1 ring-rose-400/30 flex items-center justify-center font-semibold text-xs select-none">
-                            {{ strtoupper($staffInitials ?: 'ST') }}
-                        </div>
+                        @if($staffProfileImage)
+                            <img src="{{ $staffProfileImage }}" alt="Profile photo for {{ $staffUser->name }}" class="h-9 w-9 rounded-full object-cover ring-1 ring-rose-400/30">
+                        @else
+                            <div class="w-9 h-9 rounded-full bg-rose-500/20 text-rose-200 ring-1 ring-rose-400/30 flex items-center justify-center font-semibold text-xs select-none">
+                                {{ strtoupper($staffInitials ?: 'ST') }}
+                            </div>
+                        @endif
                         <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-navy-950"></span>
                     </div>
                     <div class="rf-sidebar-footer-text min-w-0 flex-1">
@@ -279,8 +290,12 @@
                         <p class="text-xs font-bold text-slate-800">{{ now()->timezone('Asia/Manila')->format('D, M j, Y') }}</p>
                         <p class="text-[11px] font-medium text-slate-500">{{ now()->timezone('Asia/Manila')->format('g:i A') }}</p>
                     </div>
-                    <a href="{{ route('staff.activity') }}" class="h-9 w-9 items-center justify-center rounded-full bg-rose-600 text-xs font-bold text-white shadow-xs flex select-none transition hover:opacity-90" title="{{ $staffUser->name }}">
-                        {{ strtoupper($staffInitials ?: 'ST') }}
+                    <a href="{{ route('staff.profile.edit') }}" class="h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-rose-600 text-xs font-bold text-white shadow-xs flex select-none transition hover:opacity-90" title="{{ $staffUser->name }}" aria-label="Staff account settings">
+                        @if($staffProfileImage)
+                            <img src="{{ $staffProfileImage }}" alt="" class="h-full w-full object-cover">
+                        @else
+                            {{ strtoupper($staffInitials ?: 'ST') }}
+                        @endif
                     </a>
                 </div>
             </div>

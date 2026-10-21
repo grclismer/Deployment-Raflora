@@ -754,6 +754,13 @@ class AdminNotificationsTest extends TestCase
         $response->assertSee('Stock Alert: Booking #' . $booking->id);
         $response->assertSee('Resolve Booking Shortages');
         $response->assertSee('Plastic Pot');
+        $response->assertSee('class="-mb-px flex min-w-0 flex-wrap gap-1"', false);
+        $response->assertSee('booking-shortage-table', false);
+        $response->assertSee('data-label="Physical"', false);
+        $response->assertSee('data-label="Held for Other Bookings"', false);
+        $response->assertSee('data-label="Add Stock"', false);
+        $response->assertSee('data-shortage-modal-footer', false);
+        $response->assertSee('grid shrink-0 grid-cols-2 items-start gap-2', false);
         $response->assertDontSee('Stock Shortage Alert');
         $response->assertDontSee('Manage Inventory');
     }

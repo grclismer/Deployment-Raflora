@@ -149,6 +149,8 @@ Route::middleware('auth')->group(function () {
 // Staff Routes: protected by auth, staff role, and email verification (S-01E-3).
 // Unverified staff are redirected to the email verification gate.
 Route::prefix('staff')->middleware(['auth', 'staff', 'verified'])->group(function () {
+    Route::get('/account-settings', [\App\Http\Controllers\Staff\ProfileController::class, 'edit'])->name('staff.profile.edit');
+    Route::post('/account-settings/photo', [\App\Http\Controllers\Staff\ProfileController::class, 'updatePhoto'])->name('staff.profile.photo.update');
     Route::get('/dashboard', [\App\Http\Controllers\Staff\WorkspaceController::class, 'dashboard'])->name('staff.dashboard');
     Route::get('/tasks', [\App\Http\Controllers\Staff\WorkspaceController::class, 'tasks'])->name('staff.tasks');
     Route::get('/assignments', [\App\Http\Controllers\Staff\WorkspaceController::class, 'assignments'])->name('staff.assignments');
@@ -252,7 +254,7 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'mobile_number' => ['nullable', 'string', 'max:20'],
             'address' => ['nullable', 'string', 'max:500'],
-            'profile_image' => ['nullable', 'image', 'max:2048'],
+            'profile_image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
             'current_password' => ['nullable', 'required_with:new_password', 'string'],
             'new_password' => ['nullable', 'required_with:current_password', 'string', 'min:8', 'confirmed'],
         ]);
@@ -271,15 +273,11 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
             }
         }
 
-        try {
-            if ($request->hasFile('profile_image')) {
-                if ($user->profile_image && \Storage::disk('public')->exists($user->profile_image)) {
-                    \Storage::disk('public')->delete($user->profile_image);
-                }
-                $path = $request->file('profile_image')->store('profile-images', 'public');
-                $user->profile_image = $path;
-            }
+        $oldProfileImage = $user->profile_image;
+        $newProfileImagePath = null;
+        $profileSaveCompleted = false;
 
+        try {
             if ($request->filled('current_password') || $request->filled('new_password')) {
                 if (!\Hash::check($request->current_password, $user->password)) {
                     return back()->withErrors(['current_password' => 'Current password is incorrect.'])->withInput();
@@ -288,6 +286,14 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
                 if ($request->filled('new_password')) {
                     $user->password = \Hash::make($request->new_password);
                 }
+            }
+
+            if ($request->hasFile('profile_image')) {
+                $newProfileImagePath = $request->file('profile_image')->store('profile-images', 'public');
+                if (! $newProfileImagePath) {
+                    throw new \RuntimeException('The profile photo could not be stored.');
+                }
+                $user->profile_image = $newProfileImagePath;
             }
 
             $user->first_name = $data['first_name'];
@@ -306,6 +312,11 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
                     $currentClient->update(['email' => $data['email']]);
                 }
             });
+            $profileSaveCompleted = true;
+
+            if ($newProfileImagePath && $oldProfileImage && $oldProfileImage !== $newProfileImagePath) {
+                \Storage::disk('public')->delete($oldProfileImage);
+            }
 
             if ($emailChanged) {
                 \App\Models\AuditLog::create([
@@ -333,6 +344,9 @@ Route::prefix('client')->middleware(['auth', 'verified', 'client'])->group(funct
 
             return redirect()->route('account-settings')->with('success', 'Account settings updated successfully.');
         } catch (\Throwable $e) {
+            if (! $profileSaveCompleted && $newProfileImagePath && \Storage::disk('public')->exists($newProfileImagePath)) {
+                \Storage::disk('public')->delete($newProfileImagePath);
+            }
             \Log::error('Account settings update error: ' . $e->getMessage());
             return back()->withErrors(['account' => 'Update failed. Please try again.'])->withInput();
         }

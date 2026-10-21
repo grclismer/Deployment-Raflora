@@ -92,26 +92,23 @@
                         @endif
                         <div class="flex-1 min-w-0">
                             {{-- The current status is shown once, in the status & action section below. --}}
-                            <h1 id="booking-summary-heading" class="text-2xl font-semibold text-slate-800 leading-tight mb-2 truncate">
+                            <h1 id="booking-summary-heading" class="mb-2 break-words text-2xl font-semibold leading-tight text-slate-800 [overflow-wrap:anywhere]">
                                 {{ ucfirst($booking->event_type ?? 'Event') }}
                                 @if($booking->package)
                                     <span class="font-normal text-slate-500">— {{ $booking->package->title }}</span>
                                 @endif
                             </h1>
-                            <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 font-medium">
+                            <div class="flex min-w-0 flex-col gap-1 text-sm font-medium text-slate-600 sm:flex-row sm:flex-wrap sm:gap-x-3">
                                 @if($booking->event_date)
-                                    <span>{{ $booking->event_date->format('F j, Y') }} at {{ $eventTimeDisplay ?? 'TBD' }}</span>
+                                    <span class="min-w-0 break-words">{{ $booking->event_date->format('F j, Y') }} at {{ $eventTimeDisplay ?? 'TBD' }}</span>
                                 @endif
                                 @if($booking->venue)
-                                    <span class="text-slate-300" aria-hidden="true">|</span>
-                                    <span class="truncate max-w-[200px] sm:max-w-xs" title="{{ $booking->venue }}">{{ $booking->venue }}</span>
+                                    <span class="min-w-0 break-words [overflow-wrap:anywhere]" title="{{ $booking->venue }}">{{ $booking->venue }}</span>
                                 @endif
                                 @if($booking->event_size)
-                                    <span class="text-slate-300" aria-hidden="true">|</span>
                                     <span>{{ number_format($booking->event_size) }} guests</span>
                                 @endif
                                 @if($booking->table_count)
-                                    <span class="text-slate-300" aria-hidden="true">|</span>
                                     <span>{{ number_format($booking->table_count) }} tables</span>
                                 @endif
                             </div>
@@ -1178,11 +1175,11 @@
 
                 {{-- Cancellation Modal --}}
                 @if($canRequestCancellation)
-                    <div id="cancellationModal" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="cancellationModalTitle">
-                        <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
-                            <div class="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                                <h3 id="cancellationModalTitle" class="text-lg font-bold text-rose-600">Request Cancellation</h3>
-                                <button type="button" onclick="document.getElementById('cancellationModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600" aria-label="Close modal">
+                    <div id="cancellationModal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-xs sm:items-center" role="dialog" aria-modal="true" aria-labelledby="cancellationModalTitle">
+                        <div class="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-5 sm:p-6">
+                                <h3 id="cancellationModalTitle" class="min-w-0 break-words text-lg font-bold text-rose-600">Request Cancellation</h3>
+                                <button type="button" onclick="document.getElementById('cancellationModal').classList.add('hidden')" class="shrink-0 text-slate-400 hover:text-slate-600" aria-label="Close modal">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                 </button>
                             </div>
@@ -1190,11 +1187,11 @@
                                 @csrf
                                 <div class="rf-field">
                                     <label for="cancellation_reason" class="rf-label">Please provide a reason for cancelling this booking request:</label>
-                                    <textarea id="cancellation_reason" name="cancellation_reason" rows="4" class="rf-input resize-none" required placeholder="Reason for cancellation..."></textarea>
+                                    <textarea id="cancellation_reason" name="cancellation_reason" rows="4" class="rf-input w-full min-w-0 resize-none" required placeholder="Reason for cancellation..."></textarea>
                                 </div>
-                                <div class="flex justify-end gap-3 mt-6">
-                                    <button type="button" onclick="document.getElementById('cancellationModal').classList.add('hidden')" class="rf-btn rf-btn-secondary">Keep Booking</button>
-                                    <button type="submit" class="rf-btn rf-btn-primary !bg-rose-600 hover:!bg-rose-700 !border-rose-600">Submit Cancellation Request</button>
+                                <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                    <button type="button" onclick="document.getElementById('cancellationModal').classList.add('hidden')" class="rf-btn rf-btn-secondary w-full sm:w-auto">Keep Booking</button>
+                                    <button type="submit" class="rf-btn rf-btn-primary w-full whitespace-normal text-center sm:w-auto !bg-rose-600 hover:!bg-rose-700 !border-rose-600">Submit Cancellation Request</button>
                                 </div>
                             </form>
                         </div>

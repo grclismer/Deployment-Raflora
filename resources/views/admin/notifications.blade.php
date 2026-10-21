@@ -89,7 +89,7 @@
     @else
         <section class="rf-admin-card overflow-hidden" aria-label="Notification inbox">
             <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div class="-mb-px flex gap-1 overflow-x-auto" role="tablist" aria-label="Filter notifications">
+                <div class="-mb-px flex min-w-0 flex-wrap gap-1" role="tablist" aria-label="Filter notifications">
                     <button type="button" role="tab" aria-selected="true" data-filter="all" class="notif-filter inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold bg-slate-900 text-white">
                         All <span class="rounded-full bg-white/20 px-1.5 text-[11px] tabular-nums">{{ count($cards) }}</span>
                     </button>
@@ -159,9 +159,9 @@
                 $isPaymentAlert = $card['isPaymentAlert'];
                 $isPhysicalVarianceAlert = $card['isPhysicalVarianceAlert'];
             @endphp
-            <div id="{{ $modalId }}" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="{{ $modalId }}-title" data-alert-id="{{ $alert->id ?? uniqid() }}" onclick="closeNotificationModal('{{ $modalId }}')">
+            <div id="{{ $modalId }}" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="{{ $modalId }}-title" data-alert-id="{{ $alert->id ?? uniqid() }}" onclick="closeNotificationModal('{{ $modalId }}')">
                 <div class="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onclick="event.stopPropagation()">
-                    <div class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+                    <div class="flex shrink-0 items-start justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4">
                         <div class="flex items-start gap-3 min-w-0">
                             <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 {{ $card['tone'] }}" aria-hidden="true"><i class="{{ $card['icon'] }} text-sm"></i></span>
                             <div class="min-w-0">
@@ -186,8 +186,8 @@
                     @if($isBookingShortageAlert && $alert->booking_id)
                         <form method="POST" action="{{ route('admin.notifications.resolve-booking-shortages', ['booking' => $alert->booking_id]) }}" class="flex min-h-0 flex-1 flex-col" data-booking-shortage-form data-has-missing-items="{{ collect($alert->items ?? [])->contains(fn ($item) => $item['is_missing'] ?? false) ? '1' : '0' }}">
                             @csrf
-                            <div class="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-5">
-                                <div class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
+                            <div class="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-3 sm:p-5">
+                                <div class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900 sm:p-4">
                                     <i class="fa-solid fa-triangle-exclamation mt-0.5 text-amber-600" aria-hidden="true"></i>
                                     <div>
                                         <p class="font-semibold">Booking Shortage Items</p>
@@ -196,7 +196,7 @@
                                 </div>
 
                                 <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                    <table class="w-full text-left text-sm">
+                                    <table class="booking-shortage-table w-full text-left text-sm">
                                         <thead class="rf-admin-thead">
                                             <tr>
                                                 <th scope="col">Item</th>
@@ -210,20 +210,20 @@
                                             @foreach(($alert->items ?? []) as $item)
                                                 @php $inventoryItem = \App\Models\InventoryItem::find($item['inventory_item_id']); $itemIsShort = $item['is_shortage'] ?? true; @endphp
                                                 <tr class="{{ $itemIsShort ? '' : 'bg-emerald-50/50' }}">
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3" data-label="Item">
                                                         <p class="font-medium text-slate-900">{{ $inventoryItem?->name ?? $item['name'] }}</p>
                                                         <p class="text-xs text-slate-500">Required: <span class="font-semibold text-slate-800 tabular-nums">{{ number_format((float) ($item['required'] ?? 0), 0) }}</span></p>
                                                     </td>
-                                                    <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) ($item['current_stock'] ?? 0), 0) }}</td>
-                                                    <td class="px-4 py-3 text-right tabular-nums">{{ number_format((float) ($item['reserved_stock'] ?? 0), 0) }}</td>
-                                                    <td class="px-4 py-3 text-right">
+                                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Physical">{{ number_format((float) ($item['current_stock'] ?? 0), 0) }}</td>
+                                                    <td class="px-4 py-3 text-right tabular-nums" data-label="Held for Other Bookings">{{ number_format((float) ($item['reserved_stock'] ?? 0), 0) }}</td>
+                                                    <td class="px-4 py-3 text-right" data-label="Shortfall">
                                                         @if($itemIsShort)
                                                             <span class="font-semibold text-rose-700 tabular-nums">{{ number_format((float) ($item['shortfall'] ?? 0), 0) }}</span>
                                                         @else
                                                             <span class="text-xs font-semibold text-emerald-700">In Stock</span>
                                                         @endif
                                                     </td>
-                                                    <td class="px-4 py-3 text-right">
+                                                    <td class="px-4 py-3 text-right" data-label="Add Stock">
                                                         @if(!$itemIsShort)
                                                             <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Available</span>
                                                         @elseif($item['is_missing'] ?? false)
@@ -252,22 +252,22 @@
 
                             @php
                                 // Compact footer buttons, so the actions fit on one row.
-                                $btnCompactPrimary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs whitespace-nowrap'], $btnPrimary);
-                                $btnCompactSecondary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs whitespace-nowrap'], $btnSecondary);
+                                $btnCompactPrimary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs sm:whitespace-nowrap'], $btnPrimary);
+                                $btnCompactSecondary = str_replace(['px-4 py-2 text-sm'], ['px-3 py-1.5 text-xs sm:whitespace-nowrap'], $btnSecondary);
                                 $missingBookingItemIds = collect($alert->items ?? [])->where('is_missing', true)->pluck('booking_item_id')->filter()->values();
                             @endphp
-                            <div class="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                <button type="button" class="{{ $btnCompactSecondary }}" onclick="closeNotificationModal('{{ $modalId }}')">Cancel</button>
-                                <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-                                    <button type="button" class="{{ $btnCompactSecondary }}" data-substitution-btn onclick="window.location.href='{{ route('admin.bookings.show', ['booking' => $alert->booking_id]) }}'">
+                            <div class="grid shrink-0 grid-cols-2 items-start gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:flex sm:items-center sm:justify-between sm:px-5" data-shortage-modal-footer>
+                                <button type="button" class="{{ $btnCompactSecondary }} w-full min-w-0 text-center leading-tight sm:w-auto" onclick="closeNotificationModal('{{ $modalId }}')">Cancel</button>
+                                <div class="contents sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
+                                    <button type="button" class="{{ $btnCompactSecondary }} w-full min-w-0 text-center leading-tight sm:w-auto" data-substitution-btn onclick="window.location.href='{{ route('admin.bookings.show', ['booking' => $alert->booking_id]) }}'">
                                         Request Substitution / Edit Booking
                                     </button>
                                     @if($missingBookingItemIds->isNotEmpty())
-                                        <button type="submit" form="promote-missing-ai-items-{{ $modalId }}" class="{{ $btnCompactPrimary }}">
+                                        <button type="submit" form="promote-missing-ai-items-{{ $modalId }}" class="{{ $btnCompactPrimary }} w-full min-w-0 text-center leading-tight sm:w-auto">
                                             Add Missing AI Items to Inventory
                                         </button>
                                     @endif
-                                    <button type="submit" name="action" value="restock_and_resolve" class="{{ $btnCompactPrimary }} disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" data-resolve-btn disabled>
+                                    <button type="submit" name="action" value="restock_and_resolve" class="{{ $btnCompactPrimary }} w-full min-w-0 text-center leading-tight sm:w-auto disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none" data-resolve-btn disabled>
                                         Resolve &amp; Restock
                                     </button>
                                 </div>

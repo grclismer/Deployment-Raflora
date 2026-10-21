@@ -155,7 +155,7 @@
                                             {{ $initials }}
                                         </div>
                                         <div class="min-w-0">
-                                            <div class="font-bold text-slate-900 text-sm leading-tight truncate max-w-xs">
+                                            <div class="max-w-xs break-words text-sm font-bold leading-tight text-slate-900 [overflow-wrap:anywhere]">
                                                 {{ $client->full_name ?? $client->name ?? 'Unnamed client' }}
                                             </div>
                                             <div class="text-xs text-slate-400 font-mono mt-0.5">
@@ -167,9 +167,9 @@
 
                                 <!-- CONTACT Column -->
                                 <td data-label="Contact" class="px-6 py-4">
-                                    <div class="text-sm text-slate-700 font-medium flex items-center gap-1.5">
-                                        <i class="fa-regular fa-envelope text-slate-400 text-xs"></i>
-                                        <span>{{ $client->email }}</span>
+                                    <div class="flex min-w-0 items-start gap-1.5 text-sm font-medium text-slate-700">
+                                        <i class="fa-regular fa-envelope mt-0.5 shrink-0 text-xs text-slate-400"></i>
+                                        <span class="min-w-0 break-all">{{ $client->email }}</span>
                                     </div>
                                     @if(!empty($client->phone))
                                         <div class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">

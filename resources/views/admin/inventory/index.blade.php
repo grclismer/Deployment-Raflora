@@ -81,9 +81,9 @@
         <form method="GET" action="{{ route('admin.inventory.index') }}" id="inventoryFilterForm" class="p-4 sm:p-5 border-b border-slate-100">
             <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <!-- Left: Search Box, Show Filters Toggle, Search Action -->
-                <div class="flex flex-wrap items-center gap-2.5 flex-1">
+                <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
                     <!-- Search Input -->
-                    <div class="relative flex-1 min-w-[240px] max-w-md">
+                    <div class="relative min-w-0 max-w-md flex-1 basis-full sm:basis-auto sm:min-w-[240px]">
                         <span class="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-slate-400">
                             <i class="fa-solid fa-search text-xs"></i>
                         </span>
@@ -142,7 +142,7 @@
                 </div>
 
                 <!-- Right: Action Controls (Inventory Tools ▼ & + Add Item) -->
-                <div class="flex items-center gap-2.5 shrink-0 self-start lg:self-center">
+                <div class="flex w-full min-w-0 flex-wrap items-center gap-2.5 self-start lg:w-auto lg:shrink-0 lg:self-center">
                     <!-- Inventory CSV Tools Dropdown Container -->
                     <div class="relative" id="csvToolsContainer">
                         <button
@@ -167,7 +167,7 @@
                             style="display:none; width: 520px; max-width: calc(100vw - 2rem);"
                             role="region"
                             aria-labelledby="csvToolsButton"
-                            class="absolute right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-xl border border-slate-100 p-4 sm:p-5 text-left transform transition-all"
+                            class="absolute left-0 right-auto top-full z-50 mt-2 transform rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-xl transition-all sm:left-auto sm:right-0 sm:p-5"
                         >
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <!-- Column 1: EXPORT (DOWNLOAD) -->
@@ -232,7 +232,7 @@
                     <!-- + Add Item Button -->
                     <a href="{{ route('admin.inventory.create') }}" onclick="event.preventDefault(); openCreateModal();" class="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-700 hover:bg-brand-800 text-white font-semibold text-xs rounded-xl shadow-xs hover:shadow transition focus:outline-none focus:ring-2 focus:ring-brand-500 whitespace-nowrap cursor-pointer">
                         <i class="fa-solid fa-plus text-xs"></i>
-                        <span>+ Add Item</span>
+                        <span>Add Item</span>
                     </a>
                 </div>
             </div>
@@ -373,7 +373,7 @@
                                         @endif
                                     </div>
                                     <div class="min-w-0">
-                                        <p class="text-sm font-bold text-slate-900 truncate" title="{{ $item->name }}">{{ $item->name }}</p>
+                                        <p class="break-words text-sm font-bold text-slate-900 [overflow-wrap:anywhere]" title="{{ $item->name }}">{{ $item->name }}</p>
                                         <p class="text-xs font-mono text-slate-500">{{ $item->item_code ?? ('INV-' . str_pad($item->id, 4, '0', STR_PAD_LEFT)) }}</p>
                                         <p class="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
                                             <span>{{ $item->unit }}</span>
@@ -438,7 +438,7 @@
                             </td>
 
                             <!-- ACTION Column -->
-                            <td class="px-5 py-3.5 text-right">
+                            <td class="inventory-item-action px-5 py-3.5 text-right">
                                 <!-- View Button: Opens slide-over drawer -->
                                 <button
                                     type="button"
@@ -455,9 +455,9 @@
                                 <template id="item-drawer-template-{{ $item->id }}">
                                     <div class="h-full flex flex-col justify-between">
                                         <!-- DRAWER HEADER -->
-                                        <div class="p-6 border-b border-slate-100 bg-white sticky top-0 z-10">
-                                            <div class="flex items-start justify-between gap-4">
-                                                <div class="flex items-center gap-3.5 min-w-0">
+                                        <div class="sticky top-0 z-10 border-b border-slate-100 bg-white p-4 sm:p-6">
+                                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div class="flex min-w-0 items-center gap-3.5">
                                                     <div class="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center font-bold text-emerald-700 text-base shrink-0 overflow-hidden shadow-2xs">
                                                         @if($item->image_path)
                                                             <img src="{{ Storage::url($item->image_path) }}" alt="{{ $item->name }}" class="h-full w-full object-cover">
@@ -466,12 +466,14 @@
                                                         @endif
                                                     </div>
                                                     <div class="min-w-0">
-                                                        <h2 class="text-lg font-bold text-slate-900 truncate" title="{{ $item->name }}">
+                                                        <h2 class="break-words text-lg font-bold text-slate-900" title="{{ $item->name }}">
                                                             {{ $item->name }}
                                                         </h2>
-                                                        <div class="flex items-center gap-2 mt-0.5">
-                                                            <span class="text-xs font-mono text-slate-500">{{ $item->item_code ?? ('INV-' . str_pad($item->id, 4, '0', STR_PAD_LEFT)) }}</span>
-                                                            <span class="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>
+                                                        <div class="mt-0.5 flex flex-wrap items-center gap-2">
+                                                            <span class="break-all font-mono text-xs text-slate-500">{{ $item->item_code ?? ('INV-' . str_pad($item->id, 4, '0', STR_PAD_LEFT)) }}</span>
+                                                            <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.2 text-[10px] font-bold {{ $item->status === 'inactive' ? 'border-slate-200 bg-slate-100 text-slate-600' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}">
+                                                                {{ ucfirst($item->status ?? 'active') }}
+                                                            </span>
                                                             <span class="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium {{ $item->is_perishable ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-slate-100 text-slate-600 border border-slate-200' }}">
                                                                 {{ $item->is_perishable ? 'Perishable' : 'Non-perishable' }}
                                                             </span>
@@ -479,11 +481,7 @@
                                                     </div>
                                                 </div>
 
-                                                <div class="flex items-center gap-2 shrink-0">
-                                                    <a href="{{ route('admin.inventory.edit', $item) }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-semibold rounded-xl transition">
-                                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
-                                                        <span>Edit</span>
-                                                    </a>
+                                                <div class="flex shrink-0 items-center gap-2 self-end sm:self-auto">
                                                     <button type="button" onclick="closeItemDrawer()" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition" aria-label="Close drawer">
                                                         <i class="fa-solid fa-xmark text-lg"></i>
                                                     </button>
@@ -680,7 +678,7 @@
                                                 <!-- Quick Actions -->
                                                 <div>
                                                     <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">QUICK ACTIONS</h3>
-                                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                                    <div class="grid grid-cols-2 gap-2.5">
                                                         <button
                                                             type="button"
                                                             onclick="openReceiveStockModal({{ $item->id }}, '{{ addslashes($item->name) }}', '{{ addslashes($item->item_code ?? ('INV-' . str_pad($item->id, 4, '0', STR_PAD_LEFT))) }}', '{{ addslashes($item->unit) }}', {{ (float) $item->current_stock }}, {{ (float) $item->reserved_stock }}, {{ (float) $item->to_procure }}, {{ (float) $item->unit_cost }})"
@@ -697,9 +695,12 @@
                                                             <i class="fa-solid fa-sliders text-emerald-600"></i>
                                                             <span>Adjust Stock</span>
                                                         </button>
-                                                        <a href="{{ route('admin.inventory.edit', $item) }}" class="flex items-center justify-center gap-1.5 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 transition">
-                                                            <i class="fa-solid fa-pen-to-square text-brand-700"></i>
-                                                            <span>Edit Item</span>
+                                                        <a
+                                                            href="{{ route('admin.inventory.edit', $item) }}"
+                                                            class="inventory-edit-action flex items-center justify-center gap-1.5 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 transition"
+                                                        >
+                                                            <i class="fa-solid fa-pen-to-square"></i>
+                                                            <span>Edit</span>
                                                         </a>
                                                         <form
                                                             action="{{ route('admin.inventory.archive', $item) }}"

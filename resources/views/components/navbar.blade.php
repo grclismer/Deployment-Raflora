@@ -56,9 +56,10 @@
                 class="inline-flex items-center justify-center p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 hover:scale-105 active:scale-95 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E7E34]"
                 aria-expanded="false"
                 aria-controls="mobileMenuPanel"
+                aria-label="Open main menu"
                 style="display:none"
             >
-                <span class="sr-only">Open main menu</span>
+                <span id="mobileMenuToggleLabel" class="sr-only">Open main menu</span>
                 <svg id="mobileMenuIconClosed" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
@@ -70,10 +71,10 @@
     </div>
 
     <!-- Mobile Menu Panel: controlled entirely by JavaScript, never shown on desktop -->
-    <div id="mobileMenuPanel" aria-label="Mobile navigation" style="display:none" class="border-t border-slate-200 bg-white absolute w-full left-0 shadow-md z-50">
+    <div id="mobileMenuPanel" aria-label="Mobile navigation" style="display:none" class="absolute left-0 top-full z-50 max-h-[calc(100dvh-5rem)] w-full overscroll-contain overflow-y-auto border-t border-slate-200 bg-white shadow-md">
         <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
             @if(Route::currentRouteName() === 'home')
-                <a href="#home-hero" data-target="home-hero" class="mobile-scrollspy-link block px-3 py-2 rounded-md text-base font-semibold text-[#1E7E34] bg-[#1E7E34]/10 transition-colors">HOME</a>
+                <a href="#home-hero" data-target="home-hero" class="mobile-nav-link mobile-scrollspy-link block px-3 py-2 rounded-md text-base font-semibold text-[#1E7E34] bg-[#1E7E34]/10 transition-colors">HOME</a>
                 <a href="#gallery" data-target="gallery" class="mobile-nav-link mobile-scrollspy-link block px-3 py-2 rounded-md text-base font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors">GALLERY</a>
                 <a href="#packages-preview" data-target="packages-preview" class="mobile-nav-link mobile-scrollspy-link block px-3 py-2 rounded-md text-base font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors">PACKAGES</a>
                 <a href="#about" data-target="about" class="mobile-nav-link mobile-scrollspy-link block px-3 py-2 rounded-md text-base font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors">ABOUT</a>
@@ -107,19 +108,21 @@
         var MD_BREAKPOINT = 768;
 
         var toggleBtn = document.getElementById('mobileMenuToggle');
+        var toggleLabel = document.getElementById('mobileMenuToggleLabel');
         var panel = document.getElementById('mobileMenuPanel');
         var iconClosed = document.getElementById('mobileMenuIconClosed');
         var iconOpen = document.getElementById('mobileMenuIconOpen');
+        var clientUsesAvatarMobileNavigation = @json(auth()->check() && auth()->user()->role === 'client');
 
         function isMobile() {
             return window.innerWidth < MD_BREAKPOINT;
         }
 
         function syncButtonVisibility() {
-            if (isMobile()) {
+            if (isMobile() && !clientUsesAvatarMobileNavigation) {
                 toggleBtn.style.display = '';
             } else {
-                // On desktop: hide button and force-close panel
+                // Hide the hamburger for clients and on desktop.
                 toggleBtn.style.display = 'none';
                 closeMenu();
             }
@@ -128,20 +131,25 @@
         function closeMenu() {
             panel.style.display = 'none';
             toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.setAttribute('aria-label', 'Open main menu');
+            toggleLabel.textContent = 'Open main menu';
             iconClosed.classList.remove('hidden');
             iconOpen.classList.add('hidden');
         }
 
         function openMenu() {
             if (!isMobile()) return; // Safety: never open on desktop
+            document.dispatchEvent(new CustomEvent('raflora:close-header-dropdowns'));
             panel.style.display = 'block';
             toggleBtn.setAttribute('aria-expanded', 'true');
+            toggleBtn.setAttribute('aria-label', 'Close main menu');
+            toggleLabel.textContent = 'Close main menu';
             iconClosed.classList.add('hidden');
             iconOpen.classList.remove('hidden');
         }
 
         toggleBtn.addEventListener('click', function() {
-            if (!isMobile()) return;
+            if (!isMobile() || clientUsesAvatarMobileNavigation) return;
             var isOpen = panel.style.display === 'block';
             if (isOpen) {
                 closeMenu();
@@ -149,6 +157,8 @@
                 openMenu();
             }
         });
+
+        document.addEventListener('raflora:close-mobile-menu', closeMenu);
 
         // Close mobile menu when clicking anchor/nav links
         document.querySelectorAll('.mobile-nav-link').forEach(function(link) {

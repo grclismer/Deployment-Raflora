@@ -46,6 +46,9 @@
     $adminUser = auth()->user();
     $adminName = $adminUser->name ?? 'Raflora Admin';
     $adminInitials = strtoupper(substr($adminName ?: 'RA', 0, 2));
+    $adminProfileImage = $adminUser?->profile_image && \Storage::disk('public')->exists($adminUser->profile_image)
+        ? asset('storage/' . $adminUser->profile_image)
+        : null;
 @endphp
 
 <!DOCTYPE html>
@@ -198,9 +201,13 @@
                     title="{{ $adminName }} (Administrator)"
                 >
                     <div class="relative shrink-0">
-                        <div class="w-9 h-9 rounded-full bg-brand-500/20 text-brand-200 ring-1 ring-brand-400/30 flex items-center justify-center font-semibold text-xs select-none">
-                            {{ $adminInitials }}
-                        </div>
+                        @if($adminProfileImage)
+                            <img data-profile-image-preview src="{{ $adminProfileImage }}" alt="Profile photo for {{ $adminName }}" class="h-9 w-9 rounded-full object-cover ring-1 ring-brand-400/30">
+                        @else
+                            <div class="w-9 h-9 rounded-full bg-brand-500/20 text-brand-200 ring-1 ring-brand-400/30 flex items-center justify-center font-semibold text-xs select-none">
+                                {{ $adminInitials }}
+                            </div>
+                        @endif
                         <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-brand-400 ring-2 ring-navy-950"></span>
                     </div>
                     <div class="rf-sidebar-footer-text min-w-0 flex-1">

@@ -33,6 +33,8 @@ class AdminBookingSectionPopupTest extends TestCase
 
         // Every section tab is still listed; only Overview is not a pop-up.
         $this->assertSame(5, substr_count($html, 'aria-haspopup="dialog"'));
+        $this->assertStringContainsString('class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"', $html);
+        $this->assertStringContainsString('class="tab-button group inline-flex min-w-0 items-center gap-2 rounded-lg border', $html);
         $this->assertStringContainsString('Sections open as a pop-up over this overview.', $html);
     }
 
@@ -43,6 +45,26 @@ class AdminBookingSectionPopupTest extends TestCase
             ->getContent();
 
         $this->assertDoesNotMatchRegularExpression('/data-tab-state="action"[^>]*id="tab-staff-button"/', $html);
+    }
+
+    public function test_quotation_table_has_mobile_card_labels_for_all_columns(): void
+    {
+        $booking = $this->booking();
+        $booking->bookingItems()->create([
+            'item_name' => 'Test Material',
+            'quantity' => 2,
+            'quoted_unit_price' => 10,
+        ]);
+
+        $html = $this->actingAs($this->admin())
+            ->get(route('admin.bookings.show', $booking))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('class="rf-table--stack w-full min-w-[760px]', $html);
+        foreach (['Item Name', 'Qty', 'Unit Cost (₱)', 'Total Cost (₱)', 'Actions'] as $label) {
+            $this->assertStringContainsString('data-label="' . $label . '"', $html);
+        }
     }
 
     public function test_event_details_load_the_private_inspiration_image_through_the_secure_route(): void

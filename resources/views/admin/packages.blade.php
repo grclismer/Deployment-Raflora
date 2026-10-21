@@ -33,33 +33,60 @@
 
     <!-- Category Pills & Toolbar Row (Matching Approved Catalogue Design) -->
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-        <!-- Dynamic Category Pills -->
-        <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none flex-wrap">
+        <!-- Category dropdown with the existing selected-pill styling -->
+        <div class="relative self-start" id="packageCategoryDropdown">
             @php
                 $isAllSelected = ($currentCategory ?? 'all') === 'all';
+                $selectedCategoryCount = $isAllSelected
+                    ? ($totalActiveCount ?? $packages->count())
+                    : ($categoryCounts[$currentCategory] ?? 0);
             @endphp
-            <a
-                href="{{ route('admin.packages.index', array_merge(request()->query(), ['category' => 'all'])) }}"
-                class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition shadow-2xs {{ $isAllSelected ? 'bg-brand-700 text-white font-bold shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-300 hover:bg-brand-50/30' }}"
+            <button
+                type="button"
+                id="packageCategoryButton"
+                onclick="togglePackageCategoryDropdown()"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="packageCategoryMenu"
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition shadow-2xs bg-brand-700 text-white font-bold shadow-xs"
             >
-                All Packages ({{ $totalActiveCount ?? $packages->count() }})
-            </a>
+                <span>{{ $isAllSelected ? 'All Packages' : $currentCategory }}</span>
+                <span>({{ $selectedCategoryCount }})</span>
+                <i id="packageCategoryChevron" class="fa-solid fa-chevron-down text-[10px] transition-transform duration-200"></i>
+            </button>
 
-            @foreach($categoryCounts as $catName => $catCount)
-                @php
-                    $isCatSelected = ($currentCategory ?? '') === $catName;
-                @endphp
+            <div
+                id="packageCategoryMenu"
+                role="menu"
+                aria-labelledby="packageCategoryButton"
+                style="display: none; width: min(24rem, calc(100vw - 2rem));"
+                class="absolute left-0 top-full z-40 mt-2 flex flex-wrap gap-2 rounded-2xl border border-gray-100 bg-white p-3 shadow-xl"
+            >
                 <a
-                    href="{{ route('admin.packages.index', array_merge(request()->query(), ['category' => $catName])) }}"
-                    class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition shadow-2xs {{ $isCatSelected ? 'bg-brand-700 text-white font-bold shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-300 hover:bg-brand-50/30' }}"
+                    href="{{ route('admin.packages.index', array_merge(request()->query(), ['category' => 'all'])) }}"
+                    role="menuitem"
+                    class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition shadow-2xs {{ $isAllSelected ? 'bg-brand-700 text-white font-bold shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-300 hover:bg-brand-50/30' }}"
                 >
-                    {{ $catName }} ({{ $catCount }})
+                    All Packages ({{ $totalActiveCount ?? $packages->count() }})
                 </a>
-            @endforeach
+
+                @foreach($categoryCounts as $catName => $catCount)
+                    @php
+                        $isCatSelected = ($currentCategory ?? '') === $catName;
+                    @endphp
+                    <a
+                        href="{{ route('admin.packages.index', array_merge(request()->query(), ['category' => $catName])) }}"
+                        role="menuitem"
+                        class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition shadow-2xs {{ $isCatSelected ? 'bg-brand-700 text-white font-bold shadow-xs' : 'bg-white border border-gray-200 text-gray-700 hover:border-brand-300 hover:bg-brand-50/30' }}"
+                    >
+                        {{ $catName }} ({{ $catCount }})
+                    </a>
+                @endforeach
+            </div>
         </div>
 
         <!-- Controls: Show Filters, Package Tools, and Grid/Table View Toggle -->
-        <div class="flex max-w-full flex-wrap items-center justify-end gap-2.5 self-end lg:shrink-0 lg:self-center">
+        <div class="flex max-w-full flex-wrap items-center justify-start gap-2 self-stretch md:shrink-0 md:self-center md:justify-end">
             @php
                 $hasActivePackageFilters = (($currentCategory ?? 'all') !== 'all') || (($currentSort ?? 'latest') !== 'latest') || (($currentStatus ?? 'active') !== 'active') || !empty($currentSearch);
                 $isPackageFilterOpen = request('filter_expanded') === '1' || $hasActivePackageFilters;
@@ -181,7 +208,7 @@
             </div>
 
             <!-- Grid / Table View Switcher -->
-            <div class="inline-flex rounded-xl p-1 bg-gray-100 border border-gray-200" role="group" aria-label="View toggle">
+            <div class="inline-flex rounded-xl p-1 bg-gray-100 border border-gray-200 md:ml-auto" role="group" aria-label="View toggle">
                 <button
                     type="button"
                     id="viewGridBtn"
@@ -1560,6 +1587,28 @@
             if (chevron) chevron.classList.remove('rotate-180');
         }
 
+        function togglePackageCategoryDropdown() {
+            const menu = document.getElementById('packageCategoryMenu');
+            const btn = document.getElementById('packageCategoryButton');
+            const chevron = document.getElementById('packageCategoryChevron');
+            if (!menu || !btn) return;
+
+            const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+            menu.style.display = isExpanded ? 'none' : 'flex';
+            btn.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+            if (chevron) chevron.classList.toggle('rotate-180', !isExpanded);
+        }
+
+        function closePackageCategoryDropdown() {
+            const menu = document.getElementById('packageCategoryMenu');
+            const btn = document.getElementById('packageCategoryButton');
+            const chevron = document.getElementById('packageCategoryChevron');
+            if (!menu || !btn) return;
+            menu.style.display = 'none';
+            btn.setAttribute('aria-expanded', 'false');
+            if (chevron) chevron.classList.remove('rotate-180');
+        }
+
         // Card More Dropdown
         let activeCardMenuId = null;
         function toggleCardMoreMenu(id) {
@@ -1580,6 +1629,10 @@
 
         // Global click listener to close popovers
         document.addEventListener('click', function(e) {
+            const categoryContainer = document.getElementById('packageCategoryDropdown');
+            if (categoryContainer && !categoryContainer.contains(e.target)) {
+                closePackageCategoryDropdown();
+            }
             const toolsContainer = document.getElementById('packageToolsContainer');
             if (toolsContainer && !toolsContainer.contains(e.target)) {
                 closePackageToolsDropdown();
@@ -1591,6 +1644,12 @@
                     if (menu) menu.style.display = 'none';
                     activeCardMenuId = null;
                 }
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePackageCategoryDropdown();
             }
         });
 
