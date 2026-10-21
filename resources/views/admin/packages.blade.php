@@ -99,7 +99,7 @@
                 onclick="togglePackageFilterPanel()"
                 aria-expanded="{{ $isPackageFilterOpen ? 'true' : 'false' }}"
                 aria-controls="packageFilterPanel"
-                class="inline-flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-sm font-medium transition shadow-2xs focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer {{ $hasActivePackageFilters ? 'border-brand-300 bg-brand-50 text-brand-700 font-semibold' : 'border-gray-200 hover:border-brand-300 bg-white hover:bg-brand-50/50 text-gray-700 hover:text-brand-800' }}"
+                class="inline-flex items-center gap-1.5 px-3.5 py-2 max-[400px]:gap-1 max-[400px]:px-2.5 border rounded-xl text-sm max-[400px]:text-xs font-medium transition shadow-2xs focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer {{ $hasActivePackageFilters ? 'border-brand-300 bg-brand-50 text-brand-700 font-semibold' : 'border-gray-200 hover:border-brand-300 bg-white hover:bg-brand-50/50 text-gray-700 hover:text-brand-800' }}"
             >
                 <i class="fa-solid fa-sliders text-xs {{ $hasActivePackageFilters ? 'text-brand-700' : 'text-gray-500' }}"></i>
                 <span id="packageToggleFiltersText">{{ $isPackageFilterOpen ? 'Hide Filters' : 'Show Filters' }}</span>
@@ -111,7 +111,7 @@
 
             <!-- Package Tools Dropdown Container -->
             <div class="relative" id="packageToolsContainer">
-                <button type="button" id="packageToolsButton" onclick="togglePackageToolsDropdown()" aria-haspopup="true" aria-expanded="false" aria-controls="packageToolsMenu" class="inline-flex items-center gap-2 px-3.5 py-2 border border-brand-300 hover:border-brand-800 bg-white hover:bg-brand-50/50 text-brand-700 font-semibold text-sm rounded-xl transition shadow-2xs focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                <button type="button" id="packageToolsButton" onclick="togglePackageToolsDropdown()" aria-haspopup="true" aria-expanded="false" aria-controls="packageToolsMenu" class="inline-flex items-center gap-2 px-3.5 py-2 max-[400px]:gap-1 max-[400px]:px-2.5 border border-brand-300 hover:border-brand-800 bg-white hover:bg-brand-50/50 text-brand-700 font-semibold text-sm max-[400px]:text-xs rounded-xl transition shadow-2xs focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
                     <i class="fa-regular fa-file-lines text-brand-700 text-sm"></i>
                     <span>Package Tools</span>
                     <i id="packageToolsChevron" class="fa-solid fa-chevron-down text-[10px] text-brand-700 transition-transform duration-200"></i>
@@ -223,28 +223,30 @@
                         type="button"
                         id="viewGridBtn"
                         onclick="setViewMode('grid')"
-                        class="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition cursor-pointer"
+                        aria-label="Grid view"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition cursor-pointer max-[400px]:gap-0 max-[400px]:px-2"
                         aria-pressed="true"
                         title="Grid View"
                     >
                         <i class="fa-solid fa-table-cells-large text-xs"></i>
-                        <span>Grid</span>
+                        <span class="max-[400px]:hidden">Grid</span>
                     </button>
                     <button
                         type="button"
                         id="viewTableBtn"
                         onclick="setViewMode('table')"
-                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-600 transition cursor-pointer hover:bg-white/60 hover:text-gray-900"
+                        aria-label="Table view"
+                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-600 transition cursor-pointer hover:bg-white/60 hover:text-gray-900 max-[400px]:gap-0 max-[400px]:px-2"
                         aria-pressed="false"
                         title="Table View"
                     >
                         <i class="fa-solid fa-table-list text-xs"></i>
-                        <span>Table</span>
+                        <span class="max-[400px]:hidden">Table</span>
                     </button>
                 </div>
 
                 <!-- Seamless Single-Pill Search Bar -->
-                <div class="max-[375px]:basis-full min-w-[190px] flex-1 rounded-2xl border border-gray-200/90 bg-white p-1.5 pl-3 shadow-xs flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-600 sm:pl-4 sm:gap-3">
+                <div class="min-w-[190px] max-[400px]:min-w-0 flex-1 rounded-2xl border border-gray-200/90 bg-white p-1.5 pl-3 shadow-xs flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-brand-500 focus-within:border-brand-600 sm:pl-4 sm:gap-3">
                     <span class="text-gray-400 shrink-0 flex items-center">
                         <i class="fa-solid fa-magnifying-glass text-sm"></i>
                     </span>

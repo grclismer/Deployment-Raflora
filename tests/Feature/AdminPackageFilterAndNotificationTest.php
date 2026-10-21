@@ -333,7 +333,9 @@ class AdminPackageFilterAndNotificationTest extends TestCase
 
         // 1. Primary visible toolbar controls
         $this->assertStringContainsString('id="packageSearchInput"', $content);
-        $this->assertStringContainsString('max-[375px]:basis-full', $content);
+        $this->assertStringContainsString('max-[400px]:min-w-0', $content);
+        $this->assertStringContainsString('max-[400px]:hidden">Grid</span>', $content);
+        $this->assertStringContainsString('max-[400px]:hidden">Table</span>', $content);
         $this->assertStringContainsString('aria-label="Search packages"', $content);
         $this->assertLessThan(strpos($content, 'id="packageSearchInput"'), strpos($content, 'id="viewGridBtn"'));
         $this->assertStringContainsString("window.matchMedia('(max-width: 1023px)').matches", $content);
