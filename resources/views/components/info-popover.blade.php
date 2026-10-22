@@ -6,7 +6,7 @@
         @click.outside="open = false" 
         @keydown.escape.window="open = false"
         type="button" 
-        class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1 transition align-middle"
+        class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1 transition align-middle cursor-help"
         aria-label="More information about {{ $title }}"
         :aria-expanded="open"
     >

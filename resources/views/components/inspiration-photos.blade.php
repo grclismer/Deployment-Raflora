@@ -114,7 +114,7 @@
                         <p class="text-[11px] text-slate-500"><span id="uploaded-count-text"><span id="uploaded-count-badge">0</span> of {{ InspirationPhotos::MAX_PHOTOS }} added</span> · JPG, PNG or WEBP, up to {{ $maxMb }} MB each</p>
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <button type="button" data-action="open-tips" class="{{ $ghostBtn }} !px-2.5 !py-1.5">
+                        <button type="button" data-action="open-tips" class="{{ $ghostBtn }} !px-2.5 !py-1.5 cursor-help">
                             <span class="font-bold text-emerald-600" aria-hidden="true">ⓘ</span> Tips
                         </button>
                         <button type="button" data-action="remove-all" id="btn-clear-all" class="hidden rounded-lg px-2 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400">Remove all</button>

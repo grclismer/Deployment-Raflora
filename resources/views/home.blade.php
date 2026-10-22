@@ -56,27 +56,27 @@
             }
         @endphp
 
-        <section id="gallery" class="relative py-16 sm:py-24 px-4 sm:px-6" style="background-image: url('{{ asset("assets/images/background2.jpg") }}'); background-size: cover; background-position: center;">
-            <div class="absolute inset-0 bg-black/70"></div>
+        <section id="gallery" class="relative bg-white py-16 sm:py-24 px-4 sm:px-6">
+            <div class="home-gallery-background pointer-events-none absolute inset-0" style="background-image: url('{{ asset("assets/images/background2.jpg") }}');" aria-hidden="true"></div>
             <div class="max-w-[1440px] mx-auto relative z-10">
                 
                 <!-- Headers -->
-                <div class="flex items-center justify-center gap-4 mb-3 mt-4">
-                    <div class="h-px w-10 bg-[#C2A359]"></div>
-                    <span class="text-[#C2A359] font-bold text-xs tracking-[0.2em] uppercase">Our Work</span>
-                    <div class="h-px w-10 bg-[#C2A359]"></div>
+                <div class="home-gallery-eyebrow flex items-center justify-center gap-4 mb-3 mt-4">
+                    <div class="h-px w-10 bg-[#E6C46A]"></div>
+                    <span class="rounded-full bg-black/60 px-3 py-1 text-[#FFE39A] font-bold text-xs tracking-[0.2em] uppercase">Our Work</span>
+                    <div class="h-px w-10 bg-[#E6C46A]"></div>
                 </div>
-                <h3 class="text-4xl md:text-5xl font-serif font-bold text-center mb-3 text-white">Event Gallery</h3>
-                <p class="text-center text-white/90 mb-12 text-sm md:text-base font-light">A glimpse of the floral arrangements and events we've created.</p>
+                <h3 class="home-gallery-heading text-4xl md:text-5xl font-serif font-bold text-center mb-3 text-white">Event Gallery</h3>
+                <p class="home-gallery-heading text-center text-white mb-12 text-sm md:text-base font-medium">A glimpse of the floral arrangements and events we've created.</p>
 
                 <!-- Gallery Grid -->
                 @if(count($homeGalleryItems) > 0)
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 px-2 xl:px-6">
+                    <div class="flex flex-wrap justify-center gap-3 md:gap-4 px-2 xl:px-6">
                         @foreach(array_slice($homeGalleryItems, 0, 5) as $item)
                             <!-- Image Card -->
-                            <div onclick="openLightbox('{{ $item['id'] }}')" class="group p-1 border-2 border-white/80 rounded-[16px] bg-white/10 backdrop-blur-sm shadow-2xl transform hover:-translate-y-2 transition duration-300 cursor-pointer {{ $loop->index == 4 ? 'hidden lg:block' : '' }}">
+                            <div onclick="openLightbox('{{ $item['id'] }}')" class="w-[calc(50%-0.375rem)] max-w-[17rem] md:w-[calc(33.333%-0.75rem)] lg:w-[calc(25%-0.75rem)] xl:w-[calc(20%-0.8rem)] group p-1 border-2 border-white/80 rounded-[16px] bg-white/10 backdrop-blur-sm shadow-2xl transform hover:-translate-y-2 transition duration-300 cursor-pointer {{ $loop->index == 4 ? 'hidden lg:block' : '' }}">
                                 <div class="relative overflow-hidden rounded-[12px] h-48 sm:h-56 lg:h-44 xl:h-52">
-                                    <img src="{{ asset($item['image']) }}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="{{ $item['title'] }}">
+                                    <img src="{{ asset($item['image']) }}" class="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-110" alt="{{ $item['title'] }}">
                                     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition duration-300 flex items-center justify-center">
                                         <span class="text-white text-sm sm:text-base font-semibold opacity-0 group-hover:opacity-100 transition px-2 text-center">{{ $item['title'] }}</span>
                                     </div>
@@ -102,6 +102,7 @@
         <!-- Packages Preview Section -->
         <section id="packages-preview" class="relative py-16 sm:py-20 px-4 sm:px-6 bg-cover bg-center" style="background-image: url('{{ asset("assets/images/background.jpg") }}');">
             <div class="absolute inset-0 backdrop-blur-sm" style="background-color: rgba(0, 0, 0, 0.5);"></div>
+            <div class="home-packages-bottom-fade pointer-events-none absolute inset-x-0 bottom-0"></div>
             <div class="max-w-6xl mx-auto relative z-10">
                 <h3 class="text-4xl sm:text-5xl font-serif font-bold text-center mb-4 text-white shadow-sm">Featured Packages</h3>
                 <p class="text-center text-gray-200 text-lg sm:text-xl mb-12 font-medium tracking-wide">Curated floral packages for your special events.</p>

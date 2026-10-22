@@ -1321,3 +1321,70 @@
         scroll-behavior: auto !important;
     }
 }
+
+:where(button, a[href], input, select, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="option"], [role="checkbox"], [role="radio"], [role="switch"], summary, [onclick], [x-on\:click], label[for], label:has(input, select, textarea)) {
+    cursor: pointer;
+}
+
+:where(input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], input[type="password"], input[type="number"], textarea, [contenteditable]:not([contenteditable="false"])) {
+    cursor: text;
+}
+
+:where([data-tooltip], [data-tippy-content], .cursor-help) {
+    cursor: help;
+}
+
+:where([title]:not(button):not(a[href]):not(input):not(select):not(textarea):not([role="button"]):not([onclick])) {
+    cursor: help;
+}
+
+:where(
+    .rf-btn-danger,
+    .btn-danger,
+    .danger,
+    [data-action="danger"],
+    [data-action*="remove"],
+    [data-action*="delete"],
+    [data-action*="deactivate"],
+    [data-action*="revoke"],
+    form[data-confirm-tone="danger"] button,
+    form[data-confirm-tone="archive"] button,
+    [data-confirm-tone="danger"],
+    [data-confirm-tone="archive"],
+    form[action$="/logout"] button
+) {
+    cursor: no-drop;
+}
+
+:where(:disabled, [disabled], [aria-disabled="true"], [inert]) {
+    cursor: not-allowed;
+}
+
+.home-gallery-background {
+    z-index: 0;
+    background-color: rgba(0, 0, 0, 0.42);
+    background-blend-mode: multiply;
+    background-position: center;
+    background-size: cover;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18rem);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 18rem);
+}
+
+.home-gallery-eyebrow span {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
+.home-gallery-heading {
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
+}
+
+.home-packages-bottom-fade {
+    height: clamp(7rem, 12vw, 11rem);
+    background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        rgba(255, 255, 255, 0.35) 38%,
+        rgba(255, 255, 255, 0.78) 72%,
+        #fff 100%
+    );
+}
