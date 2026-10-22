@@ -24,6 +24,8 @@ class StaffMobileNavigationTest extends TestCase
         $response->assertSee('aria-controls="staffSidebar"', false);
         $response->assertSee('aria-expanded="false"', false);
         $response->assertSee('aria-label="Open Staff navigation"', false);
+        $response->assertSee('onclick="toggleStaffSidebarState()"', false);
+        $response->assertDontSee("mobileToggle.addEventListener('click'", false);
 
         // Sidebar off-canvas container
         $response->assertSee('id="staffSidebar"', false);

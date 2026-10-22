@@ -425,15 +425,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            const mobileToggle = document.getElementById('mobileStaffToggle');
             const navLinks = document.querySelectorAll('#staffSidebar nav a');
-
-            if (mobileToggle) {
-                mobileToggle.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    toggleStaffSidebarState();
-                });
-            }
 
             window.toggleStaffSidebar = toggleStaffSidebarState;
             window.closeStaffSidebar = closeStaffSidebar;

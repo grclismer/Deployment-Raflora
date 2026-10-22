@@ -191,6 +191,10 @@ class AuthController extends Controller
                 // Valid trusted device — authenticate without OTP.
                 $trustedDevice->recordUsage($request->ip()); // updates last_used_at only
 
+                if ($user->role === 'admin' && ! $user->hasVerifiedEmail()) {
+                    $user->markEmailAsVerified();
+                }
+
                 Auth::login($user, false); // Never pass remember=true for Admin/Staff
                 $request->session()->regenerate();
 

@@ -145,7 +145,7 @@ class DeviceVerificationTest extends TestCase
     public function test_admin_with_valid_trusted_device_authenticates_without_otp(): void
     {
         Mail::fake();
-        $admin    = $this->adminUser();
+        $admin    = $this->adminUser(['email_verified_at' => null]);
         $rawToken = $this->createTrustedDevice($admin);
 
         $response = $this->withCookies([TrustedDeviceService::COOKIE_NAME => $rawToken])
@@ -156,6 +156,7 @@ class DeviceVerificationTest extends TestCase
 
         $response->assertRedirect(route('admin.dashboard'));
         $this->assertAuthenticatedAs($admin);
+        $this->assertNotNull($admin->fresh()->email_verified_at);
     }
 
     /** Test 4: Staff with valid password + valid trusted device authenticates without OTP. */
@@ -298,7 +299,7 @@ class DeviceVerificationTest extends TestCase
     public function test_correct_otp_authenticates_admin(): void
     {
         Mail::fake();
-        $admin = $this->adminUser();
+        $admin = $this->adminUser(['email_verified_at' => null]);
         $otp   = $this->generateDeviceOtp($admin);
 
         $response = $this->withSession($this->setPendingState($admin))
@@ -306,6 +307,7 @@ class DeviceVerificationTest extends TestCase
 
         $response->assertRedirect(route('admin.dashboard'));
         $this->assertAuthenticatedAs($admin);
+        $this->assertNotNull($admin->fresh()->email_verified_at);
     }
 
     /** Test 12: Correct device OTP authenticates Staff. */

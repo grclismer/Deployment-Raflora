@@ -699,7 +699,7 @@
                         </span>
                         <div>
                             <h2 class="text-sm font-bold text-slate-900 sm:text-base">Team Accounts</h2>
-                            <p class="text-[11px] text-slate-500 sm:text-xs">Admin and staff accounts with operations panel access.</p>
+                            <p class="text-[11px] text-slate-500 sm:text-xs">Administrator and staff accounts with operations panel access.</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1080,7 +1080,7 @@
                     <div class="flex items-start justify-between">
                         <div>
                             <h3 id="accountModalTitle" class="text-base font-bold text-slate-900 sm:text-lg">Add Account</h3>
-                            <p class="mt-0.5 text-xs text-slate-500">Create an admin or staff account for operations panel.</p>
+                            <p class="mt-0.5 text-xs text-slate-500">Create a staff account for the operations panel. The single administrator account is managed through bootstrap and recovery.</p>
                         </div>
                         <button type="button" data-close-modal="accountModal" class="text-xl leading-none text-slate-400 hover:text-slate-700" aria-label="Close">&times;</button>
                     </div>

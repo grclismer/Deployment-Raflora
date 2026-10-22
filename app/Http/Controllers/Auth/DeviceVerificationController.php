@@ -187,6 +187,10 @@ class DeviceVerificationController extends Controller
             return back()->withErrors(['otp' => $result['message']]);
         }
 
+        if ($user->role === 'admin' && ! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
         // OTP succeeded. Record audit event.
         $this->recordSecurityEvent(
             $user,
